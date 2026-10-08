@@ -21,6 +21,7 @@ import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
 import com.google.android.exoplayer2.trackselection.TrackSelection;
 import com.google.android.exoplayer2.trackselection.TrackSelectionArray;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo;
+import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.smartyoutubetv2.common.BuildConfig;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
@@ -329,7 +330,7 @@ public class ExoPlayerController implements Player.EventListener {
         ShortsQueue queue = ShortsQueue.getActive();
 
         if (queue == null || mPlayer == null || queue.getCurrentIndex() != index ||
-                mPlayer.getCurrentWindowIndex() != index || !mPlayer.getPlayWhenReady()) {
+                mPlayer.getCurrentWindowIndex() != index || !mPlayer.getPlayWhenReady() || isLoadingOtherVideo(queue)) {
             return;
         }
 
@@ -337,6 +338,14 @@ public class ExoPlayerController implements Player.EventListener {
 
         mIsEnded = true; // don't handle the end twice (if the player reaches the ENDED state after all)
         mEventListener.onPlayEnd();
+    }
+
+    /**
+     * Another video is being opened (e.g. its format info is loading), the end of the old one doesn't matter.
+     */
+    private boolean isLoadingOtherVideo(ShortsQueue queue) {
+        Video video = getVideo();
+        return mPendingSwitch != null || (video != null && !Helpers.equals(video.videoId, queue.getCurrentVideoId()));
     }
 
     /**
@@ -355,6 +364,14 @@ public class ExoPlayerController implements Player.EventListener {
 
         if (mPlayer.getCurrentWindowIndex() == finished || finished >= timeline.getWindowCount()) {
             return false;
+        }
+
+        if (isLoadingOtherVideo(queue)) {
+            // The app is already switching to another video: just keep the queue in sync with the player
+            queue.setCurrentIndex(mPlayer.getCurrentWindowIndex());
+            cancelItemEnd();
+            scheduleItemEnd();
+            return true;
         }
 
         long durationMs = timeline.getWindow(finished, new Timeline.Window()).getDurationMs();

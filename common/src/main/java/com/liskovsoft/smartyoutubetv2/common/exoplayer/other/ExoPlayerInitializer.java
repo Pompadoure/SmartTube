@@ -56,7 +56,7 @@ public class ExoPlayerInitializer {
 
         // Old initializer
         // SmartTube J: faster first frame for Shorts
-        SimpleExoPlayer player = ExoPlayerFactory.newSimpleInstance(context, renderersFactory, trackSelector, new FastStartLoadControl(loadControl));
+        SimpleExoPlayer player = ExoPlayerFactory.newSimpleInstance(context, renderersFactory, trackSelector, new FastStartLoadControl(loadControl, mMaxBufferBytes));
 
         // New initializer
         //SimpleExoPlayer player = ExoPlayerFactory.newSimpleInstance(

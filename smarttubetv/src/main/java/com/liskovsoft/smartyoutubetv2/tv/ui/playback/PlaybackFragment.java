@@ -1629,7 +1629,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         int direction = ShortsTransitionState.consumeDirection();
         Video video = getVideo();
 
-        if (video != null && ShortsQueue.isQueued(video.videoId)) {
+        if (video != null && ShortsQueue.getQueuedFormatInfo(video.videoId) != null) {
             // Preloaded Short: it's already in the player, keep everything as is (no black screen, no reset).
             // Same slide as for the other Shorts, it fades into the video on the first frame.
             if (!isInPIPMode()) {

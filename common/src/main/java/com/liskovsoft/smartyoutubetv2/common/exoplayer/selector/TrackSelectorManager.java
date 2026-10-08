@@ -333,6 +333,7 @@ public class TrackSelectorManager implements TrackSelectorCallback {
 
     private Pair<Definition, MediaTrack> createRendererSelection(int rendererIndex, TrackGroupArray groups, Parameters params) {
         if (mSelectedTracks[rendererIndex] == null || params.hasSelectionOverride(rendererIndex, groups)) {
+            syncCacheWithOverride(rendererIndex, groups, params);
             return null;
         }
 
@@ -350,6 +351,26 @@ public class TrackSelectorManager implements TrackSelectorCallback {
     }
 
     // BEGIN JoTube: Shorts playlist (several videos in the player at once)
+
+    /**
+     * A track was picked for this video earlier (the override is applied by the track selector itself).
+     * If it's the playing video and the cache describes another one, rebuild the cache for it.
+     */
+    private void syncCacheWithOverride(int rendererIndex, TrackGroupArray groups, Parameters params) {
+        if (!params.hasSelectionOverride(rendererIndex, groups) || !isRendererInitialized(rendererIndex) ||
+                isRendererFor(rendererIndex, groups) || isOtherPeriod(rendererIndex, groups)) {
+            return;
+        }
+
+        mRenderers[rendererIndex] = null;
+        initRenderer(rendererIndex, groups, params);
+
+        SelectionOverride override = params.getSelectionOverride(rendererIndex, groups);
+
+        if (override != null && isRendererInitialized(rendererIndex)) {
+            setSelection(rendererIndex, override.groupIndex, override.tracks);
+        }
+    }
 
     /**
      * The cache (mRenderers) describes the playing video. ExoPlayer also selects tracks for the preloaded videos

@@ -51,6 +51,8 @@ public class VideoLoaderController extends BasePlayerController {
     private ErrorFixerController mErrorFixerController;
     private Disposable mFormatInfoAction;
     private Disposable mPrefetchAction;
+    private String mPrefetchingVideoId; // video of the running prefetch request
+    private String mWaitingForPrefetchId; // the user opened the video that is being prefetched right now
     // Format info of upcoming Shorts, fetched in the background while the current one plays
     private final Map<String, MediaItemFormatInfo> mPrefetchedFormats = new LinkedHashMap<String, MediaItemFormatInfo>(4, 0.75f, true) {
         @Override
@@ -303,12 +305,12 @@ public class VideoLoaderController extends BasePlayerController {
         Utils.post(mShowProgressBar);
         disposeActions();
 
+        mWaitingForPrefetchId = null;
+
         // Use the format info fetched in the background (Shorts feed), or the one of a Short that is
         // already in the player (e.g. the previous one). Skips the network round trip.
-        MediaItemFormatInfo prefetched = takePrefetched(video);
-        if (prefetched == null && video != null) {
-            prefetched = ShortsQueue.getQueuedFormatInfo(video.videoId);
-        }
+        MediaItemFormatInfo cached = takePrefetched(video);
+        final MediaItemFormatInfo prefetched = cached != null ? cached : ShortsQueue.getQueuedFormatInfo(video.videoId);
         if (prefetched != null) {
             Log.d(TAG, "Using prefetched format info for %s", video.videoId);
             // Keep the original async order (the player state is reset at this point)
@@ -318,6 +320,13 @@ public class VideoLoaderController extends BasePlayerController {
                     processFormatInfo(prefetched);
                 }
             });
+            return;
+        }
+
+        if (video.videoId != null && video.videoId.equals(mPrefetchingVideoId) && RxHelper.isAnyActionRunning(mPrefetchAction)) {
+            // Scrolled faster than the prefetch: this video is being fetched right now. Don't start over, wait for it.
+            Log.d(TAG, "Waiting for the running prefetch of %s", video.videoId);
+            mWaitingForPrefetchId = video.videoId;
             return;
         }
 
@@ -654,7 +663,7 @@ public class VideoLoaderController extends BasePlayerController {
             boolean found = false;
 
             for (Video item : group.getVideos()) {
-                if (found && item.hasVideo() && !item.isUpcoming && !item.isLive && !Helpers.equals(item.videoId, current.videoId)) {
+                if (found && item.isShorts && item.hasVideo() && !item.isUpcoming && !item.isLive && !Helpers.equals(item.videoId, current.videoId)) {
                     result.add(item);
 
                     if (result.size() >= PREFETCH_LOOKAHEAD) {
@@ -719,8 +728,18 @@ public class VideoLoaderController extends BasePlayerController {
                 // Activity destroyed
             }
 
+            mPrefetchingVideoId = nextVideoId;
             mPrefetchAction = YouTubeServiceManager.instance().getMediaItemService().getFormatInfoObserve(nextVideoId)
                     .subscribe(formatInfo -> {
+                        mPrefetchingVideoId = null;
+
+                        if (isWaitingForPrefetch(nextVideoId)) {
+                            // The user is already on this video
+                            mWaitingForPrefetchId = null;
+                            processFormatInfo(formatInfo);
+                            return;
+                        }
+
                         if (formatInfo != null && !formatInfo.isUnplayable() && !formatInfo.isLive()) {
                             mPrefetchedFormats.put(nextVideoId, formatInfo);
 
@@ -733,9 +752,34 @@ public class VideoLoaderController extends BasePlayerController {
 
                         // Continue with the next one in the chain
                         Utils.post(mPrefetchNext);
-                    }, error -> Log.e(TAG, "Prefetch failed for %s: %s", nextVideoId, error.getMessage()));
+                    }, error -> {
+                        Log.e(TAG, "Prefetch failed for %s: %s", nextVideoId, error.getMessage());
+                        onPrefetchFinished(nextVideoId);
+                    }, () -> onPrefetchFinished(nextVideoId));
 
             return; // one request at a time
+        }
+    }
+
+    private boolean isWaitingForPrefetch(String videoId) {
+        Video now = getVideo();
+        return videoId != null && videoId.equals(mWaitingForPrefetchId) && now != null && videoId.equals(now.videoId);
+    }
+
+    /**
+     * The prefetch request ended without a result (error or empty).
+     */
+    private void onPrefetchFinished(String videoId) {
+        if (videoId == null || !videoId.equals(mPrefetchingVideoId) && !isWaitingForPrefetch(videoId)) {
+            return; // already handled in onNext
+        }
+
+        mPrefetchingVideoId = null;
+
+        if (isWaitingForPrefetch(videoId)) {
+            // The user is on this video: load it the regular way (with the regular error handling)
+            mWaitingForPrefetchId = null;
+            loadFormatInfo(getVideo());
         }
     }
 
@@ -756,6 +800,8 @@ public class VideoLoaderController extends BasePlayerController {
     private void disposePrefetch() {
         Utils.removeCallbacks(mPrefetchNext);
         RxHelper.disposeActions(mPrefetchAction);
+        mPrefetchingVideoId = null;
+        mWaitingForPrefetchId = null;
     }
 
     private void initRandomNext() {

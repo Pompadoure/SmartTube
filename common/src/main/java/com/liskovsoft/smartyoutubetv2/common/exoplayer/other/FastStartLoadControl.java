@@ -21,9 +21,14 @@ public class FastStartLoadControl implements LoadControl {
     private static final long SHORTS_MAX_BUFFER_US = 180_000_000; // 3 min
     private static final int SHORTS_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
     private final LoadControl mDelegate;
+    private final int mShortsMaxBufferBytes;
 
-    public FastStartLoadControl(LoadControl delegate) {
+    /**
+     * @param maxBufferBytes the app's memory limit for the player buffer on this device
+     */
+    public FastStartLoadControl(LoadControl delegate, int maxBufferBytes) {
         mDelegate = delegate;
+        mShortsMaxBufferBytes = maxBufferBytes > 0 ? Math.min(SHORTS_MAX_BUFFER_BYTES, maxBufferBytes) : SHORTS_MAX_BUFFER_BYTES;
     }
 
     @Override
@@ -74,7 +79,7 @@ public class FastStartLoadControl implements LoadControl {
     public boolean shouldContinueLoading(long bufferedDurationUs, float playbackSpeed) {
         if (ShortsTransitionState.isShortsMode()) {
             return bufferedDurationUs < SHORTS_MIN_BUFFER_US || (bufferedDurationUs < SHORTS_MAX_BUFFER_US &&
-                    getAllocator().getTotalBytesAllocated() < SHORTS_MAX_BUFFER_BYTES);
+                    getAllocator().getTotalBytesAllocated() < mShortsMaxBufferBytes);
         }
 
         return mDelegate.shouldContinueLoading(bufferedDurationUs, playbackSpeed);

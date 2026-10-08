@@ -53,6 +53,10 @@ public final class ShortsQueue {
         return mCurrentIndex;
     }
 
+    String getCurrentVideoId() {
+        return mCurrentIndex >= 0 && mCurrentIndex < mVideoIds.size() ? mVideoIds.get(mCurrentIndex) : null;
+    }
+
     void setCurrentIndex(int index) {
         mCurrentIndex = index;
     }
