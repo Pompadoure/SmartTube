@@ -86,7 +86,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest-j --cleanup-tag --yes || true
-          gh release create latest-j out/* \
+          # Give GitHub a moment to remove the old tag, otherwise the new release can end up as a draft
+          sleep 10
+          gh release create latest-j out/* --latest \
             --target "${{ github.sha }}" \
-            --title "SmartTube J ${{ steps.version.outputs.name }}" \
+            --title "JoTube ${{ steps.version.outputs.name }}" \
             --notes "Personal build from ${{ github.sha }}. Install the armeabi-v7a APK on Google TV Streamer / Mi Box."
+          # Make sure it's published (drafts aren't downloadable)
+          gh release edit latest-j --draft=false
