@@ -20,16 +20,20 @@ import java.util.List;
  */
 public final class ShortsQueue {
     private static final int MAX_SIZE = 50;
+    // Stream urls are valid for ~6 h, the poToken ~12 h. Stay well below.
+    public static final long FORMAT_INFO_MAX_AGE_MS = 60 * 60 * 1000;
     private static volatile ShortsQueue sActive;
     private final ConcatenatingMediaSource mPlaylist;
     private final List<String> mVideoIds = new ArrayList<>();
     private final List<MediaItemFormatInfo> mFormatInfos = new ArrayList<>();
+    private final List<Long> mAddedTimesMs = new ArrayList<>();
     private int mCurrentIndex;
 
     ShortsQueue(MediaItemFormatInfo formatInfo, MediaSource first) {
         mPlaylist = new ConcatenatingMediaSource(first);
         mVideoIds.add(formatInfo.getVideoId());
         mFormatInfos.add(formatInfo);
+        mAddedTimesMs.add(System.currentTimeMillis());
         mCurrentIndex = 0;
     }
 
@@ -70,7 +74,8 @@ public final class ShortsQueue {
      */
     boolean isActual(int index) {
         MediaItemFormatInfo formatInfo = index >= 0 && index < mFormatInfos.size() ? mFormatInfos.get(index) : null;
-        return formatInfo != null && formatInfo.isCacheActual();
+        return formatInfo != null && formatInfo.isCacheActual() &&
+                System.currentTimeMillis() - mAddedTimesMs.get(index) < FORMAT_INFO_MAX_AGE_MS;
     }
 
     /**
@@ -81,6 +86,7 @@ public final class ShortsQueue {
         mPlaylist.addMediaSource(index, source);
         mVideoIds.add(index, formatInfo.getVideoId());
         mFormatInfos.add(index, formatInfo);
+        mAddedTimesMs.add(index, System.currentTimeMillis());
     }
 
     static void setActive(ShortsQueue queue) {

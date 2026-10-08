@@ -117,6 +117,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
   @Player.RepeatMode private int repeatMode;
   private boolean shuffleModeEnabled;
   private boolean foregroundMode;
+  private boolean isUserSeek; // JoTube: seek requested by the app (not caused by a timeline change)
 
   private int pendingPrepareCount;
   private SeekPosition pendingInitialSeekPosition;
@@ -690,7 +691,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
             return;
           }
         }
-        newPeriodPositionUs = seekToPeriodPosition(periodId, newPeriodPositionUs);
+        isUserSeek = true;
+        try {
+          newPeriodPositionUs = seekToPeriodPosition(periodId, newPeriodPositionUs);
+        } finally {
+          isUserSeek = false;
+        }
         seekPositionAdjusted |= periodPositionUs != newPeriodPositionUs;
         periodPositionUs = newPeriodPositionUs;
       }
@@ -727,7 +733,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
     while (newPlayingPeriodHolder != null) {
       if (periodId.equals(newPlayingPeriodHolder.info.id) && newPlayingPeriodHolder.prepared) {
         keepFollowingPeriods =
-            newPlayingPeriodHolder != oldPlayingPeriodHolder
+            isUserSeek
+                && newPlayingPeriodHolder != oldPlayingPeriodHolder
                 && queue.getReadingPeriod() == newPlayingPeriodHolder
                 && newPlayingPeriodHolder.getNext() != null;
         if (!keepFollowingPeriods) {

@@ -34,6 +34,7 @@ import com.liskovsoft.youtubeapi.service.YouTubeServiceManager;
 import io.reactivex.disposables.Disposable;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -60,6 +61,7 @@ public class VideoLoaderController extends BasePlayerController {
             return size() > PREFETCH_CACHE_SIZE;
         }
     };
+    private final Map<String, Long> mPrefetchedTimesMs = new HashMap<>();
     private final Runnable mPrefetchNext = this::prefetchNext;
     private int mPrefetchRetries;
     private final Runnable mReloadVideo = () -> {
@@ -135,6 +137,7 @@ public class VideoLoaderController extends BasePlayerController {
         disposeActions();
         disposePrefetch();
         mPrefetchedFormats.clear();
+        mPrefetchedTimesMs.clear();
     }
 
     @Override
@@ -715,7 +718,9 @@ public class VideoLoaderController extends BasePlayerController {
             int distance = i + 1;
 
             MediaItemFormatInfo cached = mPrefetchedFormats.get(next.videoId);
-            if (cached != null && cached.isCacheActual()) {
+            Long cachedTimeMs = mPrefetchedTimesMs.get(next.videoId);
+            if (cached != null && cached.isCacheActual() && cachedTimeMs != null &&
+                    System.currentTimeMillis() - cachedTimeMs < ShortsQueue.FORMAT_INFO_MAX_AGE_MS) {
                 ExoPlayerController.enqueueShort(cached, distance); // no-op if already queued
                 continue;
             }
@@ -744,6 +749,7 @@ public class VideoLoaderController extends BasePlayerController {
 
                         if (formatInfo != null && !formatInfo.isUnplayable() && !formatInfo.isLive()) {
                             mPrefetchedFormats.put(nextVideoId, formatInfo);
+                            mPrefetchedTimesMs.put(nextVideoId, System.currentTimeMillis());
 
                             // Real preload: the player buffers it in the background
                             Video now = getVideo();
@@ -791,8 +797,10 @@ public class VideoLoaderController extends BasePlayerController {
         }
 
         MediaItemFormatInfo formatInfo = mPrefetchedFormats.remove(video.videoId);
+        Long prefetchedTimeMs = mPrefetchedTimesMs.remove(video.videoId);
 
-        if (formatInfo == null || !formatInfo.isCacheActual() || !Helpers.equals(formatInfo.getVideoId(), video.videoId)) {
+        if (formatInfo == null || !formatInfo.isCacheActual() || !Helpers.equals(formatInfo.getVideoId(), video.videoId) ||
+                prefetchedTimeMs == null || System.currentTimeMillis() - prefetchedTimeMs > ShortsQueue.FORMAT_INFO_MAX_AGE_MS) {
             return null;
         }
 
