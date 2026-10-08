@@ -80,7 +80,11 @@ public class TrackSelectorManager implements TrackSelectorCallback {
      *                      One of the {@link #RENDERER_INDEX_VIDEO}, {@link #RENDERER_INDEX_AUDIO}, {@link #RENDERER_INDEX_SUBTITLE}
      */
     private void initRenderer(int rendererIndex) {
-        if (mRenderers[rendererIndex] != null && mRenderers[rendererIndex].mediaTracks != null) {
+        MappedTrackInfo currentInfo = mTrackSelector != null ? mTrackSelector.getCurrentMappedTrackInfo() : null;
+        TrackGroupArray currentGroups = currentInfo != null ? currentInfo.getTrackGroups(rendererIndex) : null;
+
+        // JoTube: the cache may belong to another (preloaded) video of the playlist
+        if (isRendererInitialized(rendererIndex) && (currentGroups == null || isRendererFor(rendererIndex, currentGroups))) {
             return;
         }
 
@@ -101,7 +105,8 @@ public class TrackSelectorManager implements TrackSelectorCallback {
      * @param parameters supplied externally from {@link RestoreTrackSelector}
      */
     private void initRenderer(int rendererIndex, MappedTrackInfo trackInfo, Parameters parameters) {
-        if (mRenderers[rendererIndex] != null && mRenderers[rendererIndex].mediaTracks != null) {
+        if (isRendererInitialized(rendererIndex) &&
+                (trackInfo == null || isRendererFor(rendererIndex, trackInfo.getTrackGroups(rendererIndex)))) {
             return;
         }
 
@@ -117,12 +122,23 @@ public class TrackSelectorManager implements TrackSelectorCallback {
      * @param parameters supplied externally from {@link RestoreTrackSelector}
      */
     private void initRenderer(int rendererIndex, TrackGroupArray groups, Parameters parameters) {
-        if (mRenderers[rendererIndex] != null && mRenderers[rendererIndex].mediaTracks != null) {
+        // JoTube: Shorts playlist. Selection for a preloaded video must use that video's track groups,
+        // otherwise group/track indexes of the playing video are applied to it (IndexOutOfBounds).
+        if (isRendererInitialized(rendererIndex) && (groups == null || isRendererFor(rendererIndex, groups))) {
             return;
         }
 
         initTrackGroups(rendererIndex, groups, parameters);
         initMediaTracks(rendererIndex);
+    }
+
+    private boolean isRendererInitialized(int rendererIndex) {
+        return mRenderers[rendererIndex] != null && mRenderers[rendererIndex].mediaTracks != null;
+    }
+
+    private boolean isRendererFor(int rendererIndex, TrackGroupArray groups) {
+        Renderer renderer = mRenderers[rendererIndex];
+        return renderer != null && renderer.trackGroups != null && renderer.trackGroups.equals(groups);
     }
 
     private void initTrackGroups(int rendererIndex, MappedTrackInfo trackInfo, Parameters parameters) {
