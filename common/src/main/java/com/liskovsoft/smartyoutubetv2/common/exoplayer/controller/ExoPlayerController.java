@@ -129,7 +129,13 @@ public class ExoPlayerController implements Player.EventListener {
 
         int index = queue.indexOf(formatInfo.getVideoId());
 
-        if (index == -1 || index == mPlayer.getCurrentWindowIndex() || index >= mPlayer.getCurrentTimeline().getWindowCount()) {
+        // The player's timeline is updated asynchronously: switch only when it's in sync with the queue
+        if (index == -1 || index == queue.getCurrentIndex() ||
+                mPlayer.getCurrentTimeline().getWindowCount() != queue.size() ||
+                mPlayer.getCurrentWindowIndex() != queue.getCurrentIndex()) {
+            Log.d(TAG, "Shorts: can't switch to %s (index %s, current %s, size %s, timeline %s, window %s)",
+                    formatInfo.getVideoId(), index, queue.getCurrentIndex(), queue.size(),
+                    mPlayer.getCurrentTimeline().getWindowCount(), mPlayer.getCurrentWindowIndex());
             return false;
         }
 
@@ -139,9 +145,10 @@ public class ExoPlayerController implements Player.EventListener {
         mTrackSelectorManager.invalidate();
         mOnSourceChanged = true;
         mEventListener.onSourceChanged(getVideo());
-        mPlayer.seekTo(index, 0);
+        queue.setCurrentIndex(index);
+        // Default position = where the background buffering started (keeps the preloaded data)
+        mPlayer.seekToDefaultPosition(index);
         mPlayer.setPlayWhenReady(true);
-        queue.trimBefore(index);
 
         return true;
     }
@@ -166,6 +173,10 @@ public class ExoPlayerController implements Player.EventListener {
             return true;
         }
 
+        if (queue.isFull()) {
+            return false;
+        }
+
         MediaSource mediaSource;
 
         if (formatInfo.containsDashFormats()) {
@@ -176,9 +187,7 @@ public class ExoPlayerController implements Player.EventListener {
             return false;
         }
 
-        // Anything queued after the current item isn't the next anymore
-        queue.trimAfter(mPlayer.getCurrentWindowIndex());
-        queue.append(formatInfo.getVideoId(), mediaSource);
+        queue.insertNext(formatInfo.getVideoId(), mediaSource);
         Log.d(TAG, "Shorts: preloading %s", formatInfo.getVideoId());
 
         return true;
@@ -195,17 +204,17 @@ public class ExoPlayerController implements Player.EventListener {
             return false;
         }
 
-        int current = mPlayer.getCurrentWindowIndex();
+        int finished = queue.getCurrentIndex();
 
-        if (current <= 0) {
+        if (mPlayer.getCurrentWindowIndex() == finished || finished >= mPlayer.getCurrentTimeline().getWindowCount()) {
             return false;
         }
 
-        int prev = current - 1;
-        long prevDurationMs = mPlayer.getCurrentTimeline().getWindow(prev, new Timeline.Window()).getDurationMs();
+        long durationMs = mPlayer.getCurrentTimeline().getWindow(finished, new Timeline.Window()).getDurationMs();
 
+        // Stay on the finished Short, the app decides what's next (loop, next, pause, close)
         mPlayer.setPlayWhenReady(false);
-        mPlayer.seekTo(prev, Math.max(0, prevDurationMs - 100));
+        mPlayer.seekTo(finished, Math.max(0, durationMs - 100));
         mEventListener.onPlayEnd();
 
         return true;

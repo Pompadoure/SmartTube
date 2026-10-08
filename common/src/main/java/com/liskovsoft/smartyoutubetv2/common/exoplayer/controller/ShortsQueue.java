@@ -11,18 +11,23 @@ import java.util.List;
  * in the background (it starts loading the next item once the current one is fully buffered).
  * Switching to a queued Short is a seek inside the playlist: no new source, no player reset.
  *
+ * The id list here is the single source of truth. The player's timeline is updated asynchronously,
+ * so a switch is only allowed while both have the same size. Items are never removed during a session
+ * (removal is what made the indexes go out of sync); inactive items hold no buffered media.
+ *
  * Only accessed from the main thread.
  */
 public final class ShortsQueue {
-    // Keep one item behind the current for instant "previous"
-    private static final int KEEP_BEHIND = 1;
+    private static final int MAX_SIZE = 50;
     private static volatile ShortsQueue sActive;
     private final ConcatenatingMediaSource mPlaylist;
     private final List<String> mVideoIds = new ArrayList<>();
+    private int mCurrentIndex;
 
     ShortsQueue(String videoId, MediaSource first) {
         mPlaylist = new ConcatenatingMediaSource(first);
         mVideoIds.add(videoId);
+        mCurrentIndex = 0;
     }
 
     MediaSource getPlaylist() {
@@ -41,40 +46,25 @@ public final class ShortsQueue {
         return indexOf(videoId) != -1;
     }
 
-    void append(String videoId, MediaSource source) {
-        mPlaylist.addMediaSource(source);
-        mVideoIds.add(videoId);
+    int getCurrentIndex() {
+        return mCurrentIndex;
+    }
+
+    void setCurrentIndex(int index) {
+        mCurrentIndex = index;
+    }
+
+    boolean isFull() {
+        return mVideoIds.size() >= MAX_SIZE;
     }
 
     /**
-     * Drop items that are too far behind the current one (saves memory).
-     * @return number of removed items (current index shifts by that amount)
+     * Insert right after the current item (that's what plays next).
      */
-    int trimBefore(int currentIndex) {
-        int removeCount = currentIndex - KEEP_BEHIND;
-
-        if (removeCount <= 0) {
-            return 0;
-        }
-
-        mPlaylist.removeMediaSourceRange(0, removeCount);
-        mVideoIds.subList(0, removeCount).clear();
-
-        return removeCount;
-    }
-
-    /**
-     * Drop everything after the current item (e.g. the feed changed direction).
-     */
-    void trimAfter(int currentIndex) {
-        int size = mVideoIds.size();
-
-        if (currentIndex + 1 >= size) {
-            return;
-        }
-
-        mPlaylist.removeMediaSourceRange(currentIndex + 1, size);
-        mVideoIds.subList(currentIndex + 1, size).clear();
+    void insertNext(String videoId, MediaSource source) {
+        int index = mCurrentIndex + 1;
+        mPlaylist.addMediaSource(index, source);
+        mVideoIds.add(index, videoId);
     }
 
     static void setActive(ShortsQueue queue) {
@@ -90,6 +80,6 @@ public final class ShortsQueue {
      */
     public static boolean isQueued(String videoId) {
         ShortsQueue queue = sActive;
-        return queue != null && queue.contains(videoId);
+        return queue != null && queue.indexOf(videoId) != -1 && queue.indexOf(videoId) != queue.getCurrentIndex();
     }
 }
