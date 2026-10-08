@@ -45,11 +45,13 @@ import com.google.android.exoplayer2.ext.mediasession.MediaSessionConnector;
 import com.google.android.exoplayer2.trackselection.AdaptiveTrackSelection;
 import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
 import com.google.android.exoplayer2.util.Util;
+import com.google.android.exoplayer2.video.VideoListener;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.VideoGroup;
+import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.manager.PlayerUI;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.ChatReceiver;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.SeekBarSegment;
@@ -125,6 +127,13 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     private Boolean mIsControlsShownPreviously;
     private Video mPendingFocus;
     private String mSelectedVideoId;
+    private final ShortsTransitionOverlay mShortsTransition = new ShortsTransitionOverlay();
+    private final VideoListener mFirstFrameListener = new VideoListener() {
+        @Override
+        public void onRenderedFirstFrame() {
+            mShortsTransition.hide(true);
+        }
+    };
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -171,6 +180,9 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         // We should use internal progress manager because it's used in many places like Exo engine etc.
         // ProgressBar.setRootView already called at this moment.
         ProgressBarManager.setup(getProgressBarManager(), (ViewGroup) root);
+
+        // Above the video surface, below the controls
+        mShortsTransition.attach((ViewGroup) root);
 
         return root;
     }
@@ -439,6 +451,10 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             mDebugInfoManager.show(false);
             mDebugInfoManager = null;
         }
+        if (mPlayer != null) {
+            mPlayer.removeVideoListener(mFirstFrameListener);
+        }
+        mShortsTransition.hide(false);
         mPlayerInitializer.release();
         // Fix access calls when player isn't initialized
         mExoPlayerController.release();
@@ -484,6 +500,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
         DefaultRenderersFactory renderersFactory = new CustomOverridesRenderersFactory(getContext());
         mPlayer = mPlayerInitializer.createPlayer(getContext(), renderersFactory, trackSelector);
+        mPlayer.addVideoListener(mFirstFrameListener);
 
         mExoPlayerController.setPlayer(mPlayer);
     }
@@ -846,6 +863,10 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
     @Override
     public void showBackground(String url) {
+        if (url != null) {
+            // Unplayable/upcoming video: the background image replaces the transition
+            mShortsTransition.hide(false);
+        }
         mBackgroundManager.showBackground(url);
     }
 
@@ -1162,6 +1183,12 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     }
 
     // End Engine Events
+
+    @Override
+    public void onDestroyView() {
+        mShortsTransition.detach();
+        super.onDestroyView();
+    }
 
     @Override
     public void onDestroy() {
@@ -1601,6 +1628,15 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         mExoPlayerController.resetPlayerState();
         // Hide last frame of the previous video
         showBackgroundColor(R.color.player_background);
+
+        int direction = ShortsTransitionState.consumeDirection();
+        Video video = getVideo();
+        if (video != null && video.isShorts && !isInPIPMode()) {
+            // Shorts feed: show the upcoming video's thumbnail instead of the black screen
+            mShortsTransition.show(video, direction);
+        } else {
+            mShortsTransition.hide(false);
+        }
         setChatReceiver(null);
         setSeekBarSegments(null);
         setSeekPreviewTitle(null);

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Personal build: no auto-updates from the official channel (different package id) -->
+    <string-array name="update_urls">
+    </string-array>
+</resources>

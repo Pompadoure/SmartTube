@@ -167,6 +167,13 @@ android {
             applicationId "org.smarttube.stable"
             targetSdkVersion project.properties.compileSdkVersion
         }
+        // Personal build (Pompadoure/SmartTube): installs side by side with the official app.
+        // Library modules don't know this flavor, so they use their stable variant.
+        stjohan {
+            applicationId "org.smarttube.johan"
+            targetSdkVersion project.properties.compileSdkVersion
+            matchingFallbacks = ['ststable']
+        }
         stfdroid {
             applicationId "app.smarttube.fdroid"
             minSdkVersion 21

@@ -2,6 +2,8 @@ package com.liskovsoft.smartyoutubetv2.common.app.models.playback.controllers;
 
 import android.os.Build.VERSION;
 
+import com.bumptech.glide.Glide;
+
 import com.liskovsoft.mediaserviceinterfaces.MediaItemService;
 import com.liskovsoft.mediaserviceinterfaces.ServiceManager;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaFormat;
@@ -17,6 +19,7 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.data.SimpleMediaItem;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.VideoGroup;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.BasePlayerController;
+import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.manager.PlayerConstants;
 import com.liskovsoft.smartyoutubetv2.common.app.presenters.AppDialogPresenter;
 import com.liskovsoft.smartyoutubetv2.common.app.presenters.dialogs.VideoActionPresenter;
@@ -28,14 +31,28 @@ import com.liskovsoft.youtubeapi.service.YouTubeServiceManager;
 
 import io.reactivex.disposables.Disposable;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 public class VideoLoaderController extends BasePlayerController {
     private static final String TAG = VideoLoaderController.class.getSimpleName();
     private static final int MIN_SHUFFLE_SIZE = 30;
+    private static final int PREFETCH_DELAY_MS = 1_500;
+    private static final int PREFETCH_CACHE_SIZE = 3;
     private final Playlist mPlaylist;
     private Video mPendingVideo;
     private SuggestionsController mSuggestionsController;
     private ErrorFixerController mErrorFixerController;
     private Disposable mFormatInfoAction;
+    private Disposable mPrefetchAction;
+    // Format info of upcoming Shorts, fetched in the background while the current one plays
+    private final Map<String, MediaItemFormatInfo> mPrefetchedFormats = new LinkedHashMap<String, MediaItemFormatInfo>(4, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, MediaItemFormatInfo> eldest) {
+            return size() > PREFETCH_CACHE_SIZE;
+        }
+    };
+    private final Runnable mPrefetchNext = this::prefetchNext;
     private final Runnable mReloadVideo = () -> {
         getMainController().onNewVideo(getVideo());
     };
@@ -107,6 +124,8 @@ public class VideoLoaderController extends BasePlayerController {
     @Override
     public void onEngineReleased() {
         disposeActions();
+        disposePrefetch();
+        mPrefetchedFormats.clear();
     }
 
     @Override
@@ -114,10 +133,12 @@ public class VideoLoaderController extends BasePlayerController {
         if (getPlayer() == null) {
             return;
         }
-        
+
         getPlayer().setButtonState(R.id.action_repeat, video.finishOnEnded ? PlayerConstants.PLAYBACK_MODE_CLOSE : getPlayerData().getPlaybackMode());
         // Can't set title at this point
         //checkSleepTimer();
+
+        schedulePrefetch();
     }
 
     @Override
@@ -143,6 +164,7 @@ public class VideoLoaderController extends BasePlayerController {
             return;
         }
 
+        ShortsTransitionState.setDirection(ShortsTransitionState.DIRECTION_PREVIOUS);
         openVideoInt(mSuggestionsController.getPrevious());
 
         if (getPlayerTweaksData().isPlayerUiOnNextEnabled()) {
@@ -156,6 +178,8 @@ public class VideoLoaderController extends BasePlayerController {
         }
 
         Video next = mSuggestionsController.getNext();
+
+        ShortsTransitionState.setDirection(ShortsTransitionState.DIRECTION_NEXT);
 
         if (next != null) {
             openVideoInt(next);
@@ -254,6 +278,20 @@ public class VideoLoaderController extends BasePlayerController {
         //getPlayer().showProgressBar(true);
         Utils.post(mShowProgressBar);
         disposeActions();
+
+        // Use the format info fetched in the background (Shorts feed). Skips the network round trip.
+        MediaItemFormatInfo prefetched = takePrefetched(video);
+        if (prefetched != null) {
+            Log.d(TAG, "Using prefetched format info for %s", video.videoId);
+            // Keep the original async order (the player state is reset at this point)
+            Utils.post(() -> {
+                Video current = getVideo();
+                if (current != null && Helpers.equals(current.videoId, prefetched.getVideoId())) {
+                    processFormatInfo(prefetched);
+                }
+            });
+            return;
+        }
 
         ServiceManager service = YouTubeServiceManager.instance();
         MediaItemService mediaItemManager = service.getMediaItemService();
@@ -536,6 +574,82 @@ public class VideoLoaderController extends BasePlayerController {
     @Override
     public void onMetadata(MediaItemMetadata metadata) {
         initRandomNext();
+        schedulePrefetch();
+    }
+
+    /**
+     * Shorts feed: fetch the next video's format info (incl. stream urls) while the current one plays,
+     * so switching with up/down doesn't wait for the network.
+     */
+    private void schedulePrefetch() {
+        Utils.removeCallbacks(mPrefetchNext);
+
+        Video current = getVideo();
+
+        if (!isPrefetchAllowed(current)) {
+            return;
+        }
+
+        Utils.postDelayed(mPrefetchNext, PREFETCH_DELAY_MS);
+    }
+
+    private boolean isPrefetchAllowed(Video current) {
+        return !isEmbedPlayer() && getPlayer() != null && current != null && !current.isLive && current.isShorts;
+    }
+
+    private void prefetchNext() {
+        Video current = getVideo();
+
+        if (!isPrefetchAllowed(current) || RxHelper.isAnyActionRunning(mPrefetchAction)) {
+            return;
+        }
+
+        Video next = mSuggestionsController.getNext();
+
+        if (next == null || !next.hasVideo() || next.isLive || Helpers.equals(next.videoId, current.videoId)) {
+            return;
+        }
+
+        MediaItemFormatInfo cached = mPrefetchedFormats.get(next.videoId);
+        if (cached != null && cached.isCacheActual()) {
+            return;
+        }
+
+        String nextVideoId = next.videoId;
+        Log.d(TAG, "Prefetching format info for %s", nextVideoId);
+
+        // Warm up the image used by the transition animation
+        try {
+            Glide.with(getContext()).load(ShortsTransitionState.getThumbnailUrl(nextVideoId)).preload();
+        } catch (IllegalArgumentException e) {
+            // Activity destroyed
+        }
+
+        mPrefetchAction = YouTubeServiceManager.instance().getMediaItemService().getFormatInfoObserve(nextVideoId)
+                .subscribe(formatInfo -> {
+                    if (formatInfo != null && !formatInfo.isUnplayable() && !formatInfo.isLive()) {
+                        mPrefetchedFormats.put(nextVideoId, formatInfo);
+                    }
+                }, error -> Log.e(TAG, "Prefetch failed for %s: %s", nextVideoId, error.getMessage()));
+    }
+
+    private MediaItemFormatInfo takePrefetched(Video video) {
+        if (video == null || video.videoId == null) {
+            return null;
+        }
+
+        MediaItemFormatInfo formatInfo = mPrefetchedFormats.remove(video.videoId);
+
+        if (formatInfo == null || !formatInfo.isCacheActual() || !Helpers.equals(formatInfo.getVideoId(), video.videoId)) {
+            return null;
+        }
+
+        return formatInfo;
+    }
+
+    private void disposePrefetch() {
+        Utils.removeCallbacks(mPrefetchNext);
+        RxHelper.disposeActions(mPrefetchAction);
     }
 
     private void initRandomNext() {
