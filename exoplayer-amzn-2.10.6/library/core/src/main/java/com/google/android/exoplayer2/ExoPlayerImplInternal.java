@@ -747,12 +747,20 @@ import java.util.concurrent.atomic.AtomicBoolean;
       MediaPeriodHolder rewound = queue.rewindToRetired(periodId);
       if (rewound != null) {
         newPlayingPeriodHolder = rewound;
+        MediaPeriodHolder previous = rewound;
         MediaPeriodHolder following = rewound.getNext();
         while (following != null) {
           // Read from the start again when the player gets there
           if (following.prepared && following.hasEnabledTracks) {
             following.mediaPeriod.seekToUs(following.info.startPositionUs);
           }
+          if (following.getNext() != null && !following.isFullyBuffered()) {
+            // Only the last period of the queue loads: a period that has to load again must become
+            // the last one (it's enqueued and prepared again later, like any next period)
+            queue.removeAfter(previous);
+            break;
+          }
+          previous = following;
           following = following.getNext();
         }
       }

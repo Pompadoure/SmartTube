@@ -1,5 +1,5 @@
 diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
-index ad4bafae..8bf23fce 100644
+index ad4bafae..8e98bb5f 100644
 --- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
 +++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
 @@ -136,7 +136,8 @@ internal open class BrowseService2 {
@@ -8,7 +8,7 @@ index ad4bafae..8bf23fce 100644
      fun getShorts(): MediaGroup? {
 -        return getShortsTV() ?: getShortsWeb()
 +        // JoTube: the recommended feed only (fresh every time), not the static subscriptions shelf first
-+        return getShortsWeb()
++        return getShortsWeb() ?: getShortsTV()
      }
  
      fun getShorts2(): MediaGroup? {

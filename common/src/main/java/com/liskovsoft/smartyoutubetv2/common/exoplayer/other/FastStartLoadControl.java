@@ -50,7 +50,8 @@ public class FastStartLoadControl implements LoadControl, PlayedPeriodsPolicy {
 
     @Override
     public boolean shouldRetainPlayedPeriods() {
-        return ShortsTransitionState.isShortsMode();
+        // Not when the buffer memory is already used up (then the played one is released as usual)
+        return ShortsTransitionState.isShortsMode() && getAllocator().getTotalBytesAllocated() < mShortsMaxBufferBytes;
     }
 
     @Override

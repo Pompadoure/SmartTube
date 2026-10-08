@@ -334,7 +334,8 @@ import com.google.android.exoplayer2.util.Assertions;
         break;
       }
     }
-    if (target == null || !hasPlayingPeriod() || timeline.getIndexOfPeriod(target.uid) == C.INDEX_UNSET) {
+    if (target == null || !hasPlayingPeriod() || timeline.getIndexOfPeriod(target.uid) == C.INDEX_UNSET
+        || timeline.getIndexOfPeriod(playing.uid) == C.INDEX_UNSET) {
       return null;
     }
     // Only the period right before the playing one (keeps the queue in timeline order)

@@ -445,6 +445,7 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
 
     @Override
     public void onVideoItemClicked(Video item) {
+        Utils.removeCallbacks(mPrefetchFocusedShort); // JoTube
         if (getContext() == null) {
             return;
         }

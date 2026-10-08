@@ -299,14 +299,16 @@ public class ChunkSampleStream<T extends ChunkSource> implements SampleStream, S
       }
     }
 
-    // JoTube: a seek to (or before) the start of the first buffered chunk is a seek to its first
-    // sample, even if the chunk was clipped (SABR clips the first chunk to the load position, so
-    // seeking back to the start of a buffered period would otherwise throw the buffer away).
+    // JoTube: a seek to exactly the position the first buffered chunk was loaded for (its clipped
+    // start) is a seek to its first sample. SABR clips the first chunk of a period to the load
+    // position (0), so seeking to the start of a buffered (preloaded) period would otherwise fail
+    // in advanceTo (first sample pts > 0) and throw the whole buffer away.
     boolean seekToFirstSample = false;
     if (seekToMediaChunk == null && !mediaChunks.isEmpty()) {
       BaseMediaChunk firstChunk = mediaChunks.get(0);
-      if (positionUs <= firstChunk.startTimeUs
-          && (firstChunk.clippedStartTimeUs == C.TIME_UNSET || positionUs <= firstChunk.clippedStartTimeUs)) {
+      if (firstChunk.clippedStartTimeUs != C.TIME_UNSET
+          && positionUs == firstChunk.clippedStartTimeUs
+          && (firstChunk.startTimeUs == C.TIME_UNSET || positionUs <= firstChunk.startTimeUs)) {
         seekToMediaChunk = firstChunk;
         seekToFirstSample = true;
       }

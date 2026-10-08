@@ -309,6 +309,7 @@ public class MediaServiceManager implements OnAccountChange {
     }
 
     public void disposeActions() {
+        RxHelper.disposeActions(mFormatInfoAction); // JoTube: a running grid prefetch must not run beside the player load
         RxHelper.disposeActions(mMetadataAction, mUploadsAction, mRowsAction, mSubscribedChannelsAction);
     }
 
