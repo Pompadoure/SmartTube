@@ -1,6 +1,7 @@
 package com.liskovsoft.smartyoutubetv2.common.exoplayer.other;
 
 import com.google.android.exoplayer2.LoadControl;
+import com.google.android.exoplayer2.PlayedPeriodsPolicy;
 import com.google.android.exoplayer2.Renderer;
 import com.google.android.exoplayer2.source.TrackGroupArray;
 import com.google.android.exoplayer2.trackselection.TrackSelectionArray;
@@ -15,12 +16,13 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitio
  * Regular (non-live) videos keep at least {@link #VOD_MIN_BUFFER_US} buffered, whatever the buffer setting
  * (a 5 s buffer can't absorb a short network dip with high bitrate formats). Live streams keep the original behavior.
  */
-public class FastStartLoadControl implements LoadControl {
+public class FastStartLoadControl implements LoadControl, PlayedPeriodsPolicy {
     private static final long SHORTS_START_BUFFER_US = 500_000; // 0.5 s
     // Ahead of the playback position, across the current and the queued Shorts
     private static final long SHORTS_MIN_BUFFER_US = 10_000_000; // always (like prioritizeTimeOverSizeThresholds)
     private static final long SHORTS_MAX_BUFFER_US = 180_000_000; // 3 min
-    private static final int SHORTS_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
+    private static final int SHORTS_MAX_BUFFER_BYTES = 128 * 1024 * 1024; // current + 2 played + preloaded
+    private static final long SHORTS_BACK_BUFFER_US = 10 * 60 * 1_000_000L; // keep played Shorts (instant "previous")
     private static final long VOD_MIN_BUFFER_US = 30_000_000; // 30 s
     private final LoadControl mDelegate;
     private final int mShortsMaxBufferBytes;
@@ -43,6 +45,20 @@ public class FastStartLoadControl implements LoadControl {
 
         return mDelegate.shouldStartPlayback(bufferedDurationUs, playbackSpeed, rebuffering);
     }
+
+    // BEGIN JoTube: played Shorts stay in the player (with their data), so going back is instant
+
+    @Override
+    public boolean shouldRetainPlayedPeriods() {
+        return ShortsTransitionState.isShortsMode();
+    }
+
+    @Override
+    public long getCurrentBackBufferDurationUs() {
+        return ShortsTransitionState.isShortsMode() ? SHORTS_BACK_BUFFER_US : mDelegate.getBackBufferDurationUs();
+    }
+
+    // END JoTube
 
     @Override
     public void onPrepared() {

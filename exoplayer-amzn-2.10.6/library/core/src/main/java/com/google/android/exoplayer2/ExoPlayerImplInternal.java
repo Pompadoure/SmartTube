@@ -119,6 +119,17 @@ import java.util.concurrent.atomic.AtomicBoolean;
   private boolean foregroundMode;
   private boolean isUserSeek; // JoTube: seek requested by the app (not caused by a timeline change)
 
+  private boolean shouldRetainPlayedPeriods() {
+    return loadControl instanceof PlayedPeriodsPolicy
+        && ((PlayedPeriodsPolicy) loadControl).shouldRetainPlayedPeriods();
+  }
+
+  private long getBackBufferDurationUs() {
+    return loadControl instanceof PlayedPeriodsPolicy
+        ? ((PlayedPeriodsPolicy) loadControl).getCurrentBackBufferDurationUs()
+        : backBufferDurationUs;
+  }
+
   private int pendingPrepareCount;
   private SeekPosition pendingInitialSeekPosition;
   private long rendererPositionUs;
@@ -564,7 +575,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
     updatePlaybackPositions();
     long rendererPositionElapsedRealtimeUs = SystemClock.elapsedRealtime() * 1000;
 
-    playingPeriodHolder.mediaPeriod.discardBuffer(playbackInfo.positionUs - backBufferDurationUs,
+    playingPeriodHolder.mediaPeriod.discardBuffer(playbackInfo.positionUs - getBackBufferDurationUs(),
         retainBackBufferFromKeyframe);
 
     boolean renderersEnded = true;
@@ -730,6 +741,22 @@ import java.util.concurrent.atomic.AtomicBoolean;
     // JoTube: when jumping forward to a later (preloaded) period, the periods after it may be kept too
     // (playlist of Shorts: they're preloaded as well). Only if the renderers never read from them.
     boolean keepFollowingPeriods = false;
+    boolean retainPlayed = isUserSeek && shouldRetainPlayedPeriods();
+    if (retainPlayed && oldPlayingPeriodHolder != null && !periodId.equals(oldPlayingPeriodHolder.info.id)) {
+      // JoTube: jump back into an already played period (kept with its samples)
+      MediaPeriodHolder rewound = queue.rewindToRetired(periodId);
+      if (rewound != null) {
+        newPlayingPeriodHolder = rewound;
+        MediaPeriodHolder following = rewound.getNext();
+        while (following != null) {
+          // Read from the start again when the player gets there
+          if (following.prepared && following.hasEnabledTracks) {
+            following.mediaPeriod.seekToUs(following.info.startPositionUs);
+          }
+          following = following.getNext();
+        }
+      }
+    }
     while (newPlayingPeriodHolder != null) {
       if (periodId.equals(newPlayingPeriodHolder.info.id) && newPlayingPeriodHolder.prepared) {
         keepFollowingPeriods =
@@ -742,7 +769,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
         }
         break;
       }
-      newPlayingPeriodHolder = queue.advancePlayingPeriod();
+      newPlayingPeriodHolder = queue.advancePlayingPeriod(retainPlayed);
     }
 
     // Disable all renderers if the period being played is changing, if the seek results in negative
@@ -759,7 +786,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
       if (newPlayingPeriodHolder != null) {
         long oldRendererOffsetUs = newPlayingPeriodHolder.getRendererOffset();
         newPlayingPeriodHolder.setRendererOffset(/* rendererPositionOffsetUs= */ 0);
-        if (keepFollowingPeriods) {
+        if (keepFollowingPeriods && oldRendererOffsetUs != 0) {
           // JoTube: the kept periods follow the new playing one in renderer time
           MediaPeriodHolder following = newPlayingPeriodHolder.getNext();
           while (following != null) {
@@ -780,7 +807,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
       if (newPlayingPeriodHolder.hasEnabledTracks) {
         periodPositionUs = newPlayingPeriodHolder.mediaPeriod.seekToUs(periodPositionUs);
         newPlayingPeriodHolder.mediaPeriod.discardBuffer(
-            periodPositionUs - backBufferDurationUs, retainBackBufferFromKeyframe);
+            periodPositionUs - getBackBufferDurationUs(), retainBackBufferFromKeyframe);
       }
       if (keepFollowingPeriods && !newPlayingPeriodHolder.isFullyBuffered()) {
         // JoTube: only the last (loading) period of the queue loads. The new playing period has to load
@@ -1564,7 +1591,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
               ? Player.DISCONTINUITY_REASON_PERIOD_TRANSITION
               : Player.DISCONTINUITY_REASON_AD_INSERTION;
       MediaPeriodHolder oldPlayingPeriodHolder = playingPeriodHolder;
-      playingPeriodHolder = queue.advancePlayingPeriod();
+      playingPeriodHolder = queue.advancePlayingPeriod(shouldRetainPlayedPeriods());
       updatePlayingPeriodRenderers(oldPlayingPeriodHolder);
       playbackInfo =
           playbackInfo.copyWithNewPosition(

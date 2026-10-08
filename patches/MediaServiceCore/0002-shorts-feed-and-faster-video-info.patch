@@ -1,0 +1,44 @@
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
+index ad4bafae..8bf23fce 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
+@@ -136,7 +136,8 @@ internal open class BrowseService2 {
+     }
+ 
+     fun getShorts(): MediaGroup? {
+-        return getShortsTV() ?: getShortsWeb()
++        // JoTube: the recommended feed only (fresh every time), not the static subscriptions shelf first
++        return getShortsWeb()
+     }
+ 
+     fun getShorts2(): MediaGroup? {
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java
+index c451030f..5baeadb3 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java
+@@ -255,7 +255,8 @@ public class VideoInfoService extends VideoInfoServiceBase {
+         }
+ 
+         // TV and others has a limited number of auto generated subtitles
+-        if (needMoreSubtitles(result)) {
++        // JoTube: skip the extra WEB request for short videos (Shorts): ~1 s less per video info
++        if (needMoreSubtitles(result) && !isShortVideo(result)) {
+             Log.d(TAG, "Enable full list of auto generated subtitles...");
+ 
+             if (mCachedTranslationLanguages == null || mCachedTranslationLanguages.size() < 100) {
+@@ -310,6 +311,15 @@ public class VideoInfoService extends VideoInfoServiceBase {
+         return videoInfo != null && videoInfo.hasSubtitles() && getData().isMoreSubtitlesUnlocked();
+     }
+ 
++    private static boolean isShortVideo(VideoInfo videoInfo) {
++        try {
++            return videoInfo != null && videoInfo.getVideoDetails() != null &&
++                    Integer.parseInt(videoInfo.getVideoDetails().getLengthSeconds()) <= 180;
++        } catch (NumberFormatException e) {
++            return false;
++        }
++    }
++
+     private static boolean needMoreSubtitles(VideoInfo videoInfo) {
+         return videoInfo != null && videoInfo.hasSubtitles() && (videoInfo.getTranslationLanguages() == null || videoInfo.getTranslationLanguages().size() < 100);
+     }

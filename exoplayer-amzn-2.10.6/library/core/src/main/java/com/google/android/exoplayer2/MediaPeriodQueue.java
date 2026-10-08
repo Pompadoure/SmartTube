@@ -38,6 +38,9 @@ import com.google.android.exoplayer2.util.Assertions;
    * small periods to be buffered if the period count were not limited.
    */
   private static final int MAXIMUM_BUFFER_AHEAD_PERIODS = 100;
+  // JoTube: played periods kept (with their samples) for an instant jump back (Shorts feed)
+  private static final int MAX_RETIRED_PERIODS = 2;
+  private final java.util.ArrayDeque<MediaPeriodHolder> retired = new java.util.ArrayDeque<>();
 
   private final Timeline.Period period;
   private final Timeline.Window window;
@@ -222,11 +225,20 @@ import com.google.android.exoplayer2.util.Assertions;
    * @return The updated playing period holder, or null if the queue is or becomes empty.
    */
   public MediaPeriodHolder advancePlayingPeriod() {
+    return advancePlayingPeriod(/* retainPlayed= */ false);
+  }
+
+  /**
+   * JoTube: {@code retainPlayed} keeps the played period (and its buffered samples, see the back
+   * buffer) so that a later seek back into it is instant. Only the last {@link #MAX_RETIRED_PERIODS}
+   * are kept.
+   */
+  public MediaPeriodHolder advancePlayingPeriod(boolean retainPlayed) {
     if (playing != null) {
       if (playing == reading) {
         reading = playing.getNext();
       }
-      playing.release();
+      MediaPeriodHolder played = playing;
       length--;
       if (length == 0) {
         loading = null;
@@ -234,6 +246,15 @@ import com.google.android.exoplayer2.util.Assertions;
         oldFrontPeriodWindowSequenceNumber = playing.info.id.windowSequenceNumber;
       }
       playing = playing.getNext();
+      if (retainPlayed && played.prepared && !played.info.id.isAd() && played.isFullyBuffered()) {
+        played.setNext(null);
+        retired.addLast(played);
+        while (retired.size() > MAX_RETIRED_PERIODS) {
+          retired.removeFirst().release();
+        }
+      } else {
+        played.release();
+      }
     } else {
       playing = loading;
       reading = loading;
@@ -273,6 +294,7 @@ import com.google.android.exoplayer2.util.Assertions;
    *     of queue (typically the playing one) for later reuse.
    */
   public void clear(boolean keepFrontPeriodUid) {
+    releaseRetired();
     MediaPeriodHolder front = getFrontPeriod();
     if (front != null) {
       oldFrontPeriodUid = keepFrontPeriodUid ? front.uid : null;
@@ -287,6 +309,83 @@ import com.google.android.exoplayer2.util.Assertions;
     reading = null;
     length = 0;
   }
+
+  // BEGIN JoTube: retired periods
+
+  public void releaseRetired() {
+    while (!retired.isEmpty()) {
+      retired.removeFirst().release();
+    }
+  }
+
+  /**
+   * Puts a retired (already played) period back in front of the queue, so it becomes the playing
+   * period again. The periods after it are the ones currently queued (playing + preloaded). Their
+   * read positions are reset to their start and the renderer offsets are recomputed, exactly as
+   * if the whole chain had just been enqueued. Returns the new playing period, or null if the
+   * period isn't retired or something is unknown (durations); nothing is changed then.
+   */
+  @Nullable
+  public MediaPeriodHolder rewindToRetired(MediaPeriodId id) {
+    MediaPeriodHolder target = null;
+    for (MediaPeriodHolder holder : retired) {
+      if (holder.uid.equals(id.periodUid) && !id.isAd()) {
+        target = holder;
+        break;
+      }
+    }
+    if (target == null || !hasPlayingPeriod() || timeline.getIndexOfPeriod(target.uid) == C.INDEX_UNSET) {
+      return null;
+    }
+    // Only the period right before the playing one (keeps the queue in timeline order)
+    int targetWindowIndex = timeline.getPeriodByUid(target.uid, period).windowIndex;
+    int playingWindowIndex = timeline.getPeriodByUid(playing.uid, period).windowIndex;
+    if (targetWindowIndex != playingWindowIndex - 1) {
+      return null;
+    }
+    // All durations must be known to chain the renderer offsets
+    MediaPeriodHolder holder = playing;
+    while (holder != null) {
+      if (holder.info.durationUs == C.TIME_UNSET) {
+        return null;
+      }
+      holder = holder.getNext();
+    }
+    target.info = getUpdatedMediaPeriodInfo(target.info);
+    if (target.info.durationUs == C.TIME_UNSET) {
+      return null;
+    }
+    retired.remove(target);
+    target.setNext(playing);
+    target.setRendererOffset(0);
+    MediaPeriodHolder previous = target;
+    holder = playing;
+    while (holder != null) {
+      holder.setRendererOffset(
+          previous.getRendererOffset() + previous.info.durationUs - holder.info.startPositionUs);
+      previous = holder;
+      holder = holder.getNext();
+    }
+    playing = target;
+    reading = target;
+    length++;
+    return target;
+  }
+
+  /**
+   * The retired periods are part of the timeline too: reuse their window sequence number, so a seek
+   * into one of them resolves to the id the period holder has.
+   */
+  private long resolveRetiredWindowSequenceNumber(Object periodUid) {
+    for (MediaPeriodHolder holder : retired) {
+      if (holder.uid.equals(periodUid)) {
+        return holder.info.id.windowSequenceNumber;
+      }
+    }
+    return C.INDEX_UNSET;
+  }
+
+  // END JoTube
 
   /**
    * Updates media periods in the queue to take into account the latest timeline, and returns
@@ -460,6 +559,10 @@ import com.google.android.exoplayer2.util.Assertions;
         }
       }
       mediaPeriodHolder = mediaPeriodHolder.getNext();
+    }
+    long retiredSequenceNumber = resolveRetiredWindowSequenceNumber(periodUid);
+    if (retiredSequenceNumber != C.INDEX_UNSET) {
+      return retiredSequenceNumber;
     }
     // If no match is found, create new sequence number.
     return nextWindowSequenceNumber++;

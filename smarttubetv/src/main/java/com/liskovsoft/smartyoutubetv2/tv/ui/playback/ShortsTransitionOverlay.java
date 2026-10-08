@@ -30,6 +30,12 @@ public class ShortsTransitionOverlay {
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private final Runnable mFailsafeHide = () -> hide(false);
     private final Runnable mDeferredHide = () -> hide(true);
+    private Video mPendingVideo;
+    private final Runnable mPendingShow = () -> {
+        if (mPendingVideo != null) {
+            show(mPendingVideo, ShortsTransitionState.DIRECTION_NONE);
+        }
+    };
     private ImageView mOverlay;
     private View mSurface; // the video surface (moves together with the overlay)
     private boolean mIsShown;
@@ -61,6 +67,7 @@ public class ShortsTransitionOverlay {
     public void detach() {
         mHandler.removeCallbacks(mFailsafeHide);
         mHandler.removeCallbacks(mDeferredHide);
+        cancelPendingShow();
 
         if (mOverlay != null) {
             mOverlay.animate().cancel();
@@ -76,6 +83,26 @@ public class ShortsTransitionOverlay {
     }
 
     /**
+     * Preloaded video: normally its first frame comes within a few frames, so nothing is shown.
+     * If it takes longer (e.g. the data has to be loaded again), the thumbnail covers the old picture.
+     */
+    public void showIfSlow(Video video, long delayMs) {
+        cancelPendingShow();
+
+        if (mOverlay == null || video == null) {
+            return;
+        }
+
+        mPendingVideo = video;
+        mHandler.postDelayed(mPendingShow, delayMs);
+    }
+
+    private void cancelPendingShow() {
+        mHandler.removeCallbacks(mPendingShow);
+        mPendingVideo = null;
+    }
+
+    /**
      * Called when a new video is about to load (the previous one is already stopped).
      */
     public void show(Video video, int direction) {
@@ -85,6 +112,7 @@ public class ShortsTransitionOverlay {
 
         mHandler.removeCallbacks(mFailsafeHide);
         mHandler.removeCallbacks(mDeferredHide);
+        cancelPendingShow();
         mOverlay.animate().cancel();
         resetSurface();
 
@@ -149,6 +177,7 @@ public class ShortsTransitionOverlay {
     public void hide(boolean animate) {
         mHandler.removeCallbacks(mFailsafeHide);
         mHandler.removeCallbacks(mDeferredHide);
+        cancelPendingShow();
 
         if (mOverlay == null || !mIsShown) {
             return;

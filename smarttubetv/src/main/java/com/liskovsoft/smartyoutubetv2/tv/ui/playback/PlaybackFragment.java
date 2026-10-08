@@ -1645,8 +1645,12 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
         if (video != null && ShortsQueue.getQueuedFormatInfo(video.videoId) != null) {
             // Preloaded Short: it's already in the player, keep everything as is (no black screen, no reset).
-            // Straight cut to the new video (no animation), as preferred.
+            // Straight cut to the new video (no animation), as preferred. If the first frame takes
+            // longer than a few frames (data loaded again), the thumbnail covers the old picture meanwhile.
             mShortsTransition.hide(false);
+            if (!isInPIPMode()) {
+                mShortsTransition.showIfSlow(video, 250);
+            }
             updateShortsBackground(video);
             setChatReceiver(null);
             setSeekBarSegments(null);
