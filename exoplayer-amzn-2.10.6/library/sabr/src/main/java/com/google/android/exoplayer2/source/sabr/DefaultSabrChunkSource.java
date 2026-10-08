@@ -34,6 +34,7 @@ import com.google.android.exoplayer2.source.sabr.parser.models.CaptionSelector;
 import com.google.android.exoplayer2.source.sabr.parser.models.FormatSelector;
 import com.google.android.exoplayer2.source.sabr.parser.models.VideoSelector;
 import com.google.android.exoplayer2.source.sabr.protos.misc.FormatId;
+import com.google.android.exoplayer2.trackselection.FixedTrackSelection;
 import com.google.android.exoplayer2.trackselection.TrackSelection;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DataSpec;
@@ -160,6 +161,7 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
         this.manifestLoaderErrorThrower = manifestLoaderErrorThrower;
         this.manifest = manifest;
         this.adaptationSetIndices = adaptationSetIndices;
+        trackSelection = pinToTopTrack(trackSelection);
         this.trackSelection = trackSelection;
         this.formatSelector = createFormatSelector(trackType, trackSelection);
         this.trackType = trackType;
@@ -218,7 +220,8 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
 
     @Override
     public void updateTrackSelection(TrackSelection trackSelection) {
-        this.trackSelection = trackSelection;
+        this.trackSelection = pinToTopTrack(trackSelection);
+        trackSelection = this.trackSelection;
         this.formatSelector = createFormatSelector(trackType, trackSelection);
     }
 
@@ -762,6 +765,28 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
         Format selectedFormat = trackSelection.getSelectedFormat();
 
         return new CaptionSelector("selected_caption", false, selectedFormat);
+    }
+
+    /**
+     * SABR requests one fixed itag per stream (the FormatSelector), so the format can't change mid-stream.
+     * An adaptive selection (fast start ladder) is pinned to its best track here: same behavior as before.
+     */
+    private static TrackSelection pinToTopTrack(TrackSelection trackSelection) {
+        if (trackSelection == null || trackSelection.length() < 2) {
+            return trackSelection;
+        }
+
+        int best = 0;
+        for (int i = 1; i < trackSelection.length(); i++) {
+            Format format = trackSelection.getFormat(i);
+            Format bestFormat = trackSelection.getFormat(best);
+            if (format.height > bestFormat.height
+                    || (format.height == bestFormat.height && format.bitrate > bestFormat.bitrate)) {
+                best = i;
+            }
+        }
+
+        return new FixedTrackSelection(trackSelection.getTrackGroup(), trackSelection.getIndexInTrackGroup(best));
     }
 
     private static FormatSelector createFormatSelector(int trackType, TrackSelection trackSelection) {
