@@ -1,0 +1,15 @@
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/app/PoTokenGate.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/app/PoTokenGate.kt
+index b3082040..cdb1190e 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/app/PoTokenGate.kt
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/app/PoTokenGate.kt
+@@ -71,7 +71,9 @@ internal object PoTokenGate {
+     @JvmStatic
+     @JvmOverloads
+     fun getPoToken(client: AppClient, videoId: String? = null): String? {
+-        resetOtherProviders(client)
++        // JoTube: keep both generators. Resetting the other one made every format info fetch regenerate
++        // both poTokens (two BotGuard runs, ~5 s) and expired all cached/preloaded format infos (isCacheActual).
++        //resetOtherProviders(client)
+         return when {
+             client.isWebPotRequired -> if (videoId != null) getWebContentPoToken(videoId) else getWebSessionPoToken()
+             client.isTvPotRequired -> getTvPoToken()

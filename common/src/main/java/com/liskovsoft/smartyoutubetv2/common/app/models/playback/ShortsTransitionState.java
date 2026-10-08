@@ -11,6 +11,7 @@ public final class ShortsTransitionState {
 
     private static volatile int sDirection = DIRECTION_NONE;
     private static volatile boolean sIsShortsMode;
+    private static volatile boolean sIsLive;
 
     private ShortsTransitionState() {
     }
@@ -24,6 +25,17 @@ public final class ShortsTransitionState {
 
     public static void setShortsMode(boolean isShortsMode) {
         sIsShortsMode = isShortsMode;
+    }
+
+    /**
+     * True while a live stream is loaded in the player (read from the playback thread).
+     */
+    public static boolean isLive() {
+        return sIsLive;
+    }
+
+    public static void setLive(boolean isLive) {
+        sIsLive = isLive;
     }
 
     public static void setDirection(int direction) {

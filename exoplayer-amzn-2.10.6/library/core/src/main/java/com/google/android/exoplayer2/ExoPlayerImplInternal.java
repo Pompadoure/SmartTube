@@ -721,9 +721,18 @@ import java.util.concurrent.atomic.AtomicBoolean;
     // Clear the timeline, but keep the requested period if it is already prepared.
     MediaPeriodHolder oldPlayingPeriodHolder = queue.getPlayingPeriod();
     MediaPeriodHolder newPlayingPeriodHolder = oldPlayingPeriodHolder;
+    // JoTube: when jumping forward to a later (preloaded) period, the periods after it may be kept too
+    // (playlist of Shorts: they're preloaded as well). Only if the renderers never read from them.
+    boolean keepFollowingPeriods = false;
     while (newPlayingPeriodHolder != null) {
       if (periodId.equals(newPlayingPeriodHolder.info.id) && newPlayingPeriodHolder.prepared) {
-        queue.removeAfter(newPlayingPeriodHolder);
+        keepFollowingPeriods =
+            newPlayingPeriodHolder != oldPlayingPeriodHolder
+                && queue.getReadingPeriod() == newPlayingPeriodHolder
+                && newPlayingPeriodHolder.getNext() != null;
+        if (!keepFollowingPeriods) {
+          queue.removeAfter(newPlayingPeriodHolder);
+        }
         break;
       }
       newPlayingPeriodHolder = queue.advancePlayingPeriod();
@@ -741,8 +750,21 @@ import java.util.concurrent.atomic.AtomicBoolean;
       enabledRenderers = new Renderer[0];
       oldPlayingPeriodHolder = null;
       if (newPlayingPeriodHolder != null) {
+        long oldRendererOffsetUs = newPlayingPeriodHolder.getRendererOffset();
         newPlayingPeriodHolder.setRendererOffset(/* rendererPositionOffsetUs= */ 0);
+        if (keepFollowingPeriods) {
+          // JoTube: the kept periods follow the new playing one in renderer time
+          MediaPeriodHolder following = newPlayingPeriodHolder.getNext();
+          while (following != null) {
+            following.setRendererOffset(following.getRendererOffset() - oldRendererOffsetUs);
+            following = following.getNext();
+          }
+        }
       }
+    } else if (keepFollowingPeriods) {
+      // JoTube: renderers kept (unexpected for a period change): use the original behavior
+      queue.removeAfter(newPlayingPeriodHolder);
+      keepFollowingPeriods = false;
     }
 
     // Update the holders.
@@ -752,6 +774,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
         periodPositionUs = newPlayingPeriodHolder.mediaPeriod.seekToUs(periodPositionUs);
         newPlayingPeriodHolder.mediaPeriod.discardBuffer(
             periodPositionUs - backBufferDurationUs, retainBackBufferFromKeyframe);
+      }
+      if (keepFollowingPeriods && !newPlayingPeriodHolder.isFullyBuffered()) {
+        // JoTube: only the last (loading) period of the queue loads. The new playing period has to load
+        // again (the seek dropped some of its data), so the original behavior applies.
+        queue.removeAfter(newPlayingPeriodHolder);
       }
       resetRendererPosition(periodPositionUs);
       maybeContinueLoading();

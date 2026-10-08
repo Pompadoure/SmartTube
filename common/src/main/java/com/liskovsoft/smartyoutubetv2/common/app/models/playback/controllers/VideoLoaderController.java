@@ -253,6 +253,7 @@ public class VideoLoaderController extends BasePlayerController {
     private void loadVideo(Video item) {
         if (getPlayer() != null && item != null) {
             ShortsTransitionState.setShortsMode(item.isShorts && !item.isLive);
+            ShortsTransitionState.setLive(item.isLive);
             mPlaylist.setCurrent(item);
             getPlayer().setVideo(item);
             getPlayer().resetPlayerState();
@@ -354,6 +355,7 @@ public class VideoLoaderController extends BasePlayerController {
         String bgImageUrl = null;
 
         getVideo().sync(formatInfo);
+        ShortsTransitionState.setLive(getVideo().isLive || formatInfo.isLive());
 
         // Fix stretched video for a couple milliseconds (before the onVideoSizeChanged gets called)
         applyAspectRatio(formatInfo);
