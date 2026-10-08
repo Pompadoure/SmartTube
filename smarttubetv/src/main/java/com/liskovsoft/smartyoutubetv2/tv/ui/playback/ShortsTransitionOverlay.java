@@ -43,7 +43,7 @@ public class ShortsTransitionOverlay {
             return;
         }
 
-        mSurface = root.getChildCount() > 0 ? root.getChildAt(0) : null; // SurfaceView (VideoSupportFragment)
+        mSurface = root.findViewById(com.liskovsoft.smartyoutubetv2.tv.R.id.surface_root); // the video surface container
 
         mOverlay = new ImageView(root.getContext());
         mOverlay.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -52,7 +52,8 @@ public class ShortsTransitionOverlay {
         mOverlay.setFocusable(false);
         mOverlay.setClickable(false);
 
-        int index = Math.min(1, root.getChildCount());
+        View surfaceRoot = root.findViewById(com.liskovsoft.smartyoutubetv2.tv.R.id.surface_root);
+        int index = surfaceRoot != null ? root.indexOfChild(surfaceRoot) + 1 : Math.min(1, root.getChildCount());
         root.addView(mOverlay, index, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }

@@ -1,0 +1,90 @@
+package com.liskovsoft.smartyoutubetv2.tv.ui.playback;
+
+import android.graphics.Color;
+import android.graphics.PorterDuff;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+
+import com.bumptech.glide.Glide;
+import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions;
+import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
+import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
+
+/**
+ * Dynamic background for Shorts, like the official app: a blurred, darkened version of the video's
+ * thumbnail fills the area next to the vertical video. The blur is a heavily downscaled image
+ * upscaled with filtering (cheap, no RenderScript).
+ */
+public class ShortsBackground {
+    private static final int BLUR_WIDTH = 24;
+    private static final int BLUR_HEIGHT = 42;
+    private static final int DIM_COLOR = Color.argb(150, 0, 0, 0);
+    private static final int FADE_DURATION_MS = 250;
+    private ImageView mView;
+    private String mVideoId;
+
+    /**
+     * Placed behind the video surface (index 0 of the fragment root).
+     */
+    public void attach(ViewGroup root) {
+        if (root == null || mView != null) {
+            return;
+        }
+
+        mView = new ImageView(root.getContext());
+        mView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        mView.setColorFilter(DIM_COLOR, PorterDuff.Mode.SRC_ATOP);
+        mView.setVisibility(View.GONE);
+        mView.setFocusable(false);
+        mView.setClickable(false);
+
+        root.addView(mView, 0, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    public void detach() {
+        if (mView != null) {
+            if (mView.getParent() instanceof ViewGroup) {
+                ((ViewGroup) mView.getParent()).removeView(mView);
+            }
+            mView = null;
+        }
+
+        mVideoId = null;
+    }
+
+    public void show(Video video) {
+        if (mView == null || video == null || video.videoId == null) {
+            return;
+        }
+
+        if (video.videoId.equals(mVideoId) && mView.getVisibility() == View.VISIBLE) {
+            return;
+        }
+
+        mVideoId = video.videoId;
+        mView.setVisibility(View.VISIBLE);
+
+        try {
+            Glide.with(mView)
+                    .load(ShortsTransitionState.getThumbnailUrl(video.videoId))
+                    .override(BLUR_WIDTH, BLUR_HEIGHT)
+                    .error(Glide.with(mView).load(video.getCardImageUrl()).override(BLUR_WIDTH, BLUR_HEIGHT))
+                    .transition(DrawableTransitionOptions.withCrossFade(FADE_DURATION_MS))
+                    .into(mView);
+        } catch (IllegalArgumentException e) {
+            // Activity is destroyed
+        }
+    }
+
+    public void hide() {
+        mVideoId = null;
+
+        if (mView != null) {
+            mView.setVisibility(View.GONE);
+            mView.setImageDrawable(null);
+        }
+    }
+}

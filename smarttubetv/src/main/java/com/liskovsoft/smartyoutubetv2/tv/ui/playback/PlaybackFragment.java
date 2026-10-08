@@ -129,6 +129,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     private Video mPendingFocus;
     private String mSelectedVideoId;
     private final ShortsTransitionOverlay mShortsTransition = new ShortsTransitionOverlay();
+    private final ShortsBackground mShortsBackground = new ShortsBackground();
     private final VideoListener mFirstFrameListener = new VideoListener() {
         @Override
         public void onRenderedFirstFrame() {
@@ -184,6 +185,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
         // Above the video surface, below the controls
         mShortsTransition.attach((ViewGroup) root);
+        mShortsBackground.attach((ViewGroup) root);
 
         return root;
     }
@@ -871,6 +873,17 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         mBackgroundManager.showBackground(url);
     }
 
+    /**
+     * Blurred thumbnail next to the vertical video (like the official app), only for Shorts.
+     */
+    private void updateShortsBackground(Video video) {
+        if (video != null && video.isShorts && !isInPIPMode()) {
+            mShortsBackground.show(video);
+        } else {
+            mShortsBackground.hide();
+        }
+    }
+
     @Override
     public void showBackgroundColor(int colorResId) {
         mBackgroundManager.showBackgroundColor(colorResId);
@@ -1188,6 +1201,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     @Override
     public void onDestroyView() {
         mShortsTransition.detach();
+        mShortsBackground.detach();
         super.onDestroyView();
     }
 
@@ -1633,6 +1647,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             // Preloaded Short: it's already in the player, keep everything as is (no black screen, no reset).
             // Straight cut to the new video (no animation), as preferred.
             mShortsTransition.hide(false);
+            updateShortsBackground(video);
             setChatReceiver(null);
             setSeekBarSegments(null);
             setSeekPreviewTitle(null);
@@ -1649,6 +1664,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         } else {
             mShortsTransition.hide(false);
         }
+        updateShortsBackground(video);
         setChatReceiver(null);
         setSeekBarSegments(null);
         setSeekPreviewTitle(null);
