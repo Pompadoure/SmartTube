@@ -14,12 +14,13 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitio
 
 /**
  * Dynamic background for Shorts, like the official app: a blurred, darkened version of the video's
- * thumbnail fills the area next to the vertical video. The blur is a heavily downscaled image
- * upscaled with filtering (cheap, no RenderScript).
+ * thumbnail fills the area next to the vertical video (downscaled + box blurred, no RenderScript).
  */
 public class ShortsBackground {
-    private static final int BLUR_WIDTH = 24;
-    private static final int BLUR_HEIGHT = 42;
+    // Small bitmap, real blur on top of it (smooth after upscaling, no visible pixels)
+    private static final int BLUR_WIDTH = 120;
+    private static final int BLUR_HEIGHT = 214;
+    private static final int BLUR_RADIUS = 10;
     private static final int DIM_COLOR = Color.argb(150, 0, 0, 0);
     private static final int FADE_DURATION_MS = 250;
     private ImageView mView;
@@ -71,7 +72,9 @@ public class ShortsBackground {
             Glide.with(mView)
                     .load(ShortsTransitionState.getThumbnailUrl(video.videoId))
                     .override(BLUR_WIDTH, BLUR_HEIGHT)
-                    .error(Glide.with(mView).load(video.getCardImageUrl()).override(BLUR_WIDTH, BLUR_HEIGHT))
+                    .transform(new BlurTransformation(BLUR_RADIUS))
+                    .error(Glide.with(mView).load(video.getCardImageUrl()).override(BLUR_WIDTH, BLUR_HEIGHT)
+                            .transform(new BlurTransformation(BLUR_RADIUS)))
                     .transition(DrawableTransitionOptions.withCrossFade(FADE_DURATION_MS))
                     .into(mView);
         } catch (IllegalArgumentException e) {
