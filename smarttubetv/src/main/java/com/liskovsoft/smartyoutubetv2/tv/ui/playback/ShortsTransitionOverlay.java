@@ -17,19 +17,21 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
 
 /**
- * Replaces the black gap between Shorts with the upcoming video's thumbnail,
- * sliding in from the direction of navigation (like the official app's feed),
- * and fades it out as soon as the first video frame is rendered.
+ * Like the official app's feed: the current video slides out and the upcoming video (its thumbnail,
+ * replaced by the video itself as soon as its first frame is rendered) slides in from the direction
+ * of navigation. The video surface is moved together with the thumbnail, so the old picture doesn't
+ * stay in place under it.
  */
 public class ShortsTransitionOverlay {
-    private static final int SLIDE_DURATION_MS = 260;
+    private static final int SLIDE_DURATION_MS = 300;
     private static final int FADE_IN_DURATION_MS = 150;
-    private static final int FADE_OUT_DURATION_MS = 180;
+    private static final int FADE_OUT_DURATION_MS = 120;
     private static final int FAILSAFE_HIDE_MS = 10_000;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private final Runnable mFailsafeHide = () -> hide(false);
     private final Runnable mDeferredHide = () -> hide(true);
     private ImageView mOverlay;
+    private View mSurface; // the video surface (moves together with the overlay)
     private boolean mIsShown;
     private long mShowAnimationEndMs;
 
@@ -40,6 +42,8 @@ public class ShortsTransitionOverlay {
         if (root == null || mOverlay != null) {
             return;
         }
+
+        mSurface = root.getChildCount() > 0 ? root.getChildAt(0) : null; // SurfaceView (VideoSupportFragment)
 
         mOverlay = new ImageView(root.getContext());
         mOverlay.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -65,6 +69,8 @@ public class ShortsTransitionOverlay {
             mOverlay = null;
         }
 
+        resetSurface();
+        mSurface = null;
         mIsShown = false;
     }
 
@@ -79,6 +85,7 @@ public class ShortsTransitionOverlay {
         mHandler.removeCallbacks(mFailsafeHide);
         mHandler.removeCallbacks(mDeferredHide);
         mOverlay.animate().cancel();
+        resetSurface();
 
         String fallbackUrl = video.getCardImageUrl();
         try {
@@ -110,7 +117,19 @@ public class ShortsTransitionOverlay {
                     .translationY(0)
                     .setDuration(SLIDE_DURATION_MS)
                     .setInterpolator(new DecelerateInterpolator(1.6f))
+                    .withEndAction(this::resetSurface) // fully covered now: put the surface back for the new video
                     .start();
+
+            // The current video goes out the same way (SurfaceView follows view transforms since Android 7)
+            if (mSurface != null) {
+                mSurface.animate().cancel();
+                mSurface.setTranslationY(0);
+                mSurface.animate()
+                        .translationY(-direction * height)
+                        .setDuration(SLIDE_DURATION_MS)
+                        .setInterpolator(new DecelerateInterpolator(1.6f))
+                        .start();
+            }
         } else {
             mOverlay.setTranslationY(0);
             mOverlay.setAlpha(0f);
@@ -144,6 +163,7 @@ public class ShortsTransitionOverlay {
 
         mIsShown = false;
         mOverlay.animate().cancel();
+        resetSurface(); // the overlay covers the whole screen at this point
 
         if (!animate) {
             reset();
@@ -163,7 +183,16 @@ public class ShortsTransitionOverlay {
         return mIsShown;
     }
 
+    private void resetSurface() {
+        if (mSurface != null) {
+            mSurface.animate().cancel();
+            mSurface.setTranslationY(0);
+        }
+    }
+
     private void reset() {
+        resetSurface();
+
         if (mOverlay == null || mIsShown) {
             return;
         }
