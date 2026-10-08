@@ -73,6 +73,9 @@ public class MainApplication extends MultiDexApplication { // fix: Didn't find c
             // UnsatisfiedLinkError
         }
 
+        // Personal build defaults (first launch only). Before any prefs are read.
+        DefaultPrefsSeeder.seed(this);
+
         if (conscryptProvider != null && NetworkData.instance(this).isConscryptEnabled()) {
             try {
                 Security.insertProviderAt(conscryptProvider, 1);
