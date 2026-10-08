@@ -6,6 +6,7 @@ import android.os.Handler;
 import androidx.annotation.Nullable;
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.DefaultLoadControl;
+import com.liskovsoft.smartyoutubetv2.common.exoplayer.ExoMediaSourceFactory;
 import com.google.android.exoplayer2.DefaultRenderersFactory;
 import com.google.android.exoplayer2.ExoPlayerFactory;
 import com.google.android.exoplayer2.SeekParameters;
@@ -56,7 +57,7 @@ public class ExoPlayerInitializer {
 
         // Old initializer
         // SmartTube J: faster first frame for Shorts
-        SimpleExoPlayer player = ExoPlayerFactory.newSimpleInstance(context, renderersFactory, trackSelector, new FastStartLoadControl(loadControl, mMaxBufferBytes));
+        SimpleExoPlayer player = ExoPlayerFactory.newSimpleInstance(context, renderersFactory, trackSelector, new FastStartLoadControl(loadControl, mMaxBufferBytes), null, ExoMediaSourceFactory.getBandwidthMeter());
 
         // New initializer
         //SimpleExoPlayer player = ExoPlayerFactory.newSimpleInstance(

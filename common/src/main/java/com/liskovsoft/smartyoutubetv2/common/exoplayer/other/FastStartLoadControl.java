@@ -24,6 +24,7 @@ public class FastStartLoadControl implements LoadControl, PlayedPeriodsPolicy {
     private static final int SHORTS_MAX_BUFFER_BYTES = 128 * 1024 * 1024; // current + 2 played + preloaded
     private static final long SHORTS_BACK_BUFFER_US = 10 * 60 * 1_000_000L; // keep played Shorts (instant "previous")
     private static final long VOD_MIN_BUFFER_US = 30_000_000; // 30 s
+    private static final long VOD_START_BUFFER_US = 1_000_000; // 1 s
     private final LoadControl mDelegate;
     private final int mShortsMaxBufferBytes;
     private final int mMaxBufferBytes;
@@ -41,6 +42,11 @@ public class FastStartLoadControl implements LoadControl, PlayedPeriodsPolicy {
     public boolean shouldStartPlayback(long bufferedDurationUs, float playbackSpeed, boolean rebuffering) {
         if (!rebuffering && ShortsTransitionState.isShortsMode()) {
             return bufferedDurationUs >= SHORTS_START_BUFFER_US || mDelegate.shouldStartPlayback(bufferedDurationUs, playbackSpeed, false);
+        }
+
+        if (!rebuffering && !ShortsTransitionState.isLive()) {
+            // Regular video: start after 1 s instead of 2.5 s (the adaptive start quality keeps the first chunk small)
+            return bufferedDurationUs >= VOD_START_BUFFER_US || mDelegate.shouldStartPlayback(bufferedDurationUs, playbackSpeed, false);
         }
 
         return mDelegate.shouldStartPlayback(bufferedDurationUs, playbackSpeed, rebuffering);

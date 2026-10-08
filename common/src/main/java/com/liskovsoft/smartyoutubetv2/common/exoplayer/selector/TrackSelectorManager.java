@@ -321,7 +321,11 @@ public class TrackSelectorManager implements TrackSelectorCallback {
         MediaTrack matchedTrack = findBestMatch(selectedTrack);
 
         if (matchedTrack.groupIndex != -1) {
-            Definition definition = new Definition(groups.get(matchedTrack.groupIndex), matchedTrack.trackIndex);
+            TrackGroup group = groups.get(matchedTrack.groupIndex);
+            int[] ladder = createFastStartLadder(matchedTrack, group);
+            // JoTube: an adaptive selection (chosen quality + lower steps): starts quickly with a small
+            // first chunk and moves up to the chosen quality by itself, seamlessly, within seconds
+            Definition definition = ladder != null ? new Definition(group, ladder) : new Definition(group, matchedTrack.trackIndex);
             definitionPair = new Pair<>(definition, matchedTrack);
             setSelection(matchedTrack.rendererIndex, matchedTrack.groupIndex, matchedTrack.trackIndex);
         } else {
@@ -349,6 +353,54 @@ public class TrackSelectorManager implements TrackSelectorCallback {
         initRenderer(rendererIndex, groups, params);
         return createSelection(groups, mSelectedTracks[rendererIndex]);
     }
+
+    // BEGIN JoTube: fast start
+
+    private static final int FAST_START_MIN_HEIGHT = 480;
+
+    /**
+     * The chosen video track plus the lower resolutions of the same codec (one per resolution, the
+     * highest bitrate), as an adaptive ladder. Null when there's nothing to add.
+     */
+    private int[] createFastStartLadder(MediaTrack matched, TrackGroup group) {
+        Format top = matched.format;
+
+        if (matched.rendererIndex != RENDERER_INDEX_VIDEO || top == null || top.height <= FAST_START_MIN_HEIGHT || group.length < 2) {
+            return null;
+        }
+
+        Map<Integer, Integer> bestByHeight = new HashMap<>(); // height -> track index
+
+        for (int i = 0; i < group.length; i++) {
+            Format format = group.getFormat(i);
+
+            if (i == matched.trackIndex || format == null || format.height >= top.height || format.height < FAST_START_MIN_HEIGHT ||
+                    !MediaTrack.codecEquals(format.codecs, top.codecs) || format.frameRate > top.frameRate + 1 ||
+                    !Helpers.equals(format.sampleMimeType, top.sampleMimeType)) {
+                continue;
+            }
+
+            Integer current = bestByHeight.get(format.height);
+            if (current == null || group.getFormat(current).bitrate < format.bitrate) {
+                bestByHeight.put(format.height, i);
+            }
+        }
+
+        if (bestByHeight.isEmpty()) {
+            return null;
+        }
+
+        int[] ladder = new int[bestByHeight.size() + 1];
+        int n = 0;
+        ladder[n++] = matched.trackIndex;
+        for (Integer index : bestByHeight.values()) {
+            ladder[n++] = index;
+        }
+
+        return ladder;
+    }
+
+    // END JoTube
 
     // BEGIN JoTube: Shorts playlist (several videos in the player at once)
 

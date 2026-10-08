@@ -64,7 +64,7 @@ public abstract class MediaTrack {
         return bitrate1 <= bitrate2 || bitrateAlmostEquals(bitrate1, bitrate2);
     }
 
-    private static boolean codecEquals(String codecs1, String codecs2) {
+    public static boolean codecEquals(String codecs1, String codecs2) {
         if (codecs1 == null || codecs2 == null) {
             return false;
         }

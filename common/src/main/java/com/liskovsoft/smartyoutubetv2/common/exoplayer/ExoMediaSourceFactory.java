@@ -64,7 +64,14 @@ public class ExoMediaSourceFactory {
     private static final Uri DASH_MANIFEST_URI = Uri.parse("https://example.com/test.mpd");
     private static final String DASH_MANIFEST_EXTENSION = "mpd";
     private static final String HLS_PLAYLIST_EXTENSION = "m3u8";
-    private static final boolean USE_BANDWIDTH_METER = false;
+    private static final boolean USE_BANDWIDTH_METER = true; // JoTube: needed by the adaptive (fast start) selection
+
+    /**
+     * JoTube: the same meter must be used by the player (track selection) and the data sources (measurements).
+     */
+    public static DefaultBandwidthMeter getBandwidthMeter() {
+        return BANDWIDTH_METER;
+    }
     private TrackErrorFixer mTrackErrorFixer;
     private DataSource.Factory mMediaDataSourceFactory;
 
