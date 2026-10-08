@@ -37,6 +37,8 @@ jobs:
         id: version
         run: |
           sed -i "s/versionName \"\(.*\)\"/versionName \"\1-j${{ github.run_number }}\"/" smarttubetv/build.gradle
+          # Always increasing, independent of the upstream base version (updates never become downgrades)
+          sed -i "s/versionCode [0-9]*/versionCode $((1000000 + ${{ github.run_number }}))/" smarttubetv/build.gradle
           echo "name=$(grep -m1 'versionName' smarttubetv/build.gradle | awk -F'"' '{print $2}')" >> "$GITHUB_OUTPUT"
 
       - name: Configure signing
