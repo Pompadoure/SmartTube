@@ -24,7 +24,7 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitio
  */
 public class ShortsTransitionOverlay {
     private static final int SLIDE_DURATION_MS = 300;
-    private static final int FADE_IN_DURATION_MS = 150;
+    private static final int FADE_IN_DURATION_MS = 0; // static: no animation
     private static final int FADE_OUT_DURATION_MS = 120;
     private static final int FAILSAFE_HIDE_MS = 10_000;
     private final Handler mHandler = new Handler(Looper.getMainLooper());

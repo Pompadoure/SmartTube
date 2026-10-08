@@ -1631,12 +1631,8 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
         if (video != null && ShortsQueue.getQueuedFormatInfo(video.videoId) != null) {
             // Preloaded Short: it's already in the player, keep everything as is (no black screen, no reset).
-            // Same slide as for the other Shorts, it fades into the video on the first frame.
-            if (!isInPIPMode()) {
-                mShortsTransition.show(video, direction);
-            } else {
-                mShortsTransition.hide(false);
-            }
+            // Straight cut to the new video (no animation), as preferred.
+            mShortsTransition.hide(false);
             setChatReceiver(null);
             setSeekBarSegments(null);
             setSeekPreviewTitle(null);
@@ -1648,8 +1644,8 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         showBackgroundColor(R.color.player_background);
 
         if (video != null && video.isShorts && !isInPIPMode()) {
-            // Shorts feed: show the upcoming video's thumbnail instead of the black screen
-            mShortsTransition.show(video, direction);
+            // Shorts feed: show the upcoming video's thumbnail instead of the black screen (no animation)
+            mShortsTransition.show(video, ShortsTransitionState.DIRECTION_NONE);
         } else {
             mShortsTransition.hide(false);
         }
