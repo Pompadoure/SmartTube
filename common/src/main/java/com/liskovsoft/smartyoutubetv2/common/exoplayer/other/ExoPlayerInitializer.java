@@ -55,7 +55,8 @@ public class ExoPlayerInitializer {
         //trackSelector.setParameters(trackSelector.buildUponParameters().setTunnelingAudioSessionId(C.generateAudioSessionIdV21(context)));
 
         // Old initializer
-        SimpleExoPlayer player = ExoPlayerFactory.newSimpleInstance(context, renderersFactory, trackSelector, loadControl);
+        // SmartTube J: faster first frame for Shorts
+        SimpleExoPlayer player = ExoPlayerFactory.newSimpleInstance(context, renderersFactory, trackSelector, new FastStartLoadControl(loadControl));
 
         // New initializer
         //SimpleExoPlayer player = ExoPlayerFactory.newSimpleInstance(

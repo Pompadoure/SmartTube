@@ -10,8 +10,20 @@ public final class ShortsTransitionState {
     public static final int DIRECTION_PREVIOUS = -1;
 
     private static volatile int sDirection = DIRECTION_NONE;
+    private static volatile boolean sIsShortsMode;
 
     private ShortsTransitionState() {
+    }
+
+    /**
+     * True while a Short is loaded in the player (read from the playback thread).
+     */
+    public static boolean isShortsMode() {
+        return sIsShortsMode;
+    }
+
+    public static void setShortsMode(boolean isShortsMode) {
+        sIsShortsMode = isShortsMode;
     }
 
     public static void setDirection(int direction) {

@@ -37,9 +37,9 @@ import java.util.Map;
 public class VideoLoaderController extends BasePlayerController {
     private static final String TAG = VideoLoaderController.class.getSimpleName();
     private static final int MIN_SHUFFLE_SIZE = 30;
-    private static final int PREFETCH_DELAY_MS = 3_000; // let the current Short start and buffer first
-    private static final int PREFETCH_MIN_POSITION_MS = 2_000;
-    private static final int PREFETCH_MAX_RETRIES = 5;
+    private static final int PREFETCH_DELAY_MS = 1_000; // let the current Short start first
+    private static final int PREFETCH_MIN_POSITION_MS = 500;
+    private static final int PREFETCH_MAX_RETRIES = 10;
     private static final int PREFETCH_CACHE_SIZE = 3;
     private final Playlist mPlaylist;
     private Video mPendingVideo;
@@ -230,6 +230,7 @@ public class VideoLoaderController extends BasePlayerController {
      */
     private void loadVideo(Video item) {
         if (getPlayer() != null && item != null) {
+            ShortsTransitionState.setShortsMode(item.isShorts && !item.isLive);
             mPlaylist.setCurrent(item);
             getPlayer().setVideo(item);
             getPlayer().resetPlayerState();
