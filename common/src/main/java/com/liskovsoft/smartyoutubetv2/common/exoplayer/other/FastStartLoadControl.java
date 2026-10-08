@@ -9,11 +9,17 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitio
 
 /**
  * Wraps the regular load control. For Shorts, the first frame starts after a short buffer
- * instead of the default 2.5 s, so swiping feels instant. Rebuffering and regular videos
- * keep the original behavior.
+ * instead of the default 2.5 s, so swiping feels instant, and loading continues past the
+ * regular buffer size, so the current Short gets fully buffered and the next ones in the queue
+ * get preloaded (ExoPlayer starts the next playlist item only after the current one is fully buffered).
+ * Rebuffering and regular videos keep the original behavior.
  */
 public class FastStartLoadControl implements LoadControl {
     private static final long SHORTS_START_BUFFER_US = 500_000; // 0.5 s
+    // Ahead of the playback position, across the current and the queued Shorts
+    private static final long SHORTS_MIN_BUFFER_US = 10_000_000; // always (like prioritizeTimeOverSizeThresholds)
+    private static final long SHORTS_MAX_BUFFER_US = 180_000_000; // 3 min
+    private static final int SHORTS_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
     private final LoadControl mDelegate;
 
     public FastStartLoadControl(LoadControl delegate) {
@@ -66,6 +72,11 @@ public class FastStartLoadControl implements LoadControl {
 
     @Override
     public boolean shouldContinueLoading(long bufferedDurationUs, float playbackSpeed) {
+        if (ShortsTransitionState.isShortsMode()) {
+            return bufferedDurationUs < SHORTS_MIN_BUFFER_US || (bufferedDurationUs < SHORTS_MAX_BUFFER_US &&
+                    getAllocator().getTotalBytesAllocated() < SHORTS_MAX_BUFFER_BYTES);
+        }
+
         return mDelegate.shouldContinueLoading(bufferedDurationUs, playbackSpeed);
     }
 }

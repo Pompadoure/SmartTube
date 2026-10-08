@@ -1630,8 +1630,13 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         Video video = getVideo();
 
         if (video != null && ShortsQueue.isQueued(video.videoId)) {
-            // Preloaded Short: it's already in the player, keep everything as is (no black screen, no reset)
-            mShortsTransition.hide(false);
+            // Preloaded Short: it's already in the player, keep everything as is (no black screen, no reset).
+            // Same slide as for the other Shorts, it fades into the video on the first frame.
+            if (!isInPIPMode()) {
+                mShortsTransition.show(video, direction);
+            } else {
+                mShortsTransition.hide(false);
+            }
             setChatReceiver(null);
             setSeekBarSegments(null);
             setSeekPreviewTitle(null);

@@ -33,6 +33,13 @@ public class RestoreTrackSelector extends DefaultTrackSelector {
         //setParameters(buildUponParameters().setForceHighestSupportedBitrate(true));
     }
 
+    /**
+     * JoTube: re-run track selection (e.g. the playing video of the Shorts playlist changed).
+     */
+    public void reselect() {
+        invalidate();
+    }
+
     public void setOnTrackSelectCallback(TrackSelectorCallback callback) {
         mCallback = callback;
     }

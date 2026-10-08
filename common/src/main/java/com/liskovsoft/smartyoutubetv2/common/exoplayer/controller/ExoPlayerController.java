@@ -3,12 +3,15 @@ package com.liskovsoft.smartyoutubetv2.common.exoplayer.controller;
 import android.content.Context;
 import android.os.Build;
 import android.os.Build.VERSION;
+import android.os.Handler;
+import android.os.Looper;
 
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.ExoPlaybackException;
 import com.google.android.exoplayer2.Format;
 import com.google.android.exoplayer2.PlaybackParameters;
 import com.google.android.exoplayer2.Player;
+import com.google.android.exoplayer2.PlayerMessage;
 import com.google.android.exoplayer2.SimpleExoPlayer;
 import com.google.android.exoplayer2.Timeline;
 import com.google.android.exoplayer2.source.MediaSource;
@@ -57,6 +60,20 @@ public class ExoPlayerController implements Player.EventListener {
     private boolean mIsEnded;
     private Runnable mOnVideoLoaded;
     private static WeakReference<ExoPlayerController> sCurrent;
+    // BEGIN SmartTube J: Shorts queue
+    private static final int SWITCH_NOT_QUEUED = 0;
+    private static final int SWITCH_NOT_READY = 1;
+    private static final int SWITCH_DONE = 2;
+    private static final int SWITCH_RETRY_MS = 50;
+    private static final int SWITCH_MAX_RETRIES = 20; // ~1 s
+    private static final long ITEM_END_MARGIN_MS = 300;
+    private final Handler mHandler = new Handler(Looper.getMainLooper());
+    private final Runnable mRetrySwitch = this::retryPendingSwitch;
+    private MediaItemFormatInfo mPendingSwitch;
+    private int mPendingSwitchRetries;
+    private PlayerMessage mItemEndMessage;
+    private int mItemEndIndex = -1;
+    // END SmartTube J
 
     public ExoPlayerController(Context context, PlayerEventListener eventListener) {
         PlayerTweaksData playerTweaksData = PlayerTweaksData.instance(context);
@@ -83,7 +100,7 @@ public class ExoPlayerController implements Player.EventListener {
     }
 
     public void openSabr(MediaItemFormatInfo formatInfo) {
-        if (switchToQueued(formatInfo)) {
+        if (openQueued(formatInfo)) {
             return;
         }
 
@@ -92,7 +109,7 @@ public class ExoPlayerController implements Player.EventListener {
     }
 
     public void openDash(MediaItemFormatInfo formatInfo) {
-        if (switchToQueued(formatInfo)) {
+        if (openQueued(formatInfo)) {
             return;
         }
 
@@ -103,54 +120,112 @@ public class ExoPlayerController implements Player.EventListener {
     // BEGIN SmartTube J: Shorts preloading
 
     /**
-     * Shorts are opened inside a player playlist, so the next one can be appended and preloaded.
+     * Shorts are opened inside a player playlist, so the next ones can be appended and preloaded.
      */
     private void openShortsAware(MediaItemFormatInfo formatInfo, MediaSource mediaSource) {
         ShortsQueue queue = null;
 
         if (ShortsTransitionState.isShortsMode() && formatInfo != null && formatInfo.getVideoId() != null) {
-            queue = new ShortsQueue(formatInfo.getVideoId(), mediaSource);
+            queue = new ShortsQueue(formatInfo, mediaSource);
             mediaSource = queue.getPlaylist();
         }
 
         openMediaSource(mediaSource); // resets the previous queue
         ShortsQueue.setActive(queue);
+        scheduleItemEnd();
+    }
+
+    /**
+     * @return true if the video is played (or about to be played) from the queue
+     */
+    private boolean openQueued(MediaItemFormatInfo formatInfo) {
+        cancelPendingSwitch();
+
+        int result = switchToQueued(formatInfo);
+
+        if (result == SWITCH_NOT_READY) {
+            // E.g. a Short has just been appended and the player's timeline isn't updated yet.
+            // Wait a moment instead of throwing away the queue with everything preloaded in it.
+            mPendingSwitch = formatInfo;
+            mPendingSwitchRetries = 0;
+            mHandler.postDelayed(mRetrySwitch, SWITCH_RETRY_MS);
+            return true;
+        }
+
+        return result == SWITCH_DONE;
+    }
+
+    private void retryPendingSwitch() {
+        MediaItemFormatInfo formatInfo = mPendingSwitch;
+
+        if (formatInfo == null || mPlayer == null) {
+            mPendingSwitch = null;
+            return;
+        }
+
+        int result = switchToQueued(formatInfo);
+
+        if (result == SWITCH_NOT_READY && ++mPendingSwitchRetries < SWITCH_MAX_RETRIES) {
+            mHandler.postDelayed(mRetrySwitch, SWITCH_RETRY_MS);
+            return;
+        }
+
+        mPendingSwitch = null;
+
+        if (result != SWITCH_DONE) {
+            Log.d(TAG, "Shorts: queue still out of sync, opening %s from scratch", formatInfo.getVideoId());
+            MediaSource mediaSource = formatInfo.containsDashFormats() ?
+                    mMediaSourceFactory.fromDashFormatInfo(formatInfo) : mMediaSourceFactory.fromSabrFormatInfo(formatInfo);
+            openShortsAware(formatInfo, mediaSource);
+        }
+    }
+
+    private void cancelPendingSwitch() {
+        mHandler.removeCallbacks(mRetrySwitch);
+        mPendingSwitch = null;
     }
 
     /**
      * The video is already in the player (preloaded next or the previous one): just jump to it.
      */
-    private boolean switchToQueued(MediaItemFormatInfo formatInfo) {
+    private int switchToQueued(MediaItemFormatInfo formatInfo) {
         ShortsQueue queue = ShortsQueue.getActive();
 
         if (queue == null || mPlayer == null || formatInfo == null || !ShortsTransitionState.isShortsMode()) {
-            return false;
+            return SWITCH_NOT_QUEUED;
         }
 
         int index = queue.indexOf(formatInfo.getVideoId());
 
+        if (index == -1 || index == queue.getCurrentIndex() || !queue.isActual(index)) {
+            return SWITCH_NOT_QUEUED;
+        }
+
         // The player's timeline is updated asynchronously: switch only when it's in sync with the queue
-        if (index == -1 || index == queue.getCurrentIndex() ||
-                mPlayer.getCurrentTimeline().getWindowCount() != queue.size() ||
+        if (mPlayer.getCurrentTimeline().getWindowCount() != queue.size() ||
                 mPlayer.getCurrentWindowIndex() != queue.getCurrentIndex()) {
-            Log.d(TAG, "Shorts: can't switch to %s (index %s, current %s, size %s, timeline %s, window %s)",
+            Log.d(TAG, "Shorts: not in sync yet for %s (index %s, current %s, size %s, timeline %s, window %s)",
                     formatInfo.getVideoId(), index, queue.getCurrentIndex(), queue.size(),
                     mPlayer.getCurrentTimeline().getWindowCount(), mPlayer.getCurrentWindowIndex());
-            return false;
+            return SWITCH_NOT_READY;
         }
 
         Log.d(TAG, "Shorts: switching to preloaded item %s (index %s)", formatInfo.getVideoId(), index);
 
         setQualityInfo("");
-        mTrackSelectorManager.invalidate();
+        // The track selection cache is synced with the new item in onTracksChanged (no invalidate here:
+        // the playback thread selects tracks for the preloaded items at the same time)
+        mTrackSelectorManager.onQueuedSourceSwitch();
         mOnSourceChanged = true;
         mEventListener.onSourceChanged(getVideo());
         queue.setCurrentIndex(index);
+        cancelItemEnd();
         // Default position = where the background buffering started (keeps the preloaded data)
         mPlayer.seekToDefaultPosition(index);
         mPlayer.setPlayWhenReady(true);
+        scheduleItemEnd();
 
-        return true;
+        return SWITCH_DONE;
     }
 
     /**
@@ -194,14 +269,78 @@ public class ExoPlayerController implements Player.EventListener {
             return false;
         }
 
-        queue.insertAt(distance, formatInfo.getVideoId(), mediaSource);
+        queue.insertAt(distance, formatInfo, mediaSource);
         Log.d(TAG, "Shorts: preloading %s (+%s)", formatInfo.getVideoId(), distance);
 
         return true;
     }
 
     /**
-     * The player moved into the preloaded Short by itself (the current one ended).
+     * Fires shortly before the current Short ends, i.e. before ExoPlayer moves into the next (preloaded)
+     * playlist item by itself. The app decides what's next, exactly like at the end of a regular video
+     * (loop, next, pause...). Not removed after delivery, so it fires again after a loop.
+     */
+    private void scheduleItemEnd() {
+        ShortsQueue queue = ShortsQueue.getActive();
+
+        if (queue == null || mPlayer == null) {
+            cancelItemEnd();
+            return;
+        }
+
+        int index = queue.getCurrentIndex();
+
+        if (mItemEndMessage != null && mItemEndIndex == index) {
+            return; // already scheduled
+        }
+
+        cancelItemEnd();
+
+        Timeline timeline = mPlayer.getCurrentTimeline();
+
+        if (index >= timeline.getWindowCount()) {
+            return; // scheduled on the next timeline change
+        }
+
+        long durationMs = timeline.getWindow(index, new Timeline.Window()).getDurationMs();
+
+        if (durationMs == C.TIME_UNSET || durationMs <= ITEM_END_MARGIN_MS * 2) {
+            return; // duration isn't known yet: scheduled on the next timeline change
+        }
+
+        mItemEndIndex = index;
+        mItemEndMessage = mPlayer.createMessage((messageType, payload) -> onItemEnding(index))
+                .setPosition(index, durationMs - ITEM_END_MARGIN_MS)
+                .setHandler(mHandler)
+                .setDeleteAfterDelivery(false)
+                .send();
+    }
+
+    private void cancelItemEnd() {
+        if (mItemEndMessage != null) {
+            mItemEndMessage.cancel();
+            mItemEndMessage = null;
+        }
+
+        mItemEndIndex = -1;
+    }
+
+    private void onItemEnding(int index) {
+        ShortsQueue queue = ShortsQueue.getActive();
+
+        if (queue == null || mPlayer == null || queue.getCurrentIndex() != index ||
+                mPlayer.getCurrentWindowIndex() != index || !mPlayer.getPlayWhenReady()) {
+            return;
+        }
+
+        Log.d(TAG, "Shorts: item %s is ending", index);
+
+        mIsEnded = true; // don't handle the end twice (if the player reaches the ENDED state after all)
+        mEventListener.onPlayEnd();
+    }
+
+    /**
+     * Fallback: the player moved into the next Short by itself (the end wasn't handled in time).
      * Go back to the end of the finished Short and let the app decide (loop, next, pause...).
      */
     private boolean handleQueueAutoAdvance() {
@@ -212,16 +351,17 @@ public class ExoPlayerController implements Player.EventListener {
         }
 
         int finished = queue.getCurrentIndex();
+        Timeline timeline = mPlayer.getCurrentTimeline();
 
-        if (mPlayer.getCurrentWindowIndex() == finished || finished >= mPlayer.getCurrentTimeline().getWindowCount()) {
+        if (mPlayer.getCurrentWindowIndex() == finished || finished >= timeline.getWindowCount()) {
             return false;
         }
 
-        long durationMs = mPlayer.getCurrentTimeline().getWindow(finished, new Timeline.Window()).getDurationMs();
+        long durationMs = timeline.getWindow(finished, new Timeline.Window()).getDurationMs();
 
-        // Stay on the finished Short, the app decides what's next (loop, next, pause, close)
+        // Paused, so the player doesn't move on by itself
         mPlayer.setPlayWhenReady(false);
-        mPlayer.seekTo(finished, Math.max(0, durationMs - 100));
+        mPlayer.seekTo(finished, durationMs != C.TIME_UNSET ? durationMs : 0);
         mEventListener.onPlayEnd();
 
         return true;
@@ -336,6 +476,8 @@ public class ExoPlayerController implements Player.EventListener {
     
     public void release() {
         ShortsQueue.setActive(null);
+        cancelPendingSwitch();
+        cancelItemEnd();
         mTrackSelectorManager.release();
         mMediaSourceFactory.release();
         releasePlayer();
@@ -425,6 +567,11 @@ public class ExoPlayerController implements Player.EventListener {
             return;
         }
 
+        if (ShortsQueue.getActive() != null) {
+            // Shorts queue: the playing item may have changed, make the track lists (quality menu etc.) describe it
+            mTrackSelectorManager.syncWithPlayingPeriod();
+        }
+
         notifyOnVideoLoad();
 
         for (TrackSelection selection : trackSelections.getAll()) {
@@ -461,6 +608,14 @@ public class ExoPlayerController implements Player.EventListener {
             // Produce thread sync problems
             // Attempt to read from field 'java.util.TreeMap$Node java.util.TreeMap$Node.left' on a null object reference
             //mTrackSelectorManager.fixTracksSelection();
+        }
+    }
+
+    @Override
+    public void onTimelineChanged(Timeline timeline, Object manifest, int reason) {
+        // Shorts queue: the duration of the current item becomes known
+        if (ShortsQueue.getActive() != null) {
+            scheduleItemEnd();
         }
     }
 
@@ -586,6 +741,8 @@ public class ExoPlayerController implements Player.EventListener {
      */
     public void resetPlayerState() {
         ShortsQueue.setActive(null);
+        cancelPendingSwitch();
+        cancelItemEnd();
 
         if (containsMedia()) {
             mPlayer.stop(true);

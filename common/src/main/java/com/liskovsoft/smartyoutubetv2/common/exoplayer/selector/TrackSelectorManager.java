@@ -50,13 +50,15 @@ public class TrackSelectorManager implements TrackSelectorCallback {
     private final Renderer[] mRenderers = new Renderer[3];
     private final MediaTrack[] mSelectedTracks = new MediaTrack[3];
     private boolean mIsMergedSource;
+    private boolean mIsQueuedSourceSwitch;
 
     public TrackSelectorManager(Context context) {
         mContext = context.getApplicationContext();
     }
 
-    public void invalidate() {
+    public synchronized void invalidate() {
         Arrays.fill(mRenderers, null);
+        mIsQueuedSourceSwitch = false;
     }
 
     /**
@@ -80,11 +82,7 @@ public class TrackSelectorManager implements TrackSelectorCallback {
      *                      One of the {@link #RENDERER_INDEX_VIDEO}, {@link #RENDERER_INDEX_AUDIO}, {@link #RENDERER_INDEX_SUBTITLE}
      */
     private void initRenderer(int rendererIndex) {
-        MappedTrackInfo currentInfo = mTrackSelector != null ? mTrackSelector.getCurrentMappedTrackInfo() : null;
-        TrackGroupArray currentGroups = currentInfo != null ? currentInfo.getTrackGroups(rendererIndex) : null;
-
-        // JoTube: the cache may belong to another (preloaded) video of the playlist
-        if (isRendererInitialized(rendererIndex) && (currentGroups == null || isRendererFor(rendererIndex, currentGroups))) {
+        if (mRenderers[rendererIndex] != null && mRenderers[rendererIndex].mediaTracks != null) {
             return;
         }
 
@@ -105,8 +103,7 @@ public class TrackSelectorManager implements TrackSelectorCallback {
      * @param parameters supplied externally from {@link RestoreTrackSelector}
      */
     private void initRenderer(int rendererIndex, MappedTrackInfo trackInfo, Parameters parameters) {
-        if (isRendererInitialized(rendererIndex) &&
-                (trackInfo == null || isRendererFor(rendererIndex, trackInfo.getTrackGroups(rendererIndex)))) {
+        if (mRenderers[rendererIndex] != null && mRenderers[rendererIndex].mediaTracks != null) {
             return;
         }
 
@@ -122,23 +119,12 @@ public class TrackSelectorManager implements TrackSelectorCallback {
      * @param parameters supplied externally from {@link RestoreTrackSelector}
      */
     private void initRenderer(int rendererIndex, TrackGroupArray groups, Parameters parameters) {
-        // JoTube: Shorts playlist. Selection for a preloaded video must use that video's track groups,
-        // otherwise group/track indexes of the playing video are applied to it (IndexOutOfBounds).
-        if (isRendererInitialized(rendererIndex) && (groups == null || isRendererFor(rendererIndex, groups))) {
+        if (mRenderers[rendererIndex] != null && mRenderers[rendererIndex].mediaTracks != null) {
             return;
         }
 
         initTrackGroups(rendererIndex, groups, parameters);
         initMediaTracks(rendererIndex);
-    }
-
-    private boolean isRendererInitialized(int rendererIndex) {
-        return mRenderers[rendererIndex] != null && mRenderers[rendererIndex].mediaTracks != null;
-    }
-
-    private boolean isRendererFor(int rendererIndex, TrackGroupArray groups) {
-        Renderer renderer = mRenderers[rendererIndex];
-        return renderer != null && renderer.trackGroups != null && renderer.trackGroups.equals(groups);
     }
 
     private void initTrackGroups(int rendererIndex, MappedTrackInfo trackInfo, Parameters parameters) {
@@ -307,15 +293,15 @@ public class TrackSelectorManager implements TrackSelectorCallback {
         mRenderers[rendererIndex].selectedTrack = null;
     }
 
-    public Set<MediaTrack> getVideoTracks() {
+    public synchronized Set<MediaTrack> getVideoTracks() {
         return getAvailableTracks(RENDERER_INDEX_VIDEO);
     }
 
-    public Set<MediaTrack> getAudioTracks() {
+    public synchronized Set<MediaTrack> getAudioTracks() {
         return getAvailableTracks(RENDERER_INDEX_AUDIO);
     }
 
-    public Set<MediaTrack> getSubtitleTracks() {
+    public synchronized Set<MediaTrack> getSubtitleTracks() {
         return getAvailableTracks(RENDERER_INDEX_SUBTITLE);
     }
 
@@ -350,11 +336,132 @@ public class TrackSelectorManager implements TrackSelectorCallback {
             return null;
         }
 
+        if (isOtherPeriod(rendererIndex, groups)) {
+            return createDetachedSelection(rendererIndex, groups, params);
+        }
+
+        if (isRendererInitialized(rendererIndex) && !isRendererFor(rendererIndex, groups)) {
+            // The playing video changed (Shorts playlist): rebuild the cache for it
+            mRenderers[rendererIndex] = null;
+        }
+
         initRenderer(rendererIndex, groups, params);
         return createSelection(groups, mSelectedTracks[rendererIndex]);
     }
 
+    // BEGIN JoTube: Shorts playlist (several videos in the player at once)
+
+    /**
+     * The cache (mRenderers) describes the playing video. ExoPlayer also selects tracks for the preloaded videos
+     * of the playlist; their groups must never be matched against the cached indexes of another video.
+     */
+    private boolean isOtherPeriod(int rendererIndex, TrackGroupArray groups) {
+        if (isRendererInitialized(rendererIndex) && isRendererFor(rendererIndex, groups)) {
+            return false; // the cached video
+        }
+
+        TrackGroupArray playingGroups = getPlayingGroups(rendererIndex);
+
+        if (playingGroups == null) {
+            // Nothing is playing yet (a video is being opened): its first selection fills the cache.
+            // If the cache already describes a video, this is another one (e.g. switch to a not yet prepared item).
+            return isRendererInitialized(rendererIndex);
+        }
+
+        return !playingGroups.equals(groups);
+    }
+
+    private TrackGroupArray getPlayingGroups(int rendererIndex) {
+        MappedTrackInfo info = mTrackSelector != null ? mTrackSelector.getCurrentMappedTrackInfo() : null;
+        return info != null && rendererIndex < info.getRendererCount() ? info.getTrackGroups(rendererIndex) : null;
+    }
+
+    private boolean isRendererInitialized(int rendererIndex) {
+        return mRenderers[rendererIndex] != null && mRenderers[rendererIndex].mediaTracks != null;
+    }
+
+    private boolean isRendererFor(int rendererIndex, TrackGroupArray groups) {
+        Renderer renderer = mRenderers[rendererIndex];
+        return renderer != null && renderer.trackGroups != null && renderer.trackGroups.equals(groups);
+    }
+
+    /**
+     * Same matching as for the playing video, on a temporary structure. The cache is restored afterwards
+     * (all callers are synchronized, so nobody can observe the temporary state).
+     */
+    private Pair<Definition, MediaTrack> createDetachedSelection(int rendererIndex, TrackGroupArray groups, Parameters params) {
+        Renderer playing = mRenderers[rendererIndex];
+
+        try {
+            mRenderers[rendererIndex] = null;
+            initRenderer(rendererIndex, groups, params);
+            return createSelection(groups, mSelectedTracks[rendererIndex]);
+        } finally {
+            mRenderers[rendererIndex] = playing;
+        }
+    }
+
+    /**
+     * A queued (preloaded) video of the playlist is about to become the playing one.
+     */
+    public synchronized void onQueuedSourceSwitch() {
+        mIsQueuedSourceSwitch = true;
+    }
+
+    /**
+     * Called when the playing video of the playlist may have changed. If the cache describes another video
+     * (or the wanted tracks were restored during the switch), re-run the track selection, so the cache describes
+     * the playing one again. The result is the same as the selection already made for that video when it was
+     * preloaded (same tracks wanted), so the playback isn't disturbed.
+     */
+    public void syncWithPlayingPeriod() {
+        boolean isSwitch;
+
+        synchronized (this) {
+            isSwitch = mIsQueuedSourceSwitch;
+            mIsQueuedSourceSwitch = false;
+        }
+
+        if (isSwitch || isCacheOutdated()) {
+            reselectTracks();
+        }
+    }
+
+    private synchronized boolean isCacheOutdated() {
+        for (int rendererIndex = 0; rendererIndex < mRenderers.length; rendererIndex++) {
+            if (!isRendererInitialized(rendererIndex)) {
+                continue;
+            }
+
+            TrackGroupArray playingGroups = getPlayingGroups(rendererIndex);
+
+            if (playingGroups != null && !isRendererFor(rendererIndex, playingGroups)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void reselectTracks() {
+        DefaultTrackSelector trackSelector = mTrackSelector;
+
+        if (trackSelector instanceof RestoreTrackSelector) {
+            ((RestoreTrackSelector) trackSelector).reselect();
+        }
+    }
+
+    // END JoTube
+
     private void updateRendererSelection(int rendererIndex, TrackGroupArray groups, Parameters params, Definition definition) {
+        if (isOtherPeriod(rendererIndex, groups)) {
+            return; // never mix another video into the cache
+        }
+
+        if (isRendererInitialized(rendererIndex) && !isRendererFor(rendererIndex, groups)) {
+            mRenderers[rendererIndex] = null;
+        }
+
         initRenderer(rendererIndex, groups, params);
 
         definition = getOverride(rendererIndex, groups, params, definition);
@@ -381,41 +488,48 @@ public class TrackSelectorManager implements TrackSelectorCallback {
     }
 
     @Override
-    public Pair<Definition, MediaTrack> onSelectVideoTrack(TrackGroupArray groups, Parameters params) {
+    public synchronized Pair<Definition, MediaTrack> onSelectVideoTrack(TrackGroupArray groups, Parameters params) {
         return createRendererSelection(RENDERER_INDEX_VIDEO, groups, params);
     }
 
     @Override
-    public Pair<Definition, MediaTrack> onSelectAudioTrack(TrackGroupArray groups, Parameters params) {
+    public synchronized Pair<Definition, MediaTrack> onSelectAudioTrack(TrackGroupArray groups, Parameters params) {
         return createRendererSelection(RENDERER_INDEX_AUDIO, groups, params);
     }
 
     @Override
-    public Pair<Definition, MediaTrack> onSelectSubtitleTrack(TrackGroupArray groups, Parameters params) {
+    public synchronized Pair<Definition, MediaTrack> onSelectSubtitleTrack(TrackGroupArray groups, Parameters params) {
         return createRendererSelection(RENDERER_INDEX_SUBTITLE, groups, params);
     }
 
     @Override
-    public void updateVideoTrackSelection(TrackGroupArray groups, Parameters params, Definition definition) {
+    public synchronized void updateVideoTrackSelection(TrackGroupArray groups, Parameters params, Definition definition) {
         updateRendererSelection(RENDERER_INDEX_VIDEO, groups, params, definition);
     }
 
     @Override
-    public void updateAudioTrackSelection(TrackGroupArray groups, Parameters params, Definition definition) {
+    public synchronized void updateAudioTrackSelection(TrackGroupArray groups, Parameters params, Definition definition) {
         updateRendererSelection(RENDERER_INDEX_AUDIO, groups, params, definition);
     }
 
     @Override
-    public void updateSubtitleTrackSelection(TrackGroupArray groups, Parameters params, Definition definition) {
+    public synchronized void updateSubtitleTrackSelection(TrackGroupArray groups, Parameters params, Definition definition) {
         updateRendererSelection(RENDERER_INDEX_SUBTITLE, groups, params, definition);
     }
 
-    public void selectTrack(MediaTrack track) {
+    public synchronized void selectTrack(MediaTrack track) {
         if (track == null) {
             return;
         }
 
         int rendererIndex = track.rendererIndex;
+
+        if (mIsQueuedSourceSwitch) {
+            // JoTube: like for a freshly opened video, only remember the wanted track.
+            // The cache still describes the previous video. Applied in syncWithPlayingPeriod().
+            mSelectedTracks[rendererIndex] = track;
+            return;
+        }
 
         initRenderer(rendererIndex);
 
@@ -441,7 +555,7 @@ public class TrackSelectorManager implements TrackSelectorCallback {
      *  Video/audio tracks should be selected at this point.<br/>
      *  Reselect if not done yet.
      */
-    public void fixTracksSelection() {
+    public synchronized void fixTracksSelection() {
         for (MediaTrack track : mSelectedTracks) {
             if (track == null || track.rendererIndex == RENDERER_INDEX_SUBTITLE) {
                 continue;
@@ -463,7 +577,7 @@ public class TrackSelectorManager implements TrackSelectorCallback {
         }
     }
 
-    public void release() {
+    public synchronized void release() {
         if (mTrackSelector != null) {
             Log.d(TAG, "Destroying TrackSelector...");
             if (mTrackSelector instanceof RestoreTrackSelector) {
@@ -897,7 +1011,11 @@ public class TrackSelectorManager implements TrackSelectorCallback {
         }
     }
 
-    public MediaTrack getSelectedTrack(int rendererIndex) {
+    public synchronized MediaTrack getSelectedTrack(int rendererIndex) {
+        if (mIsQueuedSourceSwitch) {
+            return null; // JoTube: the new video isn't playing yet (same as for a freshly opened video)
+        }
+
         initRenderer(rendererIndex);
 
         Renderer renderer = mRenderers[rendererIndex];

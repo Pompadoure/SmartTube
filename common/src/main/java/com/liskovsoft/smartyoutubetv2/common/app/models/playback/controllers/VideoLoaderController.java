@@ -25,6 +25,7 @@ import com.liskovsoft.smartyoutubetv2.common.app.presenters.AppDialogPresenter;
 import com.liskovsoft.smartyoutubetv2.common.app.presenters.dialogs.VideoActionPresenter;
 import com.liskovsoft.smartyoutubetv2.common.app.views.PlaybackView;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ExoPlayerController;
+import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ShortsQueue;
 import com.liskovsoft.smartyoutubetv2.common.misc.MediaServiceManager;
 import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerData;
 import com.liskovsoft.smartyoutubetv2.common.utils.Utils;
@@ -42,8 +43,8 @@ public class VideoLoaderController extends BasePlayerController {
     private static final int MIN_SHUFFLE_SIZE = 30;
     private static final int PREFETCH_DELAY_MS = 300; // right after the current Short is loaded
     private static final int PREFETCH_MAX_RETRIES = 10;
-    private static final int PREFETCH_CACHE_SIZE = 6;
-    private static final int PREFETCH_LOOKAHEAD = 3; // Shorts preloaded ahead of the current one
+    private static final int PREFETCH_CACHE_SIZE = 8;
+    private static final int PREFETCH_LOOKAHEAD = 4; // Shorts preloaded ahead of the current one
     private final Playlist mPlaylist;
     private Video mPendingVideo;
     private SuggestionsController mSuggestionsController;
@@ -302,8 +303,12 @@ public class VideoLoaderController extends BasePlayerController {
         Utils.post(mShowProgressBar);
         disposeActions();
 
-        // Use the format info fetched in the background (Shorts feed). Skips the network round trip.
+        // Use the format info fetched in the background (Shorts feed), or the one of a Short that is
+        // already in the player (e.g. the previous one). Skips the network round trip.
         MediaItemFormatInfo prefetched = takePrefetched(video);
+        if (prefetched == null && video != null) {
+            prefetched = ShortsQueue.getQueuedFormatInfo(video.videoId);
+        }
         if (prefetched != null) {
             Log.d(TAG, "Using prefetched format info for %s", video.videoId);
             // Keep the original async order (the player state is reset at this point)
@@ -315,6 +320,10 @@ public class VideoLoaderController extends BasePlayerController {
             });
             return;
         }
+
+        // Don't let a background prefetch compete with the video the user is waiting for.
+        // The prefetch is scheduled again once this video is loaded.
+        disposePrefetch();
 
         ServiceManager service = YouTubeServiceManager.instance();
         MediaItemService mediaItemManager = service.getMediaItemService();

@@ -2,12 +2,13 @@ package com.liskovsoft.smartyoutubetv2.common.exoplayer.controller;
 
 import com.google.android.exoplayer2.source.ConcatenatingMediaSource;
 import com.google.android.exoplayer2.source.MediaSource;
+import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * SmartTube J: Shorts are played from a player playlist, so ExoPlayer buffers the next Short
+ * SmartTube J: Shorts are played from a player playlist, so ExoPlayer buffers the next Shorts
  * in the background (it starts loading the next item once the current one is fully buffered).
  * Switching to a queued Short is a seek inside the playlist: no new source, no player reset.
  *
@@ -22,11 +23,13 @@ public final class ShortsQueue {
     private static volatile ShortsQueue sActive;
     private final ConcatenatingMediaSource mPlaylist;
     private final List<String> mVideoIds = new ArrayList<>();
+    private final List<MediaItemFormatInfo> mFormatInfos = new ArrayList<>();
     private int mCurrentIndex;
 
-    ShortsQueue(String videoId, MediaSource first) {
+    ShortsQueue(MediaItemFormatInfo formatInfo, MediaSource first) {
         mPlaylist = new ConcatenatingMediaSource(first);
-        mVideoIds.add(videoId);
+        mVideoIds.add(formatInfo.getVideoId());
+        mFormatInfos.add(formatInfo);
         mCurrentIndex = 0;
     }
 
@@ -59,12 +62,21 @@ public final class ShortsQueue {
     }
 
     /**
+     * The stream urls of the item are still valid.
+     */
+    boolean isActual(int index) {
+        MediaItemFormatInfo formatInfo = index >= 0 && index < mFormatInfos.size() ? mFormatInfos.get(index) : null;
+        return formatInfo != null && formatInfo.isCacheActual();
+    }
+
+    /**
      * Insert at the given distance after the current item (1 = plays next), keeping the feed order.
      */
-    void insertAt(int distance, String videoId, MediaSource source) {
+    void insertAt(int distance, MediaItemFormatInfo formatInfo, MediaSource source) {
         int index = Math.min(mCurrentIndex + Math.max(1, distance), mVideoIds.size());
         mPlaylist.addMediaSource(index, source);
-        mVideoIds.add(index, videoId);
+        mVideoIds.add(index, formatInfo.getVideoId());
+        mFormatInfos.add(index, formatInfo);
     }
 
     static void setActive(ShortsQueue queue) {
@@ -81,5 +93,21 @@ public final class ShortsQueue {
     public static boolean isQueued(String videoId) {
         ShortsQueue queue = sActive;
         return queue != null && queue.indexOf(videoId) != -1 && queue.indexOf(videoId) != queue.getCurrentIndex();
+    }
+
+    /**
+     * Format info of a Short that is already in the player (e.g. the previous one), so going back
+     * doesn't wait for the network. Null if the video isn't queued (or it's the current one).
+     */
+    public static MediaItemFormatInfo getQueuedFormatInfo(String videoId) {
+        ShortsQueue queue = sActive;
+
+        if (queue == null || !isQueued(videoId)) {
+            return null;
+        }
+
+        int index = queue.indexOf(videoId);
+
+        return queue.isActual(index) ? queue.mFormatInfos.get(index) : null;
     }
 }

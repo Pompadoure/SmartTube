@@ -7,6 +7,7 @@ import com.liskovsoft.smartyoutubetv2.common.R;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Playlist;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.BasePlayerController;
+import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.manager.PlayerUI;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.service.VideoStateService.State;
 import com.liskovsoft.smartyoutubetv2.common.app.presenters.AppDialogPresenter;
@@ -82,7 +83,8 @@ public class VideoStateController extends BasePlayerController {
     @Override
     public boolean onPreviousClicked() {
         // Seek to the start on prev
-        if (getPlayer() != null && getPlayer().getPositionMs() > BEGIN_THRESHOLD_MS) {
+        // SmartTube J: Shorts feed works like the official app: previous always means the previous Short
+        if (getPlayer() != null && getPlayer().getPositionMs() > BEGIN_THRESHOLD_MS && !ShortsTransitionState.isShortsMode()) {
             saveState(); // in case the user wants to go to previous video
             getPlayer().setPositionMs(100);
             mIsRestoreActualLive = false;

@@ -3,6 +3,7 @@ package com.liskovsoft.smartyoutubetv2.tv.ui.playback;
 import android.graphics.Color;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.AccelerateInterpolator;
@@ -27,8 +28,10 @@ public class ShortsTransitionOverlay {
     private static final int FAILSAFE_HIDE_MS = 10_000;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private final Runnable mFailsafeHide = () -> hide(false);
+    private final Runnable mDeferredHide = () -> hide(true);
     private ImageView mOverlay;
     private boolean mIsShown;
+    private long mShowAnimationEndMs;
 
     /**
      * Place the overlay right above the video surface (index 0) and below the player controls.
@@ -52,6 +55,7 @@ public class ShortsTransitionOverlay {
 
     public void detach() {
         mHandler.removeCallbacks(mFailsafeHide);
+        mHandler.removeCallbacks(mDeferredHide);
 
         if (mOverlay != null) {
             mOverlay.animate().cancel();
@@ -73,6 +77,7 @@ public class ShortsTransitionOverlay {
         }
 
         mHandler.removeCallbacks(mFailsafeHide);
+        mHandler.removeCallbacks(mDeferredHide);
         mOverlay.animate().cancel();
 
         String fallbackUrl = video.getCardImageUrl();
@@ -94,7 +99,10 @@ public class ShortsTransitionOverlay {
         View parent = (View) mOverlay.getParent();
         int height = parent != null ? parent.getHeight() : 0;
 
-        if (direction != ShortsTransitionState.DIRECTION_NONE && height > 0) {
+        boolean slide = direction != ShortsTransitionState.DIRECTION_NONE && height > 0;
+        mShowAnimationEndMs = SystemClock.uptimeMillis() + (slide ? SLIDE_DURATION_MS : FADE_IN_DURATION_MS);
+
+        if (slide) {
             // Next: comes from the bottom. Previous: comes from the top.
             mOverlay.setAlpha(1f);
             mOverlay.setTranslationY(direction * height);
@@ -120,8 +128,17 @@ public class ShortsTransitionOverlay {
      */
     public void hide(boolean animate) {
         mHandler.removeCallbacks(mFailsafeHide);
+        mHandler.removeCallbacks(mDeferredHide);
 
         if (mOverlay == null || !mIsShown) {
+            return;
+        }
+
+        long remainingMs = mShowAnimationEndMs - SystemClock.uptimeMillis();
+
+        if (animate && remainingMs > 0) {
+            // The video is ready before the slide is over (preloaded Short): finish the slide first
+            mHandler.postDelayed(mDeferredHide, remainingMs);
             return;
         }
 
