@@ -158,11 +158,18 @@ public class ExoPlayerController implements Player.EventListener {
      * as soon as the current one is fully buffered.
      */
     public static boolean enqueueShort(MediaItemFormatInfo formatInfo) {
-        ExoPlayerController controller = sCurrent != null ? sCurrent.get() : null;
-        return controller != null && controller.enqueueShortInt(formatInfo);
+        return enqueueShort(formatInfo, 1);
     }
 
-    private boolean enqueueShortInt(MediaItemFormatInfo formatInfo) {
+    /**
+     * @param distance position relative to the current Short (1 = next)
+     */
+    public static boolean enqueueShort(MediaItemFormatInfo formatInfo, int distance) {
+        ExoPlayerController controller = sCurrent != null ? sCurrent.get() : null;
+        return controller != null && controller.enqueueShortInt(formatInfo, distance);
+    }
+
+    private boolean enqueueShortInt(MediaItemFormatInfo formatInfo, int distance) {
         ShortsQueue queue = ShortsQueue.getActive();
 
         if (queue == null || mPlayer == null || formatInfo == null || formatInfo.getVideoId() == null || !ShortsTransitionState.isShortsMode()) {
@@ -187,8 +194,8 @@ public class ExoPlayerController implements Player.EventListener {
             return false;
         }
 
-        queue.insertNext(formatInfo.getVideoId(), mediaSource);
-        Log.d(TAG, "Shorts: preloading %s", formatInfo.getVideoId());
+        queue.insertAt(distance, formatInfo.getVideoId(), mediaSource);
+        Log.d(TAG, "Shorts: preloading %s (+%s)", formatInfo.getVideoId(), distance);
 
         return true;
     }

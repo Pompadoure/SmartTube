@@ -32,16 +32,18 @@ import com.liskovsoft.youtubeapi.service.YouTubeServiceManager;
 
 import io.reactivex.disposables.Disposable;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public class VideoLoaderController extends BasePlayerController {
     private static final String TAG = VideoLoaderController.class.getSimpleName();
     private static final int MIN_SHUFFLE_SIZE = 30;
-    private static final int PREFETCH_DELAY_MS = 1_000; // let the current Short start first
-    private static final int PREFETCH_MIN_POSITION_MS = 500;
+    private static final int PREFETCH_DELAY_MS = 300; // right after the current Short is loaded
     private static final int PREFETCH_MAX_RETRIES = 10;
-    private static final int PREFETCH_CACHE_SIZE = 3;
+    private static final int PREFETCH_CACHE_SIZE = 6;
+    private static final int PREFETCH_LOOKAHEAD = 3; // Shorts preloaded ahead of the current one
     private final Playlist mPlaylist;
     private Video mPendingVideo;
     private SuggestionsController mSuggestionsController;
@@ -183,10 +185,26 @@ public class VideoLoaderController extends BasePlayerController {
 
         Video next = mSuggestionsController.getNext();
 
+        // Shorts: stay in the Shorts feed. The list is known up front, so don't wait for the suggestions
+        // ("Please wait while data is loading") and never fall through to the suggested regular video.
+        if (getVideo().isShorts) {
+            List<Video> ahead = getShortsLookahead(getVideo());
+            Video feedNext = ahead.isEmpty() ? null : ahead.get(0);
+
+            if (feedNext != null) {
+                next = feedNext;
+            } else if (next != null && !next.isShorts) {
+                next = null;
+            }
+        }
+
         ShortsTransitionState.setDirection(ShortsTransitionState.DIRECTION_NEXT);
 
         if (next != null) {
             openVideoInt(next);
+        } else if (getVideo().isShorts) {
+            // End of the loaded part of the feed: the continuation is being loaded
+            MessageHelpers.showMessage(getContext(), R.string.wait_data_loading);
         } else {
             waitMetadataSync(getVideo(), true);
         }
@@ -601,18 +619,61 @@ public class VideoLoaderController extends BasePlayerController {
     }
 
     /**
-     * Prefetch only while the current Short is actually playing (not buffering/paused),
-     * so the background request never competes with the video on screen.
+     * Start prefetching once the current Short's own data is loaded (don't compete with it).
      */
-    private boolean isCurrentPlaying() {
-        return getPlayer() != null && getPlayer().isPlaying() &&
-                getPlayer().getPositionMs() >= PREFETCH_MIN_POSITION_MS && !isActionsRunning();
+    private boolean isCurrentLoaded() {
+        return getPlayer() != null && !isActionsRunning();
     }
 
     private boolean isPrefetchAllowed(Video current) {
         return !isEmbedPlayer() && getPlayer() != null && current != null && !current.isLive && current.isShorts;
     }
 
+    /**
+     * Next Shorts straight from the feed list the user is in (known up front), or the suggested next video.
+     */
+    private List<Video> getShortsLookahead(Video current) {
+        List<Video> result = new ArrayList<>();
+
+        if (current == null) {
+            return result;
+        }
+
+        VideoGroup group = current.getGroup();
+
+        if (group != null && !group.isEmpty()) {
+            boolean found = false;
+
+            for (Video item : group.getVideos()) {
+                if (found && item.hasVideo() && !item.isUpcoming && !item.isLive && !Helpers.equals(item.videoId, current.videoId)) {
+                    result.add(item);
+
+                    if (result.size() >= PREFETCH_LOOKAHEAD) {
+                        break;
+                    }
+                }
+
+                if (item.equals(current)) {
+                    found = true;
+                }
+            }
+        }
+
+        if (result.isEmpty()) {
+            Video next = mSuggestionsController.getNext();
+
+            if (next != null && next.isShorts && next.hasVideo() && !next.isLive && !Helpers.equals(next.videoId, current.videoId)) {
+                result.add(next);
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Prefetches the next Shorts one by one (in order) and appends them to the player queue,
+     * so ExoPlayer can buffer them in the background.
+     */
     private void prefetchNext() {
         Video current = getVideo();
 
@@ -620,48 +681,53 @@ public class VideoLoaderController extends BasePlayerController {
             return;
         }
 
-        if (!isCurrentPlaying()) {
-            // Try again a bit later (e.g. the Short is still buffering)
+        if (!isCurrentLoaded()) {
             if (++mPrefetchRetries <= PREFETCH_MAX_RETRIES) {
                 Utils.postDelayed(mPrefetchNext, PREFETCH_DELAY_MS);
             }
             return;
         }
 
-        Video next = mSuggestionsController.getNext();
+        List<Video> ahead = getShortsLookahead(current);
 
-        if (next == null || !next.hasVideo() || next.isLive || Helpers.equals(next.videoId, current.videoId)) {
-            return;
-        }
+        for (int i = 0; i < ahead.size(); i++) {
+            Video next = ahead.get(i);
+            int distance = i + 1;
 
-        MediaItemFormatInfo cached = mPrefetchedFormats.get(next.videoId);
-        if (cached != null && cached.isCacheActual()) {
-            ExoPlayerController.enqueueShort(cached); // no-op if already queued
-            return;
-        }
+            MediaItemFormatInfo cached = mPrefetchedFormats.get(next.videoId);
+            if (cached != null && cached.isCacheActual()) {
+                ExoPlayerController.enqueueShort(cached, distance); // no-op if already queued
+                continue;
+            }
 
-        String nextVideoId = next.videoId;
-        Log.d(TAG, "Prefetching format info for %s", nextVideoId);
+            String nextVideoId = next.videoId;
+            Log.d(TAG, "Prefetching format info for %s (+%s)", nextVideoId, distance);
 
-        // Warm up the image used by the transition animation
-        try {
-            Glide.with(getContext()).load(ShortsTransitionState.getThumbnailUrl(nextVideoId)).preload();
-        } catch (IllegalArgumentException e) {
-            // Activity destroyed
-        }
+            // Warm up the image used by the transition animation
+            try {
+                Glide.with(getContext()).load(ShortsTransitionState.getThumbnailUrl(nextVideoId)).preload();
+            } catch (IllegalArgumentException e) {
+                // Activity destroyed
+            }
 
-        mPrefetchAction = YouTubeServiceManager.instance().getMediaItemService().getFormatInfoObserve(nextVideoId)
-                .subscribe(formatInfo -> {
-                    if (formatInfo != null && !formatInfo.isUnplayable() && !formatInfo.isLive()) {
-                        mPrefetchedFormats.put(nextVideoId, formatInfo);
+            mPrefetchAction = YouTubeServiceManager.instance().getMediaItemService().getFormatInfoObserve(nextVideoId)
+                    .subscribe(formatInfo -> {
+                        if (formatInfo != null && !formatInfo.isUnplayable() && !formatInfo.isLive()) {
+                            mPrefetchedFormats.put(nextVideoId, formatInfo);
 
-                        // Real preload: the player starts buffering the next Short in the background
-                        Video now = getVideo();
-                        if (now != null && Helpers.equals(now.videoId, current.videoId)) {
-                            ExoPlayerController.enqueueShort(formatInfo);
+                            // Real preload: the player buffers it in the background
+                            Video now = getVideo();
+                            if (now != null && Helpers.equals(now.videoId, current.videoId)) {
+                                ExoPlayerController.enqueueShort(formatInfo, distance);
+                            }
                         }
-                    }
-                }, error -> Log.e(TAG, "Prefetch failed for %s: %s", nextVideoId, error.getMessage()));
+
+                        // Continue with the next one in the chain
+                        Utils.post(mPrefetchNext);
+                    }, error -> Log.e(TAG, "Prefetch failed for %s: %s", nextVideoId, error.getMessage()));
+
+            return; // one request at a time
+        }
     }
 
     private MediaItemFormatInfo takePrefetched(Video video) {

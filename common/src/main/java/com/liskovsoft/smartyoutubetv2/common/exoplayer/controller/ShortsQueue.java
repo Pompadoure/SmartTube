@@ -59,10 +59,10 @@ public final class ShortsQueue {
     }
 
     /**
-     * Insert right after the current item (that's what plays next).
+     * Insert at the given distance after the current item (1 = plays next), keeping the feed order.
      */
-    void insertNext(String videoId, MediaSource source) {
-        int index = mCurrentIndex + 1;
+    void insertAt(int distance, String videoId, MediaSource source) {
+        int index = Math.min(mCurrentIndex + Math.max(1, distance), mVideoIds.size());
         mPlaylist.addMediaSource(index, source);
         mVideoIds.add(index, videoId);
     }
