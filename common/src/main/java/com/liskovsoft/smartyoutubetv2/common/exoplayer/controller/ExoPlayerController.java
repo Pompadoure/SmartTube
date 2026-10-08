@@ -10,6 +10,7 @@ import com.google.android.exoplayer2.Format;
 import com.google.android.exoplayer2.PlaybackParameters;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.SimpleExoPlayer;
+import com.google.android.exoplayer2.Timeline;
 import com.google.android.exoplayer2.source.MediaSource;
 import com.google.android.exoplayer2.source.MergingMediaSource;
 import com.google.android.exoplayer2.source.TrackGroupArray;
@@ -20,6 +21,7 @@ import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo;
 import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.smartyoutubetv2.common.BuildConfig;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
+import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.listener.PlayerEventListener;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.ExoMediaSourceFactory;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.errors.TrackErrorFixer;
@@ -54,6 +56,7 @@ public class ExoPlayerController implements Player.EventListener {
     private VolumeBooster mVolumeBooster;
     private boolean mIsEnded;
     private Runnable mOnVideoLoaded;
+    private static WeakReference<ExoPlayerController> sCurrent;
 
     public ExoPlayerController(Context context, PlayerEventListener eventListener) {
         PlayerTweaksData playerTweaksData = PlayerTweaksData.instance(context);
@@ -80,14 +83,135 @@ public class ExoPlayerController implements Player.EventListener {
     }
 
     public void openSabr(MediaItemFormatInfo formatInfo) {
+        if (switchToQueued(formatInfo)) {
+            return;
+        }
+
         MediaSource mediaSource = mMediaSourceFactory.fromSabrFormatInfo(formatInfo);
-        openMediaSource(mediaSource);
+        openShortsAware(formatInfo, mediaSource);
     }
 
     public void openDash(MediaItemFormatInfo formatInfo) {
+        if (switchToQueued(formatInfo)) {
+            return;
+        }
+
         MediaSource mediaSource = mMediaSourceFactory.fromDashFormatInfo(formatInfo);
-        openMediaSource(mediaSource);
+        openShortsAware(formatInfo, mediaSource);
     }
+
+    // BEGIN SmartTube J: Shorts preloading
+
+    /**
+     * Shorts are opened inside a player playlist, so the next one can be appended and preloaded.
+     */
+    private void openShortsAware(MediaItemFormatInfo formatInfo, MediaSource mediaSource) {
+        ShortsQueue queue = null;
+
+        if (ShortsTransitionState.isShortsMode() && formatInfo != null && formatInfo.getVideoId() != null) {
+            queue = new ShortsQueue(formatInfo.getVideoId(), mediaSource);
+            mediaSource = queue.getPlaylist();
+        }
+
+        openMediaSource(mediaSource); // resets the previous queue
+        ShortsQueue.setActive(queue);
+    }
+
+    /**
+     * The video is already in the player (preloaded next or the previous one): just jump to it.
+     */
+    private boolean switchToQueued(MediaItemFormatInfo formatInfo) {
+        ShortsQueue queue = ShortsQueue.getActive();
+
+        if (queue == null || mPlayer == null || formatInfo == null || !ShortsTransitionState.isShortsMode()) {
+            return false;
+        }
+
+        int index = queue.indexOf(formatInfo.getVideoId());
+
+        if (index == -1 || index == mPlayer.getCurrentWindowIndex() || index >= mPlayer.getCurrentTimeline().getWindowCount()) {
+            return false;
+        }
+
+        Log.d(TAG, "Shorts: switching to preloaded item %s (index %s)", formatInfo.getVideoId(), index);
+
+        setQualityInfo("");
+        mTrackSelectorManager.invalidate();
+        mOnSourceChanged = true;
+        mEventListener.onSourceChanged(getVideo());
+        mPlayer.seekTo(index, 0);
+        mPlayer.setPlayWhenReady(true);
+        queue.trimBefore(index);
+
+        return true;
+    }
+
+    /**
+     * Append the next Short to the player playlist. ExoPlayer starts buffering it in the background
+     * as soon as the current one is fully buffered.
+     */
+    public static boolean enqueueShort(MediaItemFormatInfo formatInfo) {
+        ExoPlayerController controller = sCurrent != null ? sCurrent.get() : null;
+        return controller != null && controller.enqueueShortInt(formatInfo);
+    }
+
+    private boolean enqueueShortInt(MediaItemFormatInfo formatInfo) {
+        ShortsQueue queue = ShortsQueue.getActive();
+
+        if (queue == null || mPlayer == null || formatInfo == null || formatInfo.getVideoId() == null || !ShortsTransitionState.isShortsMode()) {
+            return false;
+        }
+
+        if (queue.contains(formatInfo.getVideoId())) {
+            return true;
+        }
+
+        MediaSource mediaSource;
+
+        if (formatInfo.containsDashFormats()) {
+            mediaSource = mMediaSourceFactory.fromDashFormatInfo(formatInfo);
+        } else if (formatInfo.containsSabrFormats()) {
+            mediaSource = mMediaSourceFactory.fromSabrFormatInfo(formatInfo);
+        } else {
+            return false;
+        }
+
+        // Anything queued after the current item isn't the next anymore
+        queue.trimAfter(mPlayer.getCurrentWindowIndex());
+        queue.append(formatInfo.getVideoId(), mediaSource);
+        Log.d(TAG, "Shorts: preloading %s", formatInfo.getVideoId());
+
+        return true;
+    }
+
+    /**
+     * The player moved into the preloaded Short by itself (the current one ended).
+     * Go back to the end of the finished Short and let the app decide (loop, next, pause...).
+     */
+    private boolean handleQueueAutoAdvance() {
+        ShortsQueue queue = ShortsQueue.getActive();
+
+        if (queue == null || mPlayer == null) {
+            return false;
+        }
+
+        int current = mPlayer.getCurrentWindowIndex();
+
+        if (current <= 0) {
+            return false;
+        }
+
+        int prev = current - 1;
+        long prevDurationMs = mPlayer.getCurrentTimeline().getWindow(prev, new Timeline.Window()).getDurationMs();
+
+        mPlayer.setPlayWhenReady(false);
+        mPlayer.seekTo(prev, Math.max(0, prevDurationMs - 100));
+        mEventListener.onPlayEnd();
+
+        return true;
+    }
+
+    // END SmartTube J
 
     public void openDash(InputStream dashManifest) {
         MediaSource mediaSource = mMediaSourceFactory.fromDashManifest(dashManifest);
@@ -195,6 +319,7 @@ public class ExoPlayerController implements Player.EventListener {
     }
     
     public void release() {
+        ShortsQueue.setActive(null);
         mTrackSelectorManager.release();
         mMediaSourceFactory.release();
         releasePlayer();
@@ -206,6 +331,7 @@ public class ExoPlayerController implements Player.EventListener {
     public void setPlayer(SimpleExoPlayer player) {
         mPlayer = player;
         player.addListener(this);
+        sCurrent = new WeakReference<>(this);
     }
 
     //@Override
@@ -371,6 +497,10 @@ public class ExoPlayerController implements Player.EventListener {
 
         // Fix video loop on 480p with legacy codes enabled
         if (reason == Player.DISCONTINUITY_REASON_PERIOD_TRANSITION) {
+            if (handleQueueAutoAdvance()) {
+                return;
+            }
+
             mPlayer.stop();
             mEventListener.onPlayEnd();
         }
@@ -439,6 +569,8 @@ public class ExoPlayerController implements Player.EventListener {
      * Without this also you'll have problems with track quality switching(??).
      */
     public void resetPlayerState() {
+        ShortsQueue.setActive(null);
+
         if (containsMedia()) {
             mPlayer.stop(true);
         }

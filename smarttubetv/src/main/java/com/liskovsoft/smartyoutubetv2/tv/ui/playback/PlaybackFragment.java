@@ -52,6 +52,7 @@ import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.VideoGroup;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
+import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ShortsQueue;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.manager.PlayerUI;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.ChatReceiver;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.SeekBarSegment;
@@ -1625,12 +1626,22 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
      */
     @Override
     public void resetPlayerState() {
+        int direction = ShortsTransitionState.consumeDirection();
+        Video video = getVideo();
+
+        if (video != null && ShortsQueue.isQueued(video.videoId)) {
+            // Preloaded Short: it's already in the player, keep everything as is (no black screen, no reset)
+            mShortsTransition.hide(false);
+            setChatReceiver(null);
+            setSeekBarSegments(null);
+            setSeekPreviewTitle(null);
+            return;
+        }
+
         mExoPlayerController.resetPlayerState();
         // Hide last frame of the previous video
         showBackgroundColor(R.color.player_background);
 
-        int direction = ShortsTransitionState.consumeDirection();
-        Video video = getVideo();
         if (video != null && video.isShorts && !isInPIPMode()) {
             // Shorts feed: show the upcoming video's thumbnail instead of the black screen
             mShortsTransition.show(video, direction);

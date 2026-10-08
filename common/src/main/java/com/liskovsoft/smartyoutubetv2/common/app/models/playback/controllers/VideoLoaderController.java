@@ -24,6 +24,7 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.playback.manager.PlayerC
 import com.liskovsoft.smartyoutubetv2.common.app.presenters.AppDialogPresenter;
 import com.liskovsoft.smartyoutubetv2.common.app.presenters.dialogs.VideoActionPresenter;
 import com.liskovsoft.smartyoutubetv2.common.app.views.PlaybackView;
+import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ExoPlayerController;
 import com.liskovsoft.smartyoutubetv2.common.misc.MediaServiceManager;
 import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerData;
 import com.liskovsoft.smartyoutubetv2.common.utils.Utils;
@@ -476,6 +477,7 @@ public class VideoLoaderController extends BasePlayerController {
                     restartEngine();
                 } else {
                     getPlayer().setPositionMs(0);
+                    getPlayer().setPlayWhenReady(true); // Shorts queue pauses at the end of an item
                 }
                 break;
             case PlayerConstants.PLAYBACK_MODE_CLOSE:
@@ -634,6 +636,7 @@ public class VideoLoaderController extends BasePlayerController {
 
         MediaItemFormatInfo cached = mPrefetchedFormats.get(next.videoId);
         if (cached != null && cached.isCacheActual()) {
+            ExoPlayerController.enqueueShort(cached); // no-op if already queued
             return;
         }
 
@@ -651,6 +654,12 @@ public class VideoLoaderController extends BasePlayerController {
                 .subscribe(formatInfo -> {
                     if (formatInfo != null && !formatInfo.isUnplayable() && !formatInfo.isLive()) {
                         mPrefetchedFormats.put(nextVideoId, formatInfo);
+
+                        // Real preload: the player starts buffering the next Short in the background
+                        Video now = getVideo();
+                        if (now != null && Helpers.equals(now.videoId, current.videoId)) {
+                            ExoPlayerController.enqueueShort(formatInfo);
+                        }
                     }
                 }, error -> Log.e(TAG, "Prefetch failed for %s: %s", nextVideoId, error.getMessage()));
     }
