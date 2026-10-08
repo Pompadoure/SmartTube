@@ -37,7 +37,9 @@ import java.util.Map;
 public class VideoLoaderController extends BasePlayerController {
     private static final String TAG = VideoLoaderController.class.getSimpleName();
     private static final int MIN_SHUFFLE_SIZE = 30;
-    private static final int PREFETCH_DELAY_MS = 1_500;
+    private static final int PREFETCH_DELAY_MS = 3_000; // let the current Short start and buffer first
+    private static final int PREFETCH_MIN_POSITION_MS = 2_000;
+    private static final int PREFETCH_MAX_RETRIES = 5;
     private static final int PREFETCH_CACHE_SIZE = 3;
     private final Playlist mPlaylist;
     private Video mPendingVideo;
@@ -53,6 +55,7 @@ public class VideoLoaderController extends BasePlayerController {
         }
     };
     private final Runnable mPrefetchNext = this::prefetchNext;
+    private int mPrefetchRetries;
     private final Runnable mReloadVideo = () -> {
         getMainController().onNewVideo(getVideo());
     };
@@ -583,6 +586,7 @@ public class VideoLoaderController extends BasePlayerController {
      */
     private void schedulePrefetch() {
         Utils.removeCallbacks(mPrefetchNext);
+        mPrefetchRetries = 0;
 
         Video current = getVideo();
 
@@ -593,6 +597,15 @@ public class VideoLoaderController extends BasePlayerController {
         Utils.postDelayed(mPrefetchNext, PREFETCH_DELAY_MS);
     }
 
+    /**
+     * Prefetch only while the current Short is actually playing (not buffering/paused),
+     * so the background request never competes with the video on screen.
+     */
+    private boolean isCurrentPlaying() {
+        return getPlayer() != null && getPlayer().isPlaying() &&
+                getPlayer().getPositionMs() >= PREFETCH_MIN_POSITION_MS && !isActionsRunning();
+    }
+
     private boolean isPrefetchAllowed(Video current) {
         return !isEmbedPlayer() && getPlayer() != null && current != null && !current.isLive && current.isShorts;
     }
@@ -601,6 +614,14 @@ public class VideoLoaderController extends BasePlayerController {
         Video current = getVideo();
 
         if (!isPrefetchAllowed(current) || RxHelper.isAnyActionRunning(mPrefetchAction)) {
+            return;
+        }
+
+        if (!isCurrentPlaying()) {
+            // Try again a bit later (e.g. the Short is still buffering)
+            if (++mPrefetchRetries <= PREFETCH_MAX_RETRIES) {
+                Utils.postDelayed(mPrefetchNext, PREFETCH_DELAY_MS);
+            }
             return;
         }
 
