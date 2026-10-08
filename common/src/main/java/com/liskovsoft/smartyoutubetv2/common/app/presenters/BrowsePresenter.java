@@ -428,17 +428,18 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
 
         mCurrentVideo = item;
 
-        // JoTube: the focused video is probably the one that gets opened. Fetch its stream info now
+        // JoTube: the focused Short is probably the one that gets opened. Fetch its stream info now
         // (one video cache in the service), so the player starts right away instead of after ~3 s.
+        // Only Shorts: prefetching every focused card ran fetches in parallel with the player's and broke streams (403).
         Utils.removeCallbacks(mPrefetchFocusedShort);
-        if (item != null && item.hasVideo() && !item.isLive && !item.isUpcoming) {
-            Utils.postDelayed(mPrefetchFocusedShort, 500);
+        if (item != null && item.isShorts && item.hasVideo() && !item.isLive) {
+            Utils.postDelayed(mPrefetchFocusedShort, 400);
         }
     }
 
     private final Runnable mPrefetchFocusedShort = () -> {
         Video item = mCurrentVideo;
-        if (item != null && item.hasVideo() && getView() != null) {
+        if (item != null && item.isShorts && getView() != null) {
             MediaServiceManager.instance().loadFormatInfo(item, formatInfo -> {});
         }
     };

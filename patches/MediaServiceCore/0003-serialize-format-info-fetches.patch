@@ -1,0 +1,16 @@
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt
+index a6e72777..d9663441 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt
+@@ -26,7 +26,11 @@ internal object FormatInfoWrapper {
+     private val mLegacyProvider: (String, String?) -> MediaItemFormatInfo? =
+         { videoId, clickTrackingParams -> getFormatInfoLegacy(videoId, clickTrackingParams) }
+ 
++    // JoTube: one fetch at a time. The services behind (VideoInfoService, PoTokenGate, AppService decipher,
++    // the single cached info) share state that isn't thread safe; parallel fetches (focus prefetch, Shorts
++    // lookahead, the player) mixed it up and the streams failed with 403.
+     @JvmStatic
++    @Synchronized
+     fun getFormatInfo(videoId: String, clickTrackingParams: String?): MediaItemFormatInfo? {
+         try {
+             return selectPlaybackFormatInfo(videoId, clickTrackingParams)
