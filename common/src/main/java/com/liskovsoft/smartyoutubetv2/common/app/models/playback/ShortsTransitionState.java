@@ -34,6 +34,21 @@ public final class ShortsTransitionState {
         return sIsLive;
     }
 
+    private static volatile String sResumeVideoId;
+
+    /**
+     * JoTube: the Shorts player was left to the sidebar (left key), going back into the Shorts section continues here.
+     */
+    public static void setResumeVideoId(String videoId) {
+        sResumeVideoId = videoId;
+    }
+
+    public static String consumeResumeVideoId() {
+        String videoId = sResumeVideoId;
+        sResumeVideoId = null;
+        return videoId;
+    }
+
     public static void setLive(boolean isLive) {
         sIsLive = isLive;
     }

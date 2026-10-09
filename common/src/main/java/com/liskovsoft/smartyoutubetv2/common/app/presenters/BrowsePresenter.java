@@ -14,6 +14,7 @@ import com.liskovsoft.sharedutils.locale.LocaleUtility;
 import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.sharedutils.rx.RxHelper;
 import com.liskovsoft.youtubeapi.service.YouTubeServiceManager;
+import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
 import com.liskovsoft.smartyoutubetv2.common.R;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.BrowseSection;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Playlist;
@@ -144,7 +145,12 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
     public void onViewResumed() {
         super.onViewResumed();
 
-        onShortsPlayerClosed(); // JoTube
+        // JoTube: left from the Shorts player opens the sidebar
+        String resumeVideoId = ShortsTransitionState.consumeResumeVideoId();
+        onShortsPlayerClosed(resumeVideoId);
+        if (resumeVideoId != null && getView() != null) {
+            getView().showHeaders();
+        }
         refreshIfNeeded();
     }
 
@@ -457,6 +463,7 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
     private VideoGroup mPlayingShortsGroup; // strong ref: the player follows its order (Video holds a weak ref only)
     private long mShortsLoadStartMs = -1; // the running Shorts feed load
     private Disposable mFirstShortPrefetch;
+    private String mResumeVideoId; // left to the sidebar from this Short: continue from it
 
     /**
      * The focus moved from the sidebar into the section content (true) or back to the sidebar (false).
@@ -522,7 +529,9 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
             return;
         }
 
-        Video first = findFirstShort(mShortsGroup);
+        Video resume = findVideo(mShortsGroup, mResumeVideoId);
+        Video first = resume != null ? resume : findFirstShort(mShortsGroup);
+        mResumeVideoId = null;
 
         if (first == null) {
             return; // the feed is still loading
@@ -548,11 +557,12 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
         return null;
     }
 
-    private void onShortsPlayerClosed() {
+    private void onShortsPlayerClosed(String resumeVideoId) {
         if (!mShortsAutoStarted) {
             return;
         }
 
+        VideoGroup playedGroup = mPlayingShortsGroup;
         mShortsAutoStarted = false;
         mPendingShortsStart = false;
         mPlayingShortsGroup = null;
@@ -562,10 +572,32 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
         }
 
         if (getView() != null && isShortsSection()) {
-            // Back to the sidebar with a fresh feed for the next time
             getView().showHeaders();
-            updateCurrentSection();
+
+            if (resumeVideoId != null && findVideo(playedGroup, resumeVideoId) != null) {
+                // Left to the sidebar: going back in continues from the same Short, in the same feed
+                mShortsGroup = playedGroup;
+                mResumeVideoId = resumeVideoId;
+            } else {
+                // Closed: a fresh feed for the next time
+                mResumeVideoId = null;
+                updateCurrentSection();
+            }
         }
+    }
+
+    private static Video findVideo(VideoGroup group, String videoId) {
+        if (group == null || group.isEmpty() || videoId == null) {
+            return null;
+        }
+
+        for (Video item : group.getVideos()) {
+            if (item != null && videoId.equals(item.videoId)) {
+                return item;
+            }
+        }
+
+        return null;
     }
 
     @Override
@@ -925,6 +957,7 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
         boolean isShortsGrid = section.getType() == BrowseSection.TYPE_SHORTS_GRID;
         if (isShortsGrid) {
             mShortsGroup = null; // reloading
+            mResumeVideoId = null;
             mShortsLoadStartMs = System.currentTimeMillis();
         }
 

@@ -218,6 +218,14 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                 PlayerTweaksData tweaks = PlayerTweaksData.instance(getContext());
                 return video.belongsToShortsGroup() ? tweaks.isQuickSkipShortsEnabled() : tweaks.isQuickSkipVideosEnabled();
             }
+
+            @Override
+            public void openSidebar() {
+                // Back to the browse screen with the sidebar open, the Shorts section continues from this Short
+                Video video = getVideo();
+                ShortsTransitionState.setResumeVideoId(video != null ? video.videoId : null);
+                finish();
+            }
         });
 
         return root;

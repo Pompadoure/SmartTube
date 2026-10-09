@@ -1,5 +1,7 @@
 package com.liskovsoft.smartyoutubetv2.tv.ui.playback;
 
+import android.animation.ArgbEvaluator;
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.PorterDuff;
@@ -38,6 +40,7 @@ public class ShortsSidePanel {
         void clickButton(int buttonId);
         void showControls();
         boolean isLeftRightSwitchEnabled();
+        void openSidebar();
     }
 
     private static final int ITEM_NONE = -1;
@@ -50,10 +53,25 @@ public class ShortsSidePanel {
     private static final int MIN_WIDTH_DP = 180;
     private static final int MAX_WIDTH_DP = 460;
     private static final int GAP_DP = 48;
+    // The frame around the video: white when the video gets the focus, then it fades to grey (like the official app)
+    private static final int BORDER_DP = 3;
+    private static final int BORDER_OUTSET_DP = 5;
+    private static final int BORDER_RADIUS_DP = 14;
+    private static final int BORDER_HOLD_MS = 1500;
+    private static final int BORDER_FADE_MS = 700;
+    private static final int BORDER_WHITE = Color.WHITE;
+    private static final int BORDER_GREY = Color.argb(255, 140, 140, 140);
+    private static final int BORDER_DIM = Color.argb(110, 140, 140, 140); // the focus is in the panel
 
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private final Runnable mFocusTimeout = () -> setFocus(ITEM_NONE);
     private final Runnable mUpdatePosition = this::updatePosition;
+    private final Runnable mFadeBorder = this::fadeBorder;
+    private View mBorder;
+    private GradientDrawable mBorderDrawable;
+    private ValueAnimator mBorderAnimator;
+    private int mBorderColor = BORDER_GREY;
+    private String mBoundVideoId;
     private final Set<Integer> mConsumedKeys = new HashSet<>();
     private ViewGroup mRoot;
     private View mSurface;
@@ -145,6 +163,21 @@ public class ShortsSidePanel {
         params.gravity = Gravity.BOTTOM | Gravity.LEFT;
         root.addView(mPanel, index, params);
 
+        // The frame: above the video and the transition thumbnail, below the panel
+        mBorder = new View(context);
+        mBorder.setFocusable(false);
+        mBorder.setClickable(false);
+        mBorder.setVisibility(View.GONE);
+        mBorderDrawable = new GradientDrawable();
+        mBorderDrawable.setShape(GradientDrawable.RECTANGLE);
+        mBorderDrawable.setCornerRadius(dp(BORDER_RADIUS_DP));
+        mBorderDrawable.setColor(Color.TRANSPARENT);
+        mBorderDrawable.setStroke(dp(BORDER_DP), mBorderColor);
+        mBorder.setBackground(mBorderDrawable);
+        FrameLayout.LayoutParams borderParams = new FrameLayout.LayoutParams(0, 0);
+        borderParams.gravity = Gravity.TOP | Gravity.LEFT;
+        root.addView(mBorder, root.indexOfChild(mPanel), borderParams);
+
         if (mSurface != null) {
             mSurface.addOnLayoutChangeListener(mLayoutListener);
         }
@@ -166,9 +199,20 @@ public class ShortsSidePanel {
             if (mPanel != null) {
                 mRoot.removeView(mPanel);
             }
+            if (mBorder != null) {
+                mRoot.removeView(mBorder);
+            }
+        }
+
+        if (mBorderAnimator != null) {
+            mBorderAnimator.cancel();
+            mBorderAnimator = null;
         }
 
         mRoot = null;
+        mBorder = null;
+        mBorderDrawable = null;
+        mBoundVideoId = null;
         mSurface = null;
         mPanel = null;
         mCallback = null;
@@ -195,6 +239,13 @@ public class ShortsSidePanel {
         mLikeCount.setVisibility(video.likeCount != null && !video.likeCount.isEmpty() ? View.VISIBLE : View.GONE);
         loadAvatar(video.authorImageUrl);
         updateStyles();
+
+        if (video.videoId != null && !video.videoId.equals(mBoundVideoId)) {
+            mBoundVideoId = video.videoId;
+            if (mFocus == ITEM_NONE) {
+                highlightBorder(); // a new Short
+            }
+        }
     }
 
     /**
@@ -276,11 +327,22 @@ public class ShortsSidePanel {
     }
 
     private boolean handleEntryKey(int keyCode) {
-        int entryKey = mCallback != null && mCallback.isLeftRightSwitchEnabled() ? KeyEvent.KEYCODE_DPAD_UP : KeyEvent.KEYCODE_DPAD_RIGHT;
+        boolean leftRightSwitch = mCallback != null && mCallback.isLeftRightSwitchEnabled();
+        int entryKey = leftRightSwitch ? KeyEvent.KEYCODE_DPAD_UP : KeyEvent.KEYCODE_DPAD_RIGHT;
 
         if (keyCode == entryKey) {
             setFocus(ITEM_LIKE);
             return true;
+        }
+
+        // Left of the video: the sidebar (to other sections, settings...), unless left switches the Shorts
+        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT && !leftRightSwitch && mCallback != null) {
+            mCallback.openSidebar();
+            return true;
+        }
+
+        if (isNavigationKey(keyCode)) {
+            highlightBorder(); // e.g. up/down to the next Short: the video has the focus
         }
 
         return false;
@@ -365,15 +427,105 @@ public class ShortsSidePanel {
     }
 
     private void setFocus(int item) {
+        boolean wasFocused = mFocus != ITEM_NONE;
         mFocus = item;
         mHandler.removeCallbacks(mFocusTimeout);
 
         if (item != ITEM_NONE) {
             mHandler.postDelayed(mFocusTimeout, FOCUS_TIMEOUT_MS);
+            dimBorder(); // the focus is in the panel
+        } else if (wasFocused) {
+            highlightBorder(); // back on the video
         }
 
         if (mPanel != null) {
             updateStyles();
+        }
+    }
+
+    private void highlightBorder() {
+        if (mBorderDrawable == null) {
+            return;
+        }
+
+        mHandler.removeCallbacks(mFadeBorder);
+        cancelBorderAnimation();
+        setBorderColor(BORDER_WHITE);
+        mHandler.postDelayed(mFadeBorder, BORDER_HOLD_MS);
+    }
+
+    private void fadeBorder() {
+        if (mBorderDrawable == null || mFocus != ITEM_NONE) {
+            return;
+        }
+
+        cancelBorderAnimation();
+        mBorderAnimator = ValueAnimator.ofObject(new ArgbEvaluator(), mBorderColor, BORDER_GREY);
+        mBorderAnimator.setDuration(BORDER_FADE_MS);
+        mBorderAnimator.addUpdateListener(animation -> setBorderColor((Integer) animation.getAnimatedValue()));
+        mBorderAnimator.start();
+    }
+
+    private void dimBorder() {
+        if (mBorderDrawable == null) {
+            return;
+        }
+
+        mHandler.removeCallbacks(mFadeBorder);
+        cancelBorderAnimation();
+        setBorderColor(BORDER_DIM);
+    }
+
+    private void cancelBorderAnimation() {
+        if (mBorderAnimator != null) {
+            mBorderAnimator.cancel();
+            mBorderAnimator = null;
+        }
+    }
+
+    private void setBorderColor(int color) {
+        mBorderColor = color;
+
+        if (mBorderDrawable != null) {
+            mBorderDrawable.setStroke(dp(BORDER_DP), color);
+        }
+
+        if (mBorder != null) {
+            mBorder.invalidate();
+        }
+    }
+
+    /**
+     * The frame follows the video (the surface container is resized to the video inside the 9:16 frame).
+     */
+    private void positionBorder() {
+        if (mBorder == null || mSurface == null) {
+            return;
+        }
+
+        boolean show = mFrameEnabled && mSurface.getWidth() > 0 && mSurface.getHeight() > 0;
+
+        if (show) {
+            int outset = dp(BORDER_OUTSET_DP);
+            int left = mSurface.getLeft() - outset;
+            int top = mSurface.getTop() - outset;
+            int width = mSurface.getWidth() + outset * 2;
+            int height = mSurface.getHeight() + outset * 2;
+            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) mBorder.getLayoutParams();
+
+            if (params.leftMargin != left || params.topMargin != top || params.width != width || params.height != height) {
+                params.leftMargin = left;
+                params.topMargin = top;
+                params.width = width;
+                params.height = height;
+                mBorder.setLayoutParams(params);
+            }
+        }
+
+        int visibility = show ? View.VISIBLE : View.GONE;
+
+        if (mBorder.getVisibility() != visibility) {
+            mBorder.setVisibility(visibility);
         }
     }
 
@@ -404,6 +556,7 @@ public class ShortsSidePanel {
 
         mFrameEnabled = enabled;
         applyFrame();
+        positionBorder();
     }
 
     private void applyFrame() {
@@ -428,6 +581,7 @@ public class ShortsSidePanel {
 
     private void updatePosition() {
         applyFrame();
+        positionBorder();
 
         if (mPanel == null || mRoot == null || mSurface == null || !mEnabled) {
             return;
