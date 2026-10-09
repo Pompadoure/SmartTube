@@ -523,7 +523,9 @@ public class ExoPlayerController implements Player.EventListener {
         mTrackSelectorManager.setTrackSelector(trackSelector);
         mTunnelingTrackSelector = null;
 
-        if (mContext != null && trackSelector != null && PlayerTweaksData.instance(mContext).isTunneledPlaybackEnabled()) {
+        // JoTube: tunneled playback is off for every video (the setting is ignored). In tunnel mode each start
+        // waited ~0.5 s for the A/V sync on the Streamer, and the video frame can't be captured for transitions.
+        if (TUNNELING_ALLOWED && mContext != null && trackSelector != null && PlayerTweaksData.instance(mContext).isTunneledPlaybackEnabled()) {
             // Enable tunneling if supported by the current media and device configuration.
             if (VERSION.SDK_INT >= 21) {
                 mTunnelingSessionId = C.generateAudioSessionIdV21(mContext);
@@ -533,6 +535,7 @@ public class ExoPlayerController implements Player.EventListener {
         }
     }
 
+    private static final boolean TUNNELING_ALLOWED = false;
     private DefaultTrackSelector mTunnelingTrackSelector; // tunneling is enabled in the settings
     private int mTunnelingSessionId = C.AUDIO_SESSION_ID_UNSET;
 
