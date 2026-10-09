@@ -20,6 +20,7 @@ import android.widget.ImageView;
 
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.request.target.Target;
+import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
 
@@ -30,13 +31,14 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitio
  * slide, so the new Short is already playing while it moves into place.
  */
 public class ShortsTransitionOverlay {
-    // The first frame of a preloaded Short comes ~170-320 ms after the switch (Streamer, no tunneling):
-    // a 300 ms slide lets it appear while still moving, where a soft cross-fade is hardly visible
-    private static final int SWIPE_DURATION_MS = 300;
-    private static final int REVEAL_DURATION_MS = 160; // the thumbnail over the moving video fades out
-    private static final int FADE_OUT_DURATION_MS = 160;
+    // The slide starts when the new video is already playing (its first frame came during the hold)
+    private static final int SWIPE_DURATION_MS = 250;
+    private static final int REVEAL_DURATION_MS = 120; // the black cover over the moving video fades out
+    private static final int FADE_OUT_DURATION_MS = 120;
     private static final int FAILSAFE_HIDE_MS = 10_000;
     private static final int SNAPSHOT_TIMEOUT_MS = 40;
+    private static final int HOLD_TIMEOUT_MS = 450; // the first frame normally comes in 170-320 ms
+    private static final String TAG = "ShortsTransition";
     private static final int GAP_DP = 16; // space between the outgoing and the incoming Short
     private static final Interpolator SWIPE_INTERPOLATOR = new FastOutSlowIn();
     private final Handler mHandler = new Handler(Looper.getMainLooper());
@@ -53,6 +55,7 @@ public class ShortsTransitionOverlay {
     private View mSurfaceRoot; // the real video
     private ValueAnimator mSwipe;
     private Runnable mSnapshotTimeout;
+    private Runnable mHoldStart; // the old picture is held until the new video's first frame
     private int mSwipeId; // a newer swipe makes the callbacks of an older one void
     private boolean mIsShown;
     private boolean mFirstFrameRendered;
@@ -173,6 +176,8 @@ public class ShortsTransitionOverlay {
 
     /**
      * The swipe from one Short to the next (direction: next = the new one comes from the bottom).
+     * No placeholder image: the old picture stays still (a snapshot of its last frame) until the new video's
+     * first frame is rendered, then the snapshot slides out and the real, already playing video slides in.
      *
      * @param videoView the view the current video is rendered on: its last frame is the outgoing picture.
      *                  Null if it's not on the surface anymore (the player was reset): the thumbnail is used.
@@ -191,55 +196,60 @@ public class ShortsTransitionOverlay {
             return;
         }
 
-        // What's on screen now, where it is (a fast second swipe starts from the middle of the first one)
-        boolean coverShown = mIsShown && !mFirstFrameRendered && mSnapshotTimeout == null &&
-                mIn.getVisibility() == View.VISIBLE && mIn.getAlpha() > 0.5f && mIn.getDrawable() != null;
-        float outStart = mSurfaceRoot != null ? mSurfaceRoot.getTranslationY() : 0;
-
-        prepare();
-        mFirstFrameRendered = false;
-        final int swipeId = ++mSwipeId;
         final float distance = height + GAP_DP * mContainer.getResources().getDisplayMetrics().density;
 
-        // The new Short, ready below (or above) the frame: the surface and its cover move together
-        loadThumbnail(mIn, to);
-        mIn.setAlpha(1f);
-        mIn.setVisibility(View.VISIBLE);
+        if (mHoldStart != null) {
+            // Still showing the old picture (the previous target wasn't ready yet): wait for this one instead
+            mHandler.removeCallbacks(mHoldStart);
+            mHoldStart = null;
+            mFirstFrameRendered = false;
+            hold(++mSwipeId, direction, distance);
+            return;
+        }
+
+        // The black cover is on screen (the previous video hasn't shown a frame yet): that's the outgoing picture
+        boolean coverOnScreen = mIsShown && !mFirstFrameRendered && mSnapshotTimeout == null &&
+                mIn.getVisibility() == View.VISIBLE && mIn.getAlpha() > 0.5f;
+
+        prepare();
+        setSurfaceOffset(0);
+        mFirstFrameRendered = false;
+        final int swipeId = ++mSwipeId;
+        clearImage(mIn);
+        mIn.setVisibility(View.GONE);
         mHandler.postDelayed(mFailsafeHide, FAILSAFE_HIDE_MS);
 
-        if (coverShown) {
-            // The previous swipe hasn't shown its video yet: its thumbnail is what's on screen
-            setOutImage(null, from);
-            startSwipe(swipeId, direction, distance, outStart);
+        if (coverOnScreen) {
+            clearImage(mOut); // black
+            hold(swipeId, direction, distance);
             return;
         }
 
         if (videoView instanceof TextureView && ((TextureView) videoView).isAvailable()) {
-            Bitmap frame = captureTexture((TextureView) videoView);
-            setOutImage(frame, from);
-            startSwipe(swipeId, direction, distance, outStart);
+            setOutImage(captureTexture((TextureView) videoView), from);
+            hold(swipeId, direction, distance);
             return;
         }
 
         if (videoView instanceof SurfaceView && Build.VERSION.SDK_INT >= 24 && videoView.getWidth() > 0 &&
                 videoView.getHeight() > 0 && ((SurfaceView) videoView).getHolder().getSurface().isValid()) {
-            // Keep the old picture still until its copy is ready (a few ms), then start
             final Bitmap bitmap;
             try {
                 bitmap = Bitmap.createBitmap(Math.max(1, videoView.getWidth() / 2),
                         Math.max(1, videoView.getHeight() / 2), Bitmap.Config.ARGB_8888);
             } catch (OutOfMemoryError e) {
                 setOutImage(null, from);
-                startSwipe(swipeId, direction, distance, outStart);
+                hold(swipeId, direction, distance);
                 return;
             }
 
-            mIn.setTranslationY(direction * distance); // ready, not on screen yet
+            // The old video is still on the surface (the switch comes later): copy its picture (a few ms)
             mSnapshotTimeout = () -> {
                 if (swipeId == mSwipeId) {
-                    com.liskovsoft.sharedutils.mylogger.Log.d("ShortsTransition", "Snapshot timed out");
+                    Log.d(TAG, "Snapshot timed out");
+                    mSnapshotTimeout = null;
                     setOutImage(null, from);
-                    startSwipe(swipeId, direction, distance, outStart);
+                    hold(swipeId, direction, distance);
                 }
             };
             mHandler.postDelayed(mSnapshotTimeout, SNAPSHOT_TIMEOUT_MS);
@@ -247,22 +257,46 @@ public class ShortsTransitionOverlay {
             try {
                 PixelCopy.request((SurfaceView) videoView, bitmap, result -> {
                     // Void if timed out or a newer swipe started
-                    if (swipeId != mSwipeId || mSwipe != null || mSnapshotTimeout == null) {
+                    if (swipeId != mSwipeId || mSnapshotTimeout == null) {
                         return;
                     }
                     mHandler.removeCallbacks(mSnapshotTimeout);
-                    com.liskovsoft.sharedutils.mylogger.Log.d("ShortsTransition", "Snapshot result: %s", result);
+                    mSnapshotTimeout = null;
                     setOutImage(result == PixelCopy.SUCCESS ? bitmap : null, from);
-                    startSwipe(swipeId, direction, distance, outStart);
+                    hold(swipeId, direction, distance);
                 }, mHandler);
             } catch (IllegalArgumentException e) {
-                // The surface is gone: the timeout starts with the thumbnail
+                // The surface is gone: the timeout continues with the thumbnail
             }
             return;
         }
 
         setOutImage(null, from);
-        startSwipe(swipeId, direction, distance, outStart);
+        hold(swipeId, direction, distance);
+    }
+
+    /**
+     * The old picture stays in place until the new video's first frame (or the timeout: then it slides with
+     * a black cover over the new video until its frame comes).
+     */
+    private void hold(int swipeId, int direction, float distance) {
+        if (mContainer == null || swipeId != mSwipeId) {
+            return;
+        }
+
+        mOut.setTranslationY(0);
+        mOut.setVisibility(View.VISIBLE);
+
+        if (mFirstFrameRendered) {
+            startSwipe(swipeId, direction, distance);
+            return;
+        }
+
+        mHoldStart = () -> {
+            mHoldStart = null;
+            startSwipe(swipeId, direction, distance);
+        };
+        mHandler.postDelayed(mHoldStart, HOLD_TIMEOUT_MS);
     }
 
     private static Bitmap captureTexture(TextureView view) {
@@ -286,27 +320,22 @@ public class ShortsTransitionOverlay {
         }
     }
 
-    private void startSwipe(int swipeId, int direction, float distance, float outStart) {
+    private void startSwipe(int swipeId, int direction, float distance) {
         if (mContainer == null || swipeId != mSwipeId) {
             return;
-        }
-
-        if (mSnapshotTimeout != null) {
-            mHandler.removeCallbacks(mSnapshotTimeout);
-            mSnapshotTimeout = null;
         }
 
         final float outEnd = -direction * distance;
         final float inStart = direction * distance;
 
         mOut.setVisibility(View.VISIBLE);
-        mOut.setTranslationY(outStart);
+        mOut.setTranslationY(0);
+        // The new video: black until its first frame (not ready only after the hold timeout)
+        clearImage(mIn);
+        mIn.setVisibility(View.VISIBLE);
+        mIn.setAlpha(mFirstFrameRendered ? 0f : 1f);
         mIn.setTranslationY(inStart);
         setSurfaceOffset(inStart);
-
-        if (mFirstFrameRendered) {
-            mIn.setAlpha(0f); // the new video is already playing: no cover needed
-        }
 
         mSwipe = ValueAnimator.ofFloat(0f, 1f);
         mSwipe.setDuration(SWIPE_DURATION_MS);
@@ -317,7 +346,7 @@ public class ShortsTransitionOverlay {
             }
             float fraction = (float) animation.getAnimatedValue();
             float inOffset = inStart * (1f - fraction);
-            mOut.setTranslationY(outStart + (outEnd - outStart) * fraction);
+            mOut.setTranslationY(outEnd * fraction);
             mIn.setTranslationY(inOffset);
             setSurfaceOffset(inOffset);
         });
@@ -370,6 +399,10 @@ public class ShortsTransitionOverlay {
             mHandler.removeCallbacks(mSnapshotTimeout);
             mSnapshotTimeout = null;
         }
+        if (mHoldStart != null) {
+            mHandler.removeCallbacks(mHoldStart);
+            mHoldStart = null;
+        }
 
         mContainer.setVisibility(View.VISIBLE);
         mContainer.setAlpha(1f);
@@ -418,8 +451,13 @@ public class ShortsTransitionOverlay {
         }
 
         if (animate && mSnapshotTimeout != null) {
-            // The new video is ready before the snapshot: start the swipe now (the new video slides in)
-            Runnable start = mSnapshotTimeout;
+            // The snapshot is due in a few ms: the swipe starts right after it (the frame is ready)
+            return;
+        }
+
+        if (animate && mHoldStart != null) {
+            // The new video is ready: slide now
+            Runnable start = mHoldStart;
             mHandler.removeCallbacks(start);
             start.run();
             return;
@@ -440,6 +478,10 @@ public class ShortsTransitionOverlay {
         if (mSnapshotTimeout != null) {
             mHandler.removeCallbacks(mSnapshotTimeout);
             mSnapshotTimeout = null;
+        }
+        if (mHoldStart != null) {
+            mHandler.removeCallbacks(mHoldStart);
+            mHoldStart = null;
         }
 
         if (!animate) {
