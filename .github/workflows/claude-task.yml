@@ -11,7 +11,7 @@ on:
       - '.claude-task/TASK.md'
 
 concurrency:
-  group: claude-task
+  group: claude-task-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -27,6 +27,13 @@ jobs:
         with:
           fetch-depth: 0
           submodules: recursive
+
+      - name: Apply MediaServiceCore patches (Claude sees the patched code; its edits there become a new patch)
+        run: |
+          cd MediaServiceCore
+          for p in ../patches/MediaServiceCore/*.patch; do git apply "$p"; done
+          git add -A
+          git -c user.name=ci -c user.email=ci@local commit -q -m "patched base" || true
 
       - uses: actions/setup-node@v4
         with:
@@ -58,6 +65,12 @@ jobs:
       - name: Commit the result
         if: always()
         run: |
+          # Edits in the submodule become patches/MediaServiceCore/0100-<task>.patch; the submodule itself stays at its base
+          if [ -n "$(git -C MediaServiceCore status --porcelain)" ]; then
+            git -C MediaServiceCore add -A
+            git -C MediaServiceCore diff --cached > "patches/MediaServiceCore/0100-${GITHUB_REF_NAME#claude-task/}.patch"
+          fi
+          git submodule update --force --checkout MediaServiceCore
           git config user.name "Pompadoure"
           git config user.email "Pompadoure@users.noreply.github.com"
           git add -A -- . ':!.github'
