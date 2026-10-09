@@ -31,20 +31,22 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitio
  */
 public class ShortsTransitionOverlay {
     // The slide starts when the new video is already playing (its first frame came during the hold)
-    private static final int SWIPE_DURATION_MS = 220;
+    private static final int SWIPE_DURATION_MS = 260;
     private static final int REVEAL_DURATION_MS = 120; // the black cover over the moving video fades out
     private static final int FADE_OUT_DURATION_MS = 120;
     private static final int FAILSAFE_HIDE_MS = 10_000;
     private static final int SNAPSHOT_TIMEOUT_MS = 150; // the main thread can be busy ~70 ms at the switch
-    // JoTube: a preloaded Short's first frame comes in 190-290 ms. Longer than that the old picture looks frozen:
-    // slide on (the new video under a black cover that fades when its frame comes)
-    private static final int HOLD_TIMEOUT_MS = 250;
+    // JoTube: no hold: the slide starts at the key press (holding the old picture looked like a freeze). The new
+    // Short (preloaded: first frame in 150-300 ms) moves in under a black cover that fades out when its frame comes,
+    // mostly while it is still moving.
+    private static final int HOLD_TIMEOUT_MS = 0;
     private static final String TAG = "ShortsTransition";
     private static final int GAP_DP = 16; // space between the outgoing and the incoming Short
     private static final Interpolator SWIPE_INTERPOLATOR = new FastOutSlowIn();
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private final Runnable mFailsafeHide = () -> hide(false);
     private Video mPendingVideo;
+    private Video mTargetVideo; // JoTube: the Short sliding in (its blurred background covers it until its frame)
     private final Runnable mPendingShow = () -> {
         if (mPendingVideo != null) {
             show(mPendingVideo, ShortsTransitionState.DIRECTION_NONE);
@@ -197,6 +199,9 @@ public class ShortsTransitionOverlay {
             return;
         }
 
+        Video previousTarget = mTargetVideo;
+        mTargetVideo = to.isShorts ? to : null;
+
         int frameHeight = mIn.getLayoutParams() != null ? mIn.getLayoutParams().height : 0;
         int height = frameHeight > 0 ? frameHeight : mContainer.getHeight() > 0 ? mContainer.getHeight() :
                 mContainer.getParent() instanceof View ? ((View) mContainer.getParent()).getHeight() : 0;
@@ -236,7 +241,10 @@ public class ShortsTransitionOverlay {
         mHandler.postDelayed(mFailsafeHide, FAILSAFE_HIDE_MS);
 
         if (coverOnScreen) {
-            clearImage(mOut); // black
+            clearImage(mOut);
+            if (previousTarget != null) {
+                ShortsBackground.loadCover(mOut, previousTarget); // what is on screen: that Short's cover
+            }
             hold(swipeId, direction, distance);
             return;
         }
@@ -390,8 +398,11 @@ public class ShortsTransitionOverlay {
 
         mOut.setVisibility(View.VISIBLE);
         mOut.setTranslationY(outStart);
-        // The new video: black until its first frame (not ready only after the hold timeout)
+        // The new video: covered by its blurred background (the same as behind the frame) until its first frame
         clearImage(mIn);
+        if (!mFirstFrameRendered && mTargetVideo != null) {
+            ShortsBackground.loadCover(mIn, mTargetVideo);
+        }
         mIn.setVisibility(View.VISIBLE);
         mIn.setAlpha(mFirstFrameRendered ? 0f : 1f);
         mIn.setTranslationY(inStart);
@@ -650,5 +661,6 @@ public class ShortsTransitionOverlay {
             // Activity is destroyed
         }
         image.setImageDrawable(null);
+        ShortsBackground.clearCover(image); // black and FIT_CENTER again
     }
 }

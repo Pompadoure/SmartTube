@@ -53,6 +53,9 @@ import java.util.List;
 import java.util.Map;
 
 public class DefaultSabrChunkSource implements SabrChunkSource {
+    // JoTube: off. Ending the init response early made some videos stall at the first segment boundary
+    // (~10 s, deterministic, also after an engine restart): the server state no longer matched.
+    private static final boolean SKIP_INIT_RESPONSE_MEDIA = false;
     public static final class Factory implements SabrChunkSource.Factory {
 
         private final DataSource.Factory dataSourceFactory;
@@ -585,7 +588,7 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
                 representationHolder.representation.getCacheKey(),
                 0,
                 sabrHeaders);
-        if (sabrStream != null) {
+        if (sabrStream != null && SKIP_INIT_RESPONSE_MEDIA) {
             // JoTube: don't download the media that comes with the init response, it is dropped anyway
             sabrStream.setInitLoad(true);
         }
