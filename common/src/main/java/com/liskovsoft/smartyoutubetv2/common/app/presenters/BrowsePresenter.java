@@ -444,7 +444,7 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
 
     private final Runnable mPrefetchFocusedShort = () -> {
         Video item = mCurrentVideo;
-        if (item != null && item.isShorts && getView() != null && !mShortsAutoStarted) {
+        if (item != null && item.isShorts && getView() != null && !isShortsAutoStarted()) {
             MediaServiceManager.instance().loadFormatInfo(item, formatInfo -> {});
         }
     };
@@ -466,6 +466,10 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
 
         mPendingShortsStart = true;
         startShortsIfReady();
+    }
+
+    private boolean isShortsAutoStarted() {
+        return mShortsAutoStarted;
     }
 
     private boolean isShortsSection() {
