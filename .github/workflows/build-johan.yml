@@ -71,7 +71,14 @@ jobs:
       - name: Build
         run: |
           chmod +x gradlew
-          ./gradlew assembleStjohanRelease
+          set -o pipefail
+          if ! ./gradlew assembleStjohanRelease 2>&1 | tee build.log; then
+            # Compiler errors as annotations (readable without the raw log)
+            grep -E "error:|\.java:[0-9]+: |^e: |What went wrong" -A2 build.log | head -40 | while IFS= read -r line; do
+              echo "::error::${line}"
+            done
+            exit 1
+          fi
 
       - name: Collect APKs
         run: |
