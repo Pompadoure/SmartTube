@@ -39,6 +39,11 @@ public class EventsOverridePlaybackFragment extends SurfacePlaybackFragment {
         int keyAction = 0;
 
         if (event instanceof KeyEvent) {
+            // JoTube: the Shorts side panel gets the keys first (when it's in use)
+            if (onInterceptKeyEarly((KeyEvent) event)) {
+                return true;
+            }
+
             keyCode = ((KeyEvent) event).getKeyCode();
             keyAction = ((KeyEvent) event).getAction();
             if (getInputEventHandler() != null) {
@@ -99,6 +104,13 @@ public class EventsOverridePlaybackFragment extends SurfacePlaybackFragment {
                 }
         }
         return consumeEvent;
+    }
+
+    /**
+     * Return true to consume the key (both down and up) before the player handles it.
+     */
+    protected boolean onInterceptKeyEarly(KeyEvent event) {
+        return false;
     }
 
     private View.OnKeyListener getInputEventHandler() {

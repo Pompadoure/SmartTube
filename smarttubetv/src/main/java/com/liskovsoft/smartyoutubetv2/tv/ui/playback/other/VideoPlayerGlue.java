@@ -309,6 +309,14 @@ public class VideoPlayerGlue extends MaxControlsVideoPlayerGlue<PlayerAdapter> i
         return getActionIndex(mActions.get(buttonId));
     }
 
+    /**
+     * JoTube: same as pressing the button in the controls (Shorts side panel).
+     */
+    public boolean clickAction(int buttonId) {
+        Action action = mActions.get(buttonId);
+        return action != null && dispatchAction(action);
+    }
+
     public void setButtonState(int buttonId, int buttonState) {
         setActionIndex(mActions.get(buttonId), buttonState);
     }

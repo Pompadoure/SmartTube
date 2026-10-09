@@ -131,6 +131,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     private String mSelectedVideoId;
     private final ShortsTransitionOverlay mShortsTransition = new ShortsTransitionOverlay();
     private final ShortsBackground mShortsBackground = new ShortsBackground();
+    private final ShortsSidePanel mShortsPanel = new ShortsSidePanel();
     private final VideoListener mFirstFrameListener = new VideoListener() {
         @Override
         public void onRenderedFirstFrame() {
@@ -189,6 +190,35 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         // Above the video surface, below the controls
         mShortsTransition.attach((ViewGroup) root);
         mShortsBackground.attach((ViewGroup) root);
+        mShortsPanel.attach((ViewGroup) root, new ShortsSidePanel.Callback() {
+            @Override
+            public int getButtonState(int buttonId) {
+                return PlaybackFragment.this.getButtonState(buttonId);
+            }
+
+            @Override
+            public void clickButton(int buttonId) {
+                if (mPlayerGlue != null) {
+                    mPlayerGlue.clickAction(buttonId);
+                }
+            }
+
+            @Override
+            public void showControls() {
+                PlaybackFragment.this.showControls(true);
+            }
+
+            @Override
+            public boolean isLeftRightSwitchEnabled() {
+                // Same rule as PlayerUIController.handleLeftRightSkip
+                Video video = getVideo();
+                if (getContext() == null || video == null) {
+                    return false;
+                }
+                PlayerTweaksData tweaks = PlayerTweaksData.instance(getContext());
+                return video.belongsToShortsGroup() ? tweaks.isQuickSkipShortsEnabled() : tweaks.isQuickSkipVideosEnabled();
+            }
+        });
 
         return root;
     }
@@ -867,6 +897,24 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             mPlayerGlue.setSubtitle(video.getSecondTitleFull() != null ? createSubtitle(video) : "...");
             mPlayerGlue.setVideo(video);
         }
+
+        if (video != null && video.isShorts) {
+            mShortsPanel.bind(video);
+        }
+        updateShortsPanel();
+    }
+
+    /**
+     * JoTube: title, channel and buttons next to a Short, while the player controls are hidden.
+     */
+    private void updateShortsPanel() {
+        Video video = getVideo();
+        mShortsPanel.setEnabled(video != null && video.isShorts && !video.isLive && !isInPIPMode() && !isControlsOverlayVisible());
+    }
+
+    @Override
+    protected boolean onInterceptKeyEarly(KeyEvent event) {
+        return mShortsPanel.onKey(event);
     }
 
     @Override
@@ -887,6 +935,11 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         } else {
             mShortsBackground.hide();
         }
+
+        if (video != null && video.isShorts) {
+            mShortsPanel.bind(video);
+        }
+        updateShortsPanel();
     }
 
     @Override
@@ -1207,6 +1260,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     public void onDestroyView() {
         mShortsTransition.detach();
         mShortsBackground.detach();
+        mShortsPanel.detach();
         super.onDestroyView();
     }
 
@@ -1274,6 +1328,8 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     public void showControlsOverlay(boolean runAnimation) {
         super.showControlsOverlay(mIsUIAnimationsEnabled);
 
+        updateShortsPanel();
+
         // Do throttle. Called so many times. Rely on boxing because initial state is unknown.
         if (mIsControlsShownPreviously != null && mIsControlsShownPreviously) {
             return;
@@ -1295,6 +1351,8 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     @Override
     public void hideControlsOverlay(boolean runAnimation) {
         super.hideControlsOverlay(mIsUIAnimationsEnabled);
+
+        updateShortsPanel();
 
         // Do throttle. Called so many times. Rely on boxing because initial state is unknown.
         if (mIsControlsShownPreviously != null && !mIsControlsShownPreviously) {
@@ -1368,6 +1426,10 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     public void setButtonState(int buttonId, int buttonState) {
         if (mPlayerGlue != null) {
             mPlayerGlue.setButtonState(buttonId, buttonState);
+        }
+
+        if (buttonId == R.id.action_thumbs_up || buttonId == R.id.action_thumbs_down) {
+            mShortsPanel.refreshStates();
         }
     }
 
@@ -1702,6 +1764,12 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             if (liveChat != null) {
                 liveChat.setVisibility(show ? View.VISIBLE : View.GONE);
             }
+        }
+
+        if (show) {
+            updateShortsPanel();
+        } else {
+            mShortsPanel.setEnabled(false);
         }
     }
 

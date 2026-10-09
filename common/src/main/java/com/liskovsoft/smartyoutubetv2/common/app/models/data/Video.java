@@ -60,6 +60,7 @@ public final class Video {
     public String cardImageUrl;
     public String altCardImageUrl;
     public String author;
+    public String authorImageUrl; // JoTube: channel avatar (from the metadata), used by the Shorts side panel
     public String badge;
     public String previewUrl;
     public float percentWatched = -1;
@@ -767,6 +768,9 @@ public final class Video {
         subscriberCount = metadata.getSubscriberCount();
         notificationStates = metadata.getNotificationStates();
         author = metadata.getAuthor();
+        if (metadata.getAuthorImageUrl() != null) {
+            authorImageUrl = metadata.getAuthorImageUrl();
+        }
         durationMs = metadata.getDurationMs();
         mediaItem = toMediaItem(); // Fix subscribe during playback (see PlayerUIController.callMediaItemObservable)
         isSynced = true;

@@ -55,6 +55,7 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
     private ProgressBarManager mProgressBarManager;
     private boolean mIsFragmentCreated;
     private boolean mFocusOnContent;
+    private boolean mContentFocusedByApp; // JoTube: the running headers transition was started by the app
     private CrashRestorer mCrashRestorer;
 
     @Override
@@ -148,6 +149,17 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
         );
 
         setOnSearchClickedListener(view -> SearchPresenter.instance(getContext()).startSearch(null));
+
+        // JoTube: entering the Shorts section (OK on the header or right into the content) starts the Shorts player
+        setBrowseTransitionListener(new BrowseTransitionListener() {
+            @Override
+            public void onHeadersTransitionStop(boolean withHeaders) {
+                // Only the user's own move (OK on the header, right into the content). Not app start, restore or refresh.
+                boolean byApp = mContentFocusedByApp;
+                mContentFocusedByApp = false;
+                mBrowsePresenter.onContentEntered(!withHeaders && !byApp);
+            }
+        });
     }
 
     private void setupFragmentFactory() {
@@ -343,10 +355,27 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
 
     @Override
     public void focusOnContent() {
+        boolean starts = isShowingHeaders() && !isInHeadersTransition();
+        if (starts) {
+            mContentFocusedByApp = true; // a transition starts now, see onHeadersTransitionStop
+        }
         startHeadersTransitionSafe(false);
+        if (starts && isShowingHeaders()) {
+            mContentFocusedByApp = false; // didn't start after all
+        }
         if (getMainFragment() != null && getMainFragment().getView() != null) {
             getMainFragment().getView().requestFocus();
         }
+    }
+
+    @Override
+    public void showHeaders() {
+        // After the fragment has restored its own focus
+        new Handler(Looper.getMainLooper()).post(() -> {
+            if (isAdded() && !isShowingHeaders()) {
+                startHeadersTransitionSafe(true);
+            }
+        });
     }
 
     /**

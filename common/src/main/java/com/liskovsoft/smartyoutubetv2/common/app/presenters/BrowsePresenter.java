@@ -116,6 +116,10 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
     public void onViewInitialized() {
         super.onViewInitialized();
 
+        // JoTube: a new browse view (e.g. recreated after low memory) never auto starts the Shorts player again
+        mPendingShortsStart = false;
+        mShortsAutoStarted = false;
+
         if (getView() == null) {
             return;
         }
@@ -139,6 +143,7 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
     public void onViewResumed() {
         super.onViewResumed();
 
+        onShortsPlayerClosed(); // JoTube
         refreshIfNeeded();
     }
 
@@ -439,10 +444,80 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
 
     private final Runnable mPrefetchFocusedShort = () -> {
         Video item = mCurrentVideo;
-        if (item != null && item.isShorts && getView() != null) {
+        if (item != null && item.isShorts && getView() != null && !mShortsAutoStarted) {
             MediaServiceManager.instance().loadFormatInfo(item, formatInfo -> {});
         }
     };
+
+    // JoTube: the Shorts section plays right away (like the official app) instead of showing the grid first
+    private boolean mPendingShortsStart; // the user entered the Shorts section, start once the feed is loaded
+    private boolean mShortsAutoStarted; // the player was started from the sidebar, back returns to the sidebar
+    private VideoGroup mShortsGroup; // the loaded Shorts feed
+    private VideoGroup mPlayingShortsGroup; // strong ref: the player follows its order (Video holds a weak ref only)
+
+    /**
+     * The focus moved from the sidebar into the section content (true) or back to the sidebar (false).
+     */
+    public void onContentEntered(boolean entered) {
+        if (!entered || !isShortsSection()) {
+            mPendingShortsStart = false;
+            return;
+        }
+
+        mPendingShortsStart = true;
+        startShortsIfReady();
+    }
+
+    private boolean isShortsSection() {
+        return mCurrentSection != null && mCurrentSection.getType() == BrowseSection.TYPE_SHORTS_GRID;
+    }
+
+    private void startShortsIfReady() {
+        if (!mPendingShortsStart || !isShortsSection() || getContext() == null || getView() == null) {
+            return;
+        }
+
+        Video first = findFirstShort(mShortsGroup);
+
+        if (first == null) {
+            return; // the feed is still loading
+        }
+
+        mPendingShortsStart = false;
+        mShortsAutoStarted = true;
+        mPlayingShortsGroup = mShortsGroup;
+        onVideoItemClicked(first);
+    }
+
+    private static Video findFirstShort(VideoGroup group) {
+        if (group == null || group.isEmpty()) {
+            return null;
+        }
+
+        for (Video item : group.getVideos()) {
+            if (item != null && item.hasVideo() && !item.isLive && !item.isUpcoming) {
+                return item;
+            }
+        }
+
+        return null;
+    }
+
+    private void onShortsPlayerClosed() {
+        if (!mShortsAutoStarted) {
+            return;
+        }
+
+        mShortsAutoStarted = false;
+        mPendingShortsStart = false;
+        mPlayingShortsGroup = null;
+
+        if (getView() != null && isShortsSection()) {
+            // Back to the sidebar with a fresh feed for the next time
+            getView().showHeaders();
+            updateCurrentSection();
+        }
+    }
 
     @Override
     public void onVideoItemClicked(Video item) {
@@ -798,6 +873,11 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
         baseGroup.setAction(VideoGroup.ACTION_REPLACE);
         getView().updateSection(baseGroup);
 
+        boolean isShortsGrid = section.getType() == BrowseSection.TYPE_SHORTS_GRID;
+        if (isShortsGrid) {
+            mShortsGroup = null; // reloading
+        }
+
         if (group == null) {
             // No group. Maybe just clear.
             getView().showProgressBar(false);
@@ -821,6 +901,11 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
                             mBrowseProcessor.process(videoGroup);
 
                             continueGroupIfNeeded(videoGroup);
+
+                            if (isShortsGrid && mCurrentSection != null && mCurrentSection.getId() == section.getId()) {
+                                mShortsGroup = videoGroup;
+                                startShortsIfReady();
+                            }
                         },
                         error -> {
                             Log.e(TAG, "updateGridHeader error: %s", error.getMessage());

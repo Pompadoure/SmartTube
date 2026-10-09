@@ -64,6 +64,10 @@ public class VideoLoaderController extends BasePlayerController {
     private final Map<String, Long> mPrefetchedTimesMs = new HashMap<>();
     private final Runnable mPrefetchNext = this::prefetchNext;
     private int mPrefetchRetries;
+    // JoTube: load the next page of the Shorts feed when the player gets close to its end
+    private Disposable mFeedContinueAction;
+    private Object mContinuedFeedPage; // the feed page (MediaGroup) already continued from
+    private VideoGroup mShortsFeedGroup; // strong ref: Video holds its group weakly, the feed must outlive the browse grid
     private final Runnable mReloadVideo = () -> {
         getMainController().onNewVideo(getVideo());
     };
@@ -202,6 +206,10 @@ public class VideoLoaderController extends BasePlayerController {
             } else if (next != null && !next.isShorts) {
                 next = null;
             }
+
+            if (ahead.size() < PREFETCH_LOOKAHEAD) {
+                continueShortsFeedIfNeeded(getVideo());
+            }
         }
 
         ShortsTransitionState.setDirection(ShortsTransitionState.DIRECTION_NEXT);
@@ -257,6 +265,14 @@ public class VideoLoaderController extends BasePlayerController {
         if (getPlayer() != null && item != null) {
             ShortsTransitionState.setShortsMode(item.isShorts && !item.isLive);
             ShortsTransitionState.setLive(item.isLive);
+            if (item.isShorts) {
+                VideoGroup feed = item.getGroup();
+                if (feed != null) {
+                    mShortsFeedGroup = feed;
+                }
+            } else {
+                mShortsFeedGroup = null;
+            }
             mPlaylist.setCurrent(item);
             getPlayer().setVideo(item);
             getPlayer().resetPlayerState();
@@ -713,6 +729,10 @@ public class VideoLoaderController extends BasePlayerController {
 
         List<Video> ahead = getShortsLookahead(current);
 
+        if (ahead.size() < PREFETCH_LOOKAHEAD) {
+            continueShortsFeedIfNeeded(current);
+        }
+
         for (int i = 0; i < ahead.size(); i++) {
             Video next = ahead.get(i);
             int distance = i + 1;
@@ -767,6 +787,43 @@ public class VideoLoaderController extends BasePlayerController {
 
             return; // one request at a time
         }
+    }
+
+    /**
+     * Near the end of the loaded Shorts feed: append its next page to the same group (the list the player
+     * follows), so scrolling never runs out. One request per page, in the background.
+     */
+    private void continueShortsFeedIfNeeded(Video current) {
+        // Only the Shorts feed (other sections mix in regular videos, so there'd always be "too few" Shorts ahead)
+        VideoGroup group = current != null && current.belongsToShorts() ? current.getGroup() : null;
+
+        if (group == null || group.isEmpty() || group.getMediaGroup() == null || group.getNextPageKey() == null ||
+                RxHelper.isAnyActionRunning(mFeedContinueAction)) {
+            return;
+        }
+
+        Object page = group.getMediaGroup();
+
+        if (page == mContinuedFeedPage) {
+            return; // already continued from this page (or it had nothing more)
+        }
+
+        mContinuedFeedPage = page;
+        Log.d(TAG, "Shorts: loading the next page of the feed");
+
+        mFeedContinueAction = YouTubeServiceManager.instance().getContentService().continueGroupObserve(group.getMediaGroup())
+                .subscribe(nextPage -> {
+                    if (nextPage != null && nextPage.getMediaItems() != null && !nextPage.getMediaItems().isEmpty()) {
+                        int sizeBefore = group.getSize();
+                        VideoGroup.from(group, nextPage); // appends (duplicates are skipped)
+                        if (group.getSize() > sizeBefore) {
+                            Utils.post(mPrefetchNext);
+                        }
+                    }
+                }, error -> {
+                    Log.e(TAG, "Shorts: feed continuation failed: %s", error.getMessage());
+                    mContinuedFeedPage = null; // try again later
+                });
     }
 
     private boolean isWaitingForPrefetch(String videoId) {

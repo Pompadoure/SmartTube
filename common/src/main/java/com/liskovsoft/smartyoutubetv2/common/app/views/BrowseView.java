@@ -20,6 +20,10 @@ public interface BrowseView {
     void showProgressBar(boolean show);
     boolean isProgressBarShowing();
     void focusOnContent();
+    /**
+     * JoTube: back to the sidebar (e.g. after the Shorts player that was started from the sidebar is closed)
+     */
+    void showHeaders();
     boolean isEmpty();
     void updateBadge();
 }
