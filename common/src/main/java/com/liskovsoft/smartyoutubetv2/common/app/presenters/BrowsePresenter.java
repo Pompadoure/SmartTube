@@ -532,18 +532,54 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
      * The first Short's stream info is fetched as soon as the feed is there, so it plays right away when entered.
      */
     private void prefetchFirstShort() {
+        // JoTube: also when the start is pending (the user pressed before the feed was there): the fetch then
+        // starts here instead of in the player. The player waits for it on the FormatFetchLock / gets it from the cache.
         Video first = findFirstShort(mShortsGroup);
 
-        if (first == null || mShortsAutoStarted || mPendingShortsStart || RxHelper.isAnyActionRunning(mFirstShortPrefetch)) {
+        if (first == null || mShortsAutoStarted || RxHelper.isAnyActionRunning(mFirstShortPrefetch)) {
             return;
         }
 
+        // JoTube: the second Short right after the first one, the first swipe is the most visible
+        Video second = findShortAfter(mShortsGroup, first);
+
         // Own request, never cancelled (a cancel interrupts the fetch in the middle). The player gets it from the cache.
         mFirstShortPrefetch = YouTubeServiceManager.instance().getMediaItemService().getFormatInfoObserve(first.videoId)
-                .subscribe(formatInfo -> {}, error -> Log.e(TAG, "First Short prefetch failed: %s", error.getMessage()));
+                .subscribe(formatInfo -> {}, error -> Log.e(TAG, "First Short prefetch failed: %s", error.getMessage()),
+                        () -> prefetchSecondShort(second));
     }
 
-    private boolean isShortsAutoStarted() {
+    private void prefetchSecondShort(Video second) {
+        if (second == null || second.videoId == null || getView() == null) {
+            return;
+        }
+
+        mFirstShortPrefetch = YouTubeServiceManager.instance().getMediaItemService().getFormatInfoObserve(second.videoId)
+                .subscribe(formatInfo -> {}, error -> Log.e(TAG, "Second Short prefetch failed: %s", error.getMessage()));
+    }
+
+    private static Video findShortAfter(VideoGroup group, Video after) {
+        if (group == null || group.isEmpty() || after == null) {
+            return null;
+        }
+
+        boolean found = false;
+
+        for (Video item : group.getVideos()) {
+            if (found && item != null && item.hasVideo() && !item.isLive && !item.isUpcoming) {
+                return item;
+            }
+
+            if (item == after) {
+                found = true;
+            }
+        }
+
+        return null;
+    }
+
+    // JoTube: public, PlaybackPresenter skips its click-time fetch for the Shorts auto start (prefetched here)
+    public boolean isShortsAutoStarted() {
         return mShortsAutoStarted;
     }
 
@@ -1020,8 +1056,9 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
                             if (isShortsGrid && mCurrentSection != null && mCurrentSection.getId() == section.getId()) {
                                 mShortsGroup = videoGroup;
                                 mShortsLoadStartMs = -1;
-                                startShortsIfReady();
+                                // JoTube: prefetch first, startShortsIfReady marks the auto start (prefetch is skipped then)
                                 prefetchFirstShort();
+                                startShortsIfReady();
                             }
                         },
                         error -> {

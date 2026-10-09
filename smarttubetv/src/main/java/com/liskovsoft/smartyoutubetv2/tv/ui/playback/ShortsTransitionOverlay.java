@@ -54,6 +54,8 @@ public class ShortsTransitionOverlay {
     private View mSurfaceRoot; // the real video
     private ValueAnimator mSwipe;
     private Runnable mSnapshotTimeout;
+    private final Bitmap[] mSnapshotBitmaps = new Bitmap[2]; // JoTube: reused PixelCopy targets
+    private int mSnapshotIndex;
     private Runnable mAfterSnapshot; // e.g. the player reset: only once the old picture is copied
     private Runnable mHoldStart; // the old picture is held until the new video's first frame
     private float mOutStart; // where the outgoing picture is (not 0 if pressed again during a slide)
@@ -247,8 +249,7 @@ public class ShortsTransitionOverlay {
                 videoView.getHeight() > 0 && ((SurfaceView) videoView).getHolder().getSurface().isValid()) {
             final Bitmap bitmap;
             try {
-                bitmap = Bitmap.createBitmap(Math.max(1, videoView.getWidth() / 2),
-                        Math.max(1, videoView.getHeight() / 2), Bitmap.Config.ARGB_8888);
+                bitmap = obtainSnapshotBitmap(Math.max(1, videoView.getWidth() / 2), Math.max(1, videoView.getHeight() / 2));
             } catch (OutOfMemoryError e) {
                 setOutImage(null, from);
                 hold(swipeId, direction, distance);
@@ -337,6 +338,22 @@ public class ShortsTransitionOverlay {
         if (action != null) {
             action.run();
         }
+    }
+
+    /**
+     * JoTube: the PixelCopy target is reused while the size is the same (no ~1 MB allocation per swipe).
+     * Two bitmaps in turn: the one shown in mOut is never the target of the next copy.
+     */
+    private Bitmap obtainSnapshotBitmap(int width, int height) {
+        mSnapshotIndex = 1 - mSnapshotIndex;
+        Bitmap bitmap = mSnapshotBitmaps[mSnapshotIndex];
+
+        if (bitmap == null || bitmap.isRecycled() || !bitmap.isMutable() || bitmap.getWidth() != width || bitmap.getHeight() != height) {
+            bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            mSnapshotBitmaps[mSnapshotIndex] = bitmap;
+        }
+
+        return bitmap;
     }
 
     private static Bitmap captureTexture(TextureView view) {

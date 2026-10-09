@@ -29,6 +29,7 @@ import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ExoPlayerContr
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ShortsQueue;
 import com.liskovsoft.smartyoutubetv2.common.misc.MediaServiceManager;
 import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerData;
+import com.liskovsoft.smartyoutubetv2.common.utils.JoTubeTiming;
 import com.liskovsoft.smartyoutubetv2.common.utils.Utils;
 import com.liskovsoft.youtubeapi.service.YouTubeServiceManager;
 
@@ -65,6 +66,7 @@ public class VideoLoaderController extends BasePlayerController {
     private final Map<String, Long> mPrefetchedTimesMs = new HashMap<>();
     private final Runnable mPrefetchNext = this::prefetchNext;
     private int mPrefetchRetries;
+    private boolean mCurrentFromPrefetch; // JoTube: the current video's info came from the queue/prefetch cache
     // JoTube: load the next page of the Shorts feed when the player gets close to its end
     private Disposable mFeedContinueAction;
     private Object mContinuedFeedPage; // the feed page (MediaGroup) already continued from
@@ -341,6 +343,7 @@ public class VideoLoaderController extends BasePlayerController {
         disposeActions();
 
         mWaitingForPrefetchId = null;
+        mCurrentFromPrefetch = false;
 
         // Use the format info fetched in the background (Shorts feed), or the one of a Short that is
         // already in the player (e.g. the previous one). Skips the network round trip.
@@ -348,6 +351,7 @@ public class VideoLoaderController extends BasePlayerController {
         final MediaItemFormatInfo prefetched = cached != null ? cached : ShortsQueue.getQueuedFormatInfo(video.videoId);
         if (prefetched != null) {
             Log.d(TAG, "Using prefetched format info for %s", video.videoId);
+            mCurrentFromPrefetch = true;
             // Keep the original async order (the player state is reset at this point)
             Utils.post(() -> {
                 Video current = getVideo();
@@ -374,8 +378,12 @@ public class VideoLoaderController extends BasePlayerController {
         mFormatInfoAction = mediaItemManager.getFormatInfoObserve(video.videoId)
                 .subscribe(this::processFormatInfo,
                            error -> {
-                               getPlayer().showProgressBar(false);
-                               getPlayer().hideTransition(); // JoTube: no black cover while the error is handled
+                               // JoTube: the player may be gone when the async error arrives
+                               PlaybackView player = getPlayer();
+                               if (player != null) {
+                                   player.showProgressBar(false);
+                                   player.hideTransition(); // JoTube: no black cover while the error is handled
+                               }
                                mErrorFixerController.runFormatErrorAction(error);
                            });
     }
@@ -386,6 +394,8 @@ public class VideoLoaderController extends BasePlayerController {
         if (player == null || getVideo() == null) {
             return;
         }
+
+        JoTubeTiming.mark("format info received");
 
         String bgImageUrl = null;
 
@@ -448,6 +458,8 @@ public class VideoLoaderController extends BasePlayerController {
             player.showOverlay(true);
             reloadVideo(30 * 1_000);
         }
+
+        JoTubeTiming.mark("source prepared (openSabr/openDash)");
 
         player.showBackground(bgImageUrl); // remove bg (if video playing) or set another bg
     }
@@ -670,7 +682,12 @@ public class VideoLoaderController extends BasePlayerController {
             return;
         }
 
-        Utils.postDelayed(mPrefetchNext, PREFETCH_DELAY_MS);
+        // JoTube: the current Short came from the queue/prefetch cache (no own fetch of its own): start the chain at once
+        if (mCurrentFromPrefetch) {
+            Utils.post(mPrefetchNext);
+        } else {
+            Utils.postDelayed(mPrefetchNext, PREFETCH_DELAY_MS);
+        }
     }
 
     /**
@@ -970,16 +987,6 @@ public class VideoLoaderController extends BasePlayerController {
             } else {
                 getPlayer().setAspectRatio(getPlayerData().getAspectRatio());
             }
-        }
-    }
-
-    private void preloadNextVideoIfNeeded() {
-        if (isEmbedPlayer() || getPlayer() == null || getVideo() == null || getVideo().isLive) {
-            return;
-        }
-
-        if (getPlayer().getDurationMs() - getPlayer().getPositionMs() < 50_000) {
-            MediaServiceManager.instance().loadFormatInfo(mSuggestionsController.getNext(), formatInfo -> {});
         }
     }
 }
