@@ -41,6 +41,7 @@ public class ShortsSidePanel {
         void showControls();
         boolean isLeftRightSwitchEnabled();
         void openSidebar();
+        void onShortsFrame(int width, int height); // 0 = no frame
     }
 
     private static final int ITEM_NONE = -1;
@@ -69,6 +70,7 @@ public class ShortsSidePanel {
     private final Runnable mUpdatePosition = this::updatePosition;
     private final Runnable mFadeBorder = this::fadeBorder;
     private View mBorder;
+    private View mCard; // black, behind the video: the frame keeps its size whatever the video's shape
     private GradientDrawable mBorderDrawable;
     private ValueAnimator mBorderAnimator;
     private int mBorderColor = BORDER_GREY;
@@ -180,6 +182,18 @@ public class ShortsSidePanel {
         root.addView(mBorder, root.indexOfChild(mPanel), borderParams);
 
         if (mSurface != null) {
+            mCard = new View(context);
+            mCard.setFocusable(false);
+            mCard.setClickable(false);
+            mCard.setVisibility(View.GONE);
+            GradientDrawable card = new GradientDrawable();
+            card.setColor(Color.BLACK);
+            card.setCornerRadius(dp(BORDER_RADIUS_DP - BORDER_OUTSET_DP));
+            mCard.setBackground(card);
+            root.addView(mCard, root.indexOfChild(mSurface), new FrameLayout.LayoutParams(0, 0, Gravity.CENTER));
+        }
+
+        if (mSurface != null) {
             mSurface.addOnLayoutChangeListener(mLayoutListener);
         }
         root.addOnLayoutChangeListener(mLayoutListener);
@@ -203,6 +217,9 @@ public class ShortsSidePanel {
             if (mBorder != null) {
                 mRoot.removeView(mBorder);
             }
+            if (mCard != null) {
+                mRoot.removeView(mCard);
+            }
         }
 
         if (mBorderAnimator != null) {
@@ -212,6 +229,7 @@ public class ShortsSidePanel {
 
         mRoot = null;
         mBorder = null;
+        mCard = null;
         mBorderDrawable = null;
         mBoundVideoId = null;
         mSurface = null;
@@ -510,21 +528,46 @@ public class ShortsSidePanel {
     }
 
     /**
-     * The frame follows the video (the surface container is resized to the video inside the 9:16 frame).
+     * The frame is fixed (9:16 in the middle), the video is fitted inside it: nothing jumps when the next Short has
+     * another shape or when its size is known a moment later. Hidden while the video is moved aside (e.g. comments).
      */
     private void positionBorder() {
-        if (mBorder == null || mSurface == null) {
+        if (mBorder == null || mSurface == null || mRoot == null) {
             return;
         }
 
-        boolean show = mFrameEnabled && mSurface.getWidth() > 0 && mSurface.getHeight() > 0;
+        int rootWidth = mRoot.getWidth();
+        int rootHeight = mRoot.getHeight();
+        boolean centered = !(mSurface.getLayoutParams() instanceof FrameLayout.LayoutParams) ||
+                ((FrameLayout.LayoutParams) mSurface.getLayoutParams()).gravity == Gravity.CENTER ||
+                ((FrameLayout.LayoutParams) mSurface.getLayoutParams()).gravity == -1;
+        boolean show = mFrameEnabled && rootWidth > 0 && rootHeight > 0 && centered;
+        int frameHeight = show ? getFrameHeight(rootHeight) : 0;
+        int frameWidth = show ? Math.round(frameHeight * 9f / 16f) : 0;
+
+        if (mCallback != null) {
+            mCallback.onShortsFrame(frameWidth, frameHeight);
+        }
+
+        if (mCard != null) {
+            FrameLayout.LayoutParams cardParams = (FrameLayout.LayoutParams) mCard.getLayoutParams();
+            if (show && (cardParams.width != frameWidth || cardParams.height != frameHeight)) {
+                cardParams.width = frameWidth;
+                cardParams.height = frameHeight;
+                mCard.setLayoutParams(cardParams);
+            }
+            int cardVisibility = show ? View.VISIBLE : View.GONE;
+            if (mCard.getVisibility() != cardVisibility) {
+                mCard.setVisibility(cardVisibility);
+            }
+        }
 
         if (show) {
             int outset = dp(BORDER_OUTSET_DP);
-            int left = mSurface.getLeft() - outset;
-            int top = mSurface.getTop() - outset;
-            int width = mSurface.getWidth() + outset * 2;
-            int height = mSurface.getHeight() + outset * 2;
+            int left = (rootWidth - frameWidth) / 2 - outset;
+            int top = (rootHeight - frameHeight) / 2 - outset;
+            int width = frameWidth + outset * 2;
+            int height = frameHeight + outset * 2;
             FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) mBorder.getLayoutParams();
 
             if (params.leftMargin != left || params.topMargin != top || params.width != width || params.height != height) {

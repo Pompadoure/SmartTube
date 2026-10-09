@@ -64,6 +64,26 @@ public class ShortsTransitionOverlay {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
+    /**
+     * JoTube: in the Shorts frame the thumbnail covers only the frame (0 = the whole screen).
+     */
+    public void setFrame(int width, int height) {
+        if (mOverlay == null || !(mOverlay.getLayoutParams() instanceof FrameLayout.LayoutParams)) {
+            return;
+        }
+
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) mOverlay.getLayoutParams();
+        int newWidth = width > 0 ? width : ViewGroup.LayoutParams.MATCH_PARENT;
+        int newHeight = height > 0 ? height : ViewGroup.LayoutParams.MATCH_PARENT;
+
+        if (params.width != newWidth || params.height != newHeight || params.gravity != android.view.Gravity.CENTER) {
+            params.width = newWidth;
+            params.height = newHeight;
+            params.gravity = android.view.Gravity.CENTER;
+            mOverlay.setLayoutParams(params);
+        }
+    }
+
     public void detach() {
         mHandler.removeCallbacks(mFailsafeHide);
         mHandler.removeCallbacks(mDeferredHide);

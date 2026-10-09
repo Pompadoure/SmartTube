@@ -220,6 +220,11 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             }
 
             @Override
+            public void onShortsFrame(int width, int height) {
+                mShortsTransition.setFrame(width, height);
+            }
+
+            @Override
             public void openSidebar() {
                 // Back to the browse screen with the sidebar open, the Shorts section continues from this Short
                 Video video = getVideo();
