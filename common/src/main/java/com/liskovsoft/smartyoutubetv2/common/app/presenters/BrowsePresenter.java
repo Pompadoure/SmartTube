@@ -9,6 +9,7 @@ import androidx.annotation.Nullable;
 
 import com.liskovsoft.mediaserviceinterfaces.oauth.Account;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaGroup;
+import com.liskovsoft.mediaserviceinterfaces.data.MediaItem;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.sharedutils.locale.LocaleUtility;
 import com.liskovsoft.sharedutils.mylogger.Log;
@@ -139,12 +140,17 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
     public void onViewPaused() {
         super.onViewPaused();
 
+        // JoTube: the player (or something else) opens. Warmed content may become stale (history...)
+        stopWarmUp();
+        mWarmCache.clear();
+
         saveSelectedItems();
     }
 
     @Override
     public void onViewResumed() {
         super.onViewResumed();
+
 
         // JoTube: left from the Shorts player opens the sidebar
         String resumeVideoId = ShortsTransitionState.consumeResumeVideoId();
@@ -363,6 +369,8 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
     }
 
     public void updateChannelSorting() {
+        stopWarmUp(); // JoTube: a running warm-up would cache the old order
+        mWarmCache.remove(MediaGroup.TYPE_CHANNEL_UPLOADS); // JoTube: another order
         int sortingType = getMainUIData().getChannelCategorySorting();
 
         switch (sortingType) {
@@ -383,6 +391,8 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
     }
 
     public void updatePlaylistsStyle() {
+        stopWarmUp();
+        mWarmCache.remove(MediaGroup.TYPE_USER_PLAYLISTS); // JoTube: grid <-> rows
         int playlistsStyle = getMainUIData().getPlaylistsStyle();
 
         switch (playlistsStyle) {
@@ -421,6 +431,8 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
     @Override
     public void onViewDestroyed() {
         super.onViewDestroyed();
+        stopWarmUp();
+        mWarmCache.clear();
         disposeActions();
         saveSelectedItems();
     }
@@ -483,6 +495,380 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
         }
     }
 
+    // JoTube: sidebar warm-up. While the focus is in the sidebar the Shorts feed and the first page of the other
+    // sections are loaded in the background (one request at a time, at most once per WARM_UP_INTERVAL_MS).
+    // The emitted MediaGroups are cached (not the Observables: they are cold) and replayed through the usual
+    // pipeline when the section gets the focus, so the visible flow is the same, just without the network wait.
+    private static final long WARM_UP_INTERVAL_MS = 60_000;
+    private static final long WARM_SHORTS_FRESH_MS = 2 * 60_000;
+    private static final long WARM_FORMAT_PREFETCH_INTERVAL_MS = 5 * 60_000; // JoTube: format fetches are rate-limited
+    private static final long WARM_SECTION_FRESH_MS = 3 * 60_000;
+    private static final long WARM_REFRESH_AGE_MS = 2 * 60_000; // a younger cache entry is not warmed again
+    private static final int WARM_MAX_SECTIONS = 6; // besides Shorts, per pass
+    private static final int WARM_PRELOAD_ROWS = 2;
+    private static final int WARM_PRELOAD_CARDS = 12;
+    // Personal sections: no point to warm them (the load fails) when signed out
+    private static final int[] WARM_AUTH_SECTIONS = {
+            MediaGroup.TYPE_HOME, MediaGroup.TYPE_SUBSCRIPTIONS, MediaGroup.TYPE_NOTIFICATIONS, MediaGroup.TYPE_MY_VIDEOS,
+            MediaGroup.TYPE_CHANNEL_UPLOADS, MediaGroup.TYPE_USER_PLAYLISTS, MediaGroup.TYPE_HISTORY
+    };
+
+    private static final class WarmEntry {
+        final List<MediaGroup> groups = new ArrayList<>(); // grid sections: every emission
+        final List<List<MediaGroup>> rows = new ArrayList<>(); // row sections: every emission
+        long timeMs;
+    }
+
+    private final Map<Integer, WarmEntry> mWarmCache = new HashMap<>();
+    private final List<Integer> mWarmPending = new ArrayList<>(); // section ids left in the running pass
+    private Disposable mWarmAction;
+    private int mWarmingId = -1;
+    private long mLastWarmUpMs = -1;
+    private boolean mAllowWarmCache; // the section is updated because it got the focus
+    private long mShortsFeedMs; // when the current Shorts feed was loaded
+    private String mWarmPrefetchedId; // the first Short whose format info the warm-up fetched
+    private long mWarmPrefetchedMs;
+
+    /**
+     * The focus is in the sidebar (app start, back from the content, back from the player, a move between items).
+     */
+    public void onSidebarFocused() {
+        long now = System.currentTimeMillis();
+
+        if (getView() == null || mShortsAutoStarted || mWarmingId != -1 || !mWarmPending.isEmpty() ||
+                (mLastWarmUpMs != -1 && now - mLastWarmUpMs < WARM_UP_INTERVAL_MS)) {
+            return;
+        }
+
+        mLastWarmUpMs = now;
+
+        int count = 0;
+
+        for (BrowseSection section : mSections) {
+            boolean shorts = section.getType() == BrowseSection.TYPE_SHORTS_GRID;
+
+            if (!isWarmable(section, now) || (!shorts && ++count > WARM_MAX_SECTIONS)) {
+                continue;
+            }
+
+            mWarmPending.add(section.getId());
+        }
+
+        warmNext();
+    }
+
+    private boolean isWarmable(BrowseSection section, long now) {
+        int type = section.getType();
+
+        if (!section.isEnabled() || (type != BrowseSection.TYPE_GRID && type != BrowseSection.TYPE_ROW && type != BrowseSection.TYPE_SHORTS_GRID)) {
+            return false;
+        }
+
+        if (type == BrowseSection.TYPE_ROW ? !mRowMapping.containsKey(section.getId()) : !mGridMapping.containsKey(section.getId())) {
+            return false;
+        }
+
+        if (!getSignInService().isSigned() && (section.isAuthOnly() || isWarmAuthSection(section.getId()))) {
+            return false;
+        }
+
+        WarmEntry entry = mWarmCache.get(section.getId());
+        long freshMs = type == BrowseSection.TYPE_SHORTS_GRID ? WARM_SHORTS_FRESH_MS : WARM_REFRESH_AGE_MS;
+
+        return entry == null || now - entry.timeMs >= freshMs;
+    }
+
+    private static boolean isWarmAuthSection(int id) {
+        for (int authId : WARM_AUTH_SECTIONS) {
+            if (authId == id) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Shorts first, then the sections nearest to the focused sidebar item. The pending ids are not changed.
+     */
+    private BrowseSection pickNextWarm() {
+        BrowseSection best = null;
+        int bestDistance = Integer.MAX_VALUE;
+        int currentIndex = 0;
+
+        for (int i = 0; i < mSections.size(); i++) {
+            if (mCurrentSection != null && mSections.get(i).getId() == mCurrentSection.getId()) {
+                currentIndex = i;
+            }
+        }
+
+        for (int i = 0; i < mSections.size(); i++) {
+            BrowseSection section = mSections.get(i);
+
+            // The focused section is loaded by the usual flow
+            if (!mWarmPending.contains(section.getId()) || (mCurrentSection != null && section.getId() == mCurrentSection.getId())) {
+                continue;
+            }
+
+            int distance = section.getType() == BrowseSection.TYPE_SHORTS_GRID ? -1 : Math.abs(i - currentIndex);
+
+            if (distance < bestDistance) {
+                best = section;
+                bestDistance = distance;
+            }
+        }
+
+        return best;
+    }
+
+    private void warmNext() {
+        mWarmingId = -1;
+
+        BrowseSection section = getView() == null || mShortsAutoStarted ? null : pickNextWarm();
+
+        if (section == null) {
+            mWarmPending.clear(); // done (the focused section, if left, is loaded by the usual flow)
+            return;
+        }
+
+        mWarmPending.remove((Integer) section.getId());
+        mWarmingId = section.getId();
+
+        if (section.getType() == BrowseSection.TYPE_ROW) {
+            warmRows(section);
+        } else {
+            warmGrid(section);
+        }
+    }
+
+    private void warmGrid(BrowseSection section) {
+        Observable<MediaGroup> observable = mGridMapping.get(section.getId());
+
+        if (observable == null) {
+            warmNext();
+            return;
+        }
+
+        boolean shorts = section.getType() == BrowseSection.TYPE_SHORTS_GRID;
+        WarmEntry entry = new WarmEntry();
+        VideoGroup shortsGroup = shorts ? VideoGroup.from(section, -1) : null; // the same steps as in updateVideoGrid
+
+        mWarmAction = observable.subscribe(
+                mediaGroup -> {
+                    entry.groups.add(mediaGroup);
+
+                    if (!shorts) {
+                        return; // cached when complete
+                    }
+
+                    // The first page is enough to start playing: usable right away
+                    int sizeBefore = Math.max(0, shortsGroup.getSize());
+                    VideoGroup videoGroup = VideoGroup.from(shortsGroup, mediaGroup);
+                    if (ShortsHistory.instance(getContext()) != null) {
+                        ShortsHistory.instance(getContext()).filterNew(videoGroup, sizeBefore);
+                    }
+
+                    if (entry.groups.size() == 1) {
+                        entry.timeMs = System.currentTimeMillis();
+                        mWarmCache.put(section.getId(), entry);
+                        onShortsWarmed(videoGroup);
+                    }
+                },
+                error -> {
+                    Log.e(TAG, "Warm-up of %s failed: %s", section.getTitle(), error.getMessage());
+                    warmNext();
+                },
+                () -> {
+                    if (!shorts && !entry.groups.isEmpty()) {
+                        entry.timeMs = System.currentTimeMillis();
+                        mWarmCache.put(section.getId(), entry);
+                        preloadWarmed(section, entry);
+                    }
+                    warmNext();
+                });
+    }
+
+    private void warmRows(BrowseSection section) {
+        Observable<List<MediaGroup>> observable = mRowMapping.get(section.getId());
+
+        if (observable == null) {
+            warmNext();
+            return;
+        }
+
+        WarmEntry entry = new WarmEntry();
+
+        mWarmAction = observable.subscribe(
+                mediaGroups -> {
+                    if (mediaGroups != null) {
+                        entry.rows.add(new ArrayList<>(mediaGroups));
+                    }
+                },
+                error -> {
+                    Log.e(TAG, "Warm-up of %s failed: %s", section.getTitle(), error.getMessage());
+                    warmNext();
+                },
+                () -> {
+                    if (!entry.rows.isEmpty()) {
+                        entry.timeMs = System.currentTimeMillis();
+                        mWarmCache.put(section.getId(), entry);
+                        preloadWarmed(section, entry);
+                    }
+                    warmNext();
+                });
+    }
+
+    /**
+     * The first two Shorts: format info (existing prefetch, never cancelled) and the images.
+     */
+    private void onShortsWarmed(VideoGroup videoGroup) {
+        Video first = findFirstShort(videoGroup);
+
+        if (first == null) {
+            return;
+        }
+
+        Video second = findShortAfter(videoGroup, first);
+
+        if (getView() != null) {
+            List<Video> shorts = new ArrayList<>();
+            shorts.add(first);
+            if (second != null) {
+                shorts.add(second);
+            }
+            getView().preloadShorts(shorts);
+        }
+
+        // Format fetches are the most limited requests: at most once per 5 min from the warm-up
+        if (!mShortsAutoStarted && getView() != null && !RxHelper.isAnyActionRunning(mFirstShortPrefetch) &&
+                (mWarmPrefetchedId == null || System.currentTimeMillis() - mWarmPrefetchedMs > WARM_FORMAT_PREFETCH_INTERVAL_MS)) {
+            mWarmPrefetchedId = first.videoId;
+            mWarmPrefetchedMs = System.currentTimeMillis();
+            startShortsPrefetch(first, second);
+        }
+    }
+
+    /**
+     * Thumbnails of the first rows/cards: the view uses the card presenters, so the cache keys match.
+     */
+    private void preloadWarmed(BrowseSection section, WarmEntry entry) {
+        if (getView() == null) {
+            return;
+        }
+
+        List<Video> videos = new ArrayList<>();
+
+        if (section.getType() == BrowseSection.TYPE_ROW) {
+            int rows = 0;
+
+            for (List<MediaGroup> mediaGroups : entry.rows) {
+                for (MediaGroup mediaGroup : mediaGroups) {
+                    if (rows < WARM_PRELOAD_ROWS && mediaGroup != null && !mediaGroup.isEmpty()) {
+                        addVideos(videos, mediaGroup, WARM_PRELOAD_CARDS);
+                        rows++;
+                    }
+                }
+            }
+        } else if (!entry.groups.isEmpty()) {
+            addVideos(videos, entry.groups.get(0), WARM_PRELOAD_CARDS);
+        }
+
+        getView().preloadCardThumbnails(videos);
+    }
+
+    private static void addVideos(List<Video> videos, MediaGroup mediaGroup, int max) {
+        if (mediaGroup == null || mediaGroup.getMediaItems() == null) {
+            return;
+        }
+
+        int count = 0;
+
+        for (MediaItem item : mediaGroup.getMediaItems()) {
+            if (count++ >= max) {
+                break;
+            }
+
+            videos.add(Video.from(item));
+        }
+    }
+
+    /**
+     * The focus left the sidebar or the player opens. Content requests are cancelled (unlike the format fetches).
+     */
+    private void stopWarmUp() {
+        RxHelper.disposeActions(mWarmAction);
+        mWarmAction = null;
+        mWarmingId = -1;
+        mWarmPending.clear();
+    }
+
+    /**
+     * The section got the focus while it's warmed: the visible load takes over, the pass goes on.
+     */
+    private void cancelWarmFor(int sectionId) {
+        if (mWarmingId != sectionId) {
+            return;
+        }
+
+        RxHelper.disposeActions(mWarmAction);
+        mWarmAction = null;
+        warmNext();
+    }
+
+    private WarmEntry takeWarm(BrowseSection section) {
+        WarmEntry entry = mAllowWarmCache ? mWarmCache.get(section.getId()) : null;
+
+        if (entry == null) {
+            return null;
+        }
+
+        boolean shorts = section.getType() == BrowseSection.TYPE_SHORTS_GRID;
+
+        if (System.currentTimeMillis() - entry.timeMs > (shorts ? WARM_SHORTS_FRESH_MS : WARM_SECTION_FRESH_MS)) {
+            mWarmCache.remove(section.getId());
+            return null;
+        }
+
+        // Used once (Shorts: the next entry wants a fresh feed; others: changes like a removed history item show
+        // on the next focus)
+        mWarmCache.remove(section.getId());
+
+        return entry;
+    }
+
+    private Observable<MediaGroup> useWarmGrid(BrowseSection section, Observable<MediaGroup> group) {
+        boolean shorts = section.getType() == BrowseSection.TYPE_SHORTS_GRID;
+
+        if (shorts) {
+            mShortsFeedMs = System.currentTimeMillis();
+        }
+
+        WarmEntry entry = takeWarm(section);
+
+        if (entry == null || entry.groups.isEmpty()) {
+            return group;
+        }
+
+        // The feed is at most ~2 min old: count it as loaded now (else entering Shorts a moment later reloads it
+        // and the prefetched Shorts are wasted)
+        return Observable.fromIterable(new ArrayList<>(entry.groups));
+    }
+
+    private Observable<List<MediaGroup>> useWarmRows(BrowseSection section, Observable<List<MediaGroup>> groups) {
+        WarmEntry entry = takeWarm(section);
+
+        if (entry == null || entry.rows.isEmpty()) {
+            return groups;
+        }
+
+        List<List<MediaGroup>> copy = new ArrayList<>();
+        for (List<MediaGroup> mediaGroups : entry.rows) {
+            copy.add(new ArrayList<>(mediaGroups)); // the pipeline filters the list in place
+        }
+
+        return Observable.fromIterable(copy);
+    }
+
     // JoTube: the Shorts section plays right away (like the official app) instead of showing the grid first
     private boolean mPendingShortsStart; // the user entered the Shorts section, start once the feed is loaded
     private boolean mShortsAutoStarted; // the player was started from the sidebar, back returns to the sidebar
@@ -496,6 +882,10 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
      * The focus moved from the sidebar into the section content (true) or back to the sidebar (false).
      */
     public void onContentEntered(boolean entered) {
+        if (entered) {
+            stopWarmUp(); // JoTube: the focus left the sidebar
+        }
+
         if (!entered || !isShortsSection()) {
             mPendingShortsStart = false;
             if (getView() != null) {
@@ -509,8 +899,17 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
             getView().setContentHidden(true); // the player opens on top, never show the grid meanwhile
         }
 
-        if (mShortsGroup == null && mShortsLoadStartMs == -1) {
-            updateCurrentSection(); // nothing loaded or loading (e.g. the last load failed)
+        // JoTube: a feed older than ~2 min is not reused (the sidebar was left idle on the Shorts item)
+        boolean feedStale = mShortsGroup != null && mResumeVideoId == null &&
+                System.currentTimeMillis() - mShortsFeedMs > WARM_SHORTS_FRESH_MS;
+
+        if ((mShortsGroup == null && mShortsLoadStartMs == -1) || feedStale) {
+            mAllowWarmCache = true;
+            try {
+                updateCurrentSection(); // nothing loaded or loading (e.g. the last load failed)
+            } finally {
+                mAllowWarmCache = false;
+            }
         } else {
             startShortsIfReady();
         }
@@ -543,9 +942,22 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
         // JoTube: the second Short right after the first one, the first swipe is the most visible
         Video second = findShortAfter(mShortsGroup, first);
 
+        // JoTube: the warm-up fetched it a moment ago (a repeat would evict the second Short from the one video cache)
+        if (first.videoId != null && first.videoId.equals(mWarmPrefetchedId) &&
+                System.currentTimeMillis() - mWarmPrefetchedMs < WARM_SHORTS_FRESH_MS) {
+            return;
+        }
+
+        startShortsPrefetch(first, second);
+    }
+
+    private void startShortsPrefetch(Video first, Video second) {
         // Own request, never cancelled (a cancel interrupts the fetch in the middle). The player gets it from the cache.
         mFirstShortPrefetch = YouTubeServiceManager.instance().getMediaItemService().getFormatInfoObserve(first.videoId)
-                .subscribe(formatInfo -> {}, error -> Log.e(TAG, "First Short prefetch failed: %s", error.getMessage()),
+                .subscribe(formatInfo -> {}, error -> {
+                            Log.e(TAG, "First Short prefetch failed: %s", error.getMessage());
+                            mWarmPrefetchedId = null; // not fetched: prefetchFirstShort must not skip it
+                        },
                         () -> prefetchSecondShort(second));
     }
 
@@ -731,7 +1143,13 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
         saveSelectedItems(); // save previous state
         mCurrentSection = findSectionById(sectionId);
         mCurrentVideo = null; // fast scroll through the sections (fix empty selected item)
-        updateCurrentSection();
+        cancelWarmFor(sectionId); // JoTube: the visible load takes over
+        mAllowWarmCache = true; // JoTube: only the focus change may show the warmed content (not refresh)
+        try {
+            updateCurrentSection();
+        } finally {
+            mAllowWarmCache = false;
+        }
         restoreSelectedItems(); // Don't place anywhere else
     }
 
@@ -885,7 +1303,7 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
             case BrowseSection.TYPE_GRID:
             case BrowseSection.TYPE_SHORTS_GRID:
                 if (mGridMapping.containsKey(section.getId())) {
-                    Observable<MediaGroup> group = mGridMapping.get(section.getId());
+                    Observable<MediaGroup> group = useWarmGrid(section, mGridMapping.get(section.getId()));
                     updateVideoGrid(section, group, section.isAuthOnly());
                 } else if (mLocalGridMappings.containsKey(section.getId())) {
                     Callable<List<Video>> localVideos = mLocalGridMappings.get(section.getId());
@@ -893,7 +1311,7 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
                 }
                 break;
             case BrowseSection.TYPE_ROW:
-                Observable<List<MediaGroup>> groups = mRowMapping.get(section.getId());
+                Observable<List<MediaGroup>> groups = useWarmRows(section, mRowMapping.get(section.getId()));
                 updateVideoRows(section, groups, section.isAuthOnly());
                 break;
             case BrowseSection.TYPE_SETTINGS_GRID:
@@ -1425,6 +1843,8 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
             return;
         }
 
+        stopWarmUp(); // JoTube: a running warm-up would cache the old account's content
+        mWarmCache.clear(); // JoTube: another account
         initSectionMappings();
         updateChannelSorting();
         updatePlaylistsStyle();
