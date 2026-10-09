@@ -27,6 +27,7 @@ import com.liskovsoft.smartyoutubetv2.tv.ui.browse.interfaces.VideoSection;
 import com.liskovsoft.smartyoutubetv2.tv.ui.common.LeanbackActivity;
 import com.liskovsoft.smartyoutubetv2.tv.ui.common.UriBackgroundManager;
 import com.liskovsoft.smartyoutubetv2.tv.ui.mod.fragments.GridFragment;
+import com.liskovsoft.smartyoutubetv2.tv.util.ThumbnailPreloader;
 import com.liskovsoft.smartyoutubetv2.tv.util.ViewUtil;
 
 import java.util.ArrayList;
@@ -42,6 +43,7 @@ public class VideoGridFragment extends GridFragment implements VideoSection {
     private VideoCardPresenter mCardPresenter;
     private int mSelectedItemIndex = -1;
     private Video mSelectedItem;
+    private static final int PRELOAD_GRID_ROWS = 3; // JoTube: grid rows preloaded below the focused item
     private float mVideoGridScale;
     private final Runnable mRestoreTask = this::restorePosition;
 
@@ -284,7 +286,28 @@ public class VideoGridFragment extends GridFragment implements VideoSection {
                 mMainPresenter.onVideoItemSelected((Video) item);
 
                 checkScrollEnd((Video) item);
+
+                preloadThumbnails((Video) item);
             }
+        }
+
+        /**
+         * JoTube: warm Glide cache with the next grid rows below the focused item.
+         */
+        private void preloadThumbnails(Video item) {
+            if (mGridAdapter == null || getContext() == null) {
+                return;
+            }
+
+            int index = mGridAdapter.indexOf(item);
+
+            if (index == -1) {
+                return;
+            }
+
+            int cols = GridFragmentHelper.getMaxColsNum(getContext(), isShorts() ? R.dimen.shorts_card_width : R.dimen.card_width, mVideoGridScale);
+
+            ThumbnailPreloader.preload(getContext(), mGridAdapter, index + 1, Math.max(cols, 1) * PRELOAD_GRID_ROWS);
         }
 
         private void checkScrollEnd(Video item) {
