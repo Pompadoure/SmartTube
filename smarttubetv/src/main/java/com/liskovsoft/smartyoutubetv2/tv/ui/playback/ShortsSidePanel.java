@@ -54,6 +54,7 @@ public class ShortsSidePanel {
     private static final int MAX_WIDTH_DP = 460;
     private static final int GAP_DP = 48;
     // The frame around the video: white when the video gets the focus, then it fades to grey (like the official app)
+    private static final int FRAME_MARGIN_DP = 16; // above and below the 9:16 frame (room for the border)
     private static final int BORDER_DP = 3;
     private static final int BORDER_OUTSET_DP = 5;
     private static final int BORDER_RADIUS_DP = 14;
@@ -268,7 +269,7 @@ public class ShortsSidePanel {
         mEnabled = enabled;
 
         if (!enabled) {
-            setFocus(ITEM_NONE);
+            clearFocusQuietly(); // e.g. the controls open: no white flash of the frame under them
         } else {
             mHandler.post(mUpdatePosition);
         }
@@ -308,7 +309,8 @@ public class ShortsSidePanel {
 
         mConsumedKeys.remove(keyCode); // a stale entry (its key up went to another screen)
 
-        if (!isShown()) {
+        // Left to the sidebar and the frame highlight work even when the panel itself doesn't fit
+        if (mPanel == null || !mEnabled || (mFocus != ITEM_NONE && !isShown())) {
             return false;
         }
 
@@ -330,7 +332,7 @@ public class ShortsSidePanel {
         boolean leftRightSwitch = mCallback != null && mCallback.isLeftRightSwitchEnabled();
         int entryKey = leftRightSwitch ? KeyEvent.KEYCODE_DPAD_UP : KeyEvent.KEYCODE_DPAD_RIGHT;
 
-        if (keyCode == entryKey) {
+        if (keyCode == entryKey && isShown()) {
             setFocus(ITEM_LIKE);
             return true;
         }
@@ -437,6 +439,18 @@ public class ShortsSidePanel {
         } else if (wasFocused) {
             highlightBorder(); // back on the video
         }
+
+        if (mPanel != null) {
+            updateStyles();
+        }
+    }
+
+    private void clearFocusQuietly() {
+        mFocus = ITEM_NONE;
+        mHandler.removeCallbacks(mFocusTimeout);
+        mHandler.removeCallbacks(mFadeBorder);
+        cancelBorderAnimation();
+        setBorderColor(BORDER_GREY);
 
         if (mPanel != null) {
             updateStyles();
@@ -571,12 +585,18 @@ public class ShortsSidePanel {
             return; // after the first layout
         }
 
-        int width = mFrameEnabled ? Math.round(rootHeight * 9f / 16f) : ViewGroup.LayoutParams.MATCH_PARENT;
+        int height = mFrameEnabled ? getFrameHeight(rootHeight) : ViewGroup.LayoutParams.MATCH_PARENT;
+        int width = mFrameEnabled ? Math.round(height * 9f / 16f) : ViewGroup.LayoutParams.MATCH_PARENT;
 
-        if (params.width != width) {
+        if (params.width != width || params.height != height) {
             params.width = width;
+            params.height = height;
             mSurface.setLayoutParams(params);
         }
+    }
+
+    private int getFrameHeight(int rootHeight) {
+        return Math.max(1, rootHeight - dp(FRAME_MARGIN_DP) * 2);
     }
 
     private void updatePosition() {
@@ -595,7 +615,7 @@ public class ShortsSidePanel {
         }
 
         // Fixed place: next to the 9:16 frame, whatever the video's own width
-        int left = rootWidth / 2 + Math.round(rootHeight * 9f / 32f) + dp(GAP_DP);
+        int left = rootWidth / 2 + Math.round(getFrameHeight(rootHeight) * 9f / 32f) + dp(GAP_DP);
         int width = Math.min(rootWidth - left - dp(GAP_DP), dp(MAX_WIDTH_DP));
 
         boolean fits = width >= dp(MIN_WIDTH_DP);

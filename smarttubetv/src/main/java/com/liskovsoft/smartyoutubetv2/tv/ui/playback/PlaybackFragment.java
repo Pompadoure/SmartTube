@@ -224,7 +224,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                 // Back to the browse screen with the sidebar open, the Shorts section continues from this Short
                 Video video = getVideo();
                 ShortsTransitionState.setResumeVideoId(video != null ? video.videoId : null);
-                finish();
+                finishReally(); // not into PIP/background playback
             }
         });
 
