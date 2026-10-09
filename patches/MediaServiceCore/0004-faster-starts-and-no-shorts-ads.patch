@@ -1,5 +1,5 @@
 diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
-index 8e98bb5f..a1c9b42b 100644
+index 8e98bb5f..5f0f5cdb 100644
 --- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
 +++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
 @@ -1,6 +1,11 @@
@@ -14,7 +14,7 @@ index 8e98bb5f..a1c9b42b 100644
  import com.liskovsoft.mediaserviceinterfaces.data.MediaItem
  import com.liskovsoft.youtubeapi.browse.v2.gen.*
  import com.liskovsoft.youtubeapi.common.helpers.AppClient
-@@ -247,13 +252,55 @@ internal open class BrowseService2 {
+@@ -247,13 +252,53 @@ internal open class BrowseService2 {
          return RetrofitHelper.get(continuation, auth)?.let {
              val result = mutableListOf<MediaItem?>()
  
@@ -36,10 +36,7 @@ index 8e98bb5f..a1c9b42b 100644
 +                    else RetrofitHelper.get(mBrowseApi?.getReelResult(BrowseApiHelper.getReelDetailsQuery(AppClient.WEB, videoId, params)), auth)
 +                })
 +            }
- 
--                    RetrofitHelper.get(details, auth)?.let {
--                            info -> result.add(ShortsMediaItem(it, info))
--                    }
++
 +            val loaded = mutableListOf<Pair<ReelWatchEndpoint?, ReelResult>>()
 +
 +            for (index in reels.indices) {
@@ -59,24 +56,24 @@ index 8e98bb5f..a1c9b42b 100644
 +                    loaded.add(Pair(reels[index], info))
 +                }
 +            }
-+
-+            // Promoted Shorts come without a title and a channel. If most of the page looks like that, the
-+            // page format has changed instead: keep everything (a feed without titles beats an empty feed).
-+            val noInfoCount = loaded.count { isReelWithoutInfo(it.second) }
-+            val skipWithoutInfo = noInfoCount * 2 <= loaded.size
-+            if (!skipWithoutInfo) {
-+                Log.d(SHORTS_TAG, "Shorts feed: %s of %s items without title and channel, keeping them", noInfoCount, loaded.size)
-+            }
-+
+ 
+-                    RetrofitHelper.get(details, auth)?.let {
+-                            info -> result.add(ShortsMediaItem(it, info))
++            // Only Shorts marked as ads are left out. Items without title and channel turned out to be normal
++            // Shorts too (they are only logged, to find a better ad marker).
 +            loaded.forEach { (reel, info) ->
-+                if (isReelMarkedAd(info) || (skipWithoutInfo && isReelWithoutInfo(info))) {
++                if (isReelMarkedAd(info) || reel?.adClientParams?.isAd == true) {
 +                    Log.d(SHORTS_TAG, "Shorts feed: skipping an ad: %s", reel?.videoId)
 +                } else {
++                    if (isReelWithoutInfo(info)) {
++                        Log.d(SHORTS_TAG, "Shorts feed: no title/channel: %s overlay=%s panels=%s",
++                            reel?.videoId, info.overlay != null, info.engagementPanels?.size)
+                     }
 +                    result.add(ShortsMediaItem(reel, info))
                  }
              }
  
-@@ -261,6 +308,14 @@ internal open class BrowseService2 {
+@@ -261,6 +306,14 @@ internal open class BrowseService2 {
          }
      }
  
@@ -91,7 +88,7 @@ index 8e98bb5f..a1c9b42b 100644
      open fun getChannelAsGrid(channelId: String?): MediaGroup? {
          return getChannelVideosTV(channelId) ?: getChannelVideosWeb(channelId)
      }
-@@ -613,4 +668,10 @@ internal open class BrowseService2 {
+@@ -613,4 +666,10 @@ internal open class BrowseService2 {
  
          return Pair(combinedItems, combinedKey)
      }
@@ -101,7 +98,7 @@ index 8e98bb5f..a1c9b42b 100644
 +private const val SHORTS_TAG = "BrowseService2"
 +
 +// JoTube: Shorts feed details (parallel requests)
-+private val sShortsDetailsExecutor = Executors.newFixedThreadPool(6) { runnable ->
++private val sShortsDetailsExecutor = Executors.newFixedThreadPool(4) { runnable ->
 +    Thread(runnable, "JoTubeShortsDetails").apply { isDaemon = true }
 +}
 diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/gen/BrowseItems.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/gen/BrowseItems.kt
@@ -184,7 +181,7 @@ index 00000000..32d3f29b
 +    }
 +}
 diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt
-index d9663441..dc73fed8 100644
+index d9663441..993ffb65 100644
 --- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt
 +++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt
 @@ -30,12 +30,13 @@ internal object FormatInfoWrapper {
@@ -210,9 +207,9 @@ index d9663441..dc73fed8 100644
              return
          }
  
-+        synchronized(FormatFetchLock.LOCK) { // JoTube: shares VideoInfoService with the other fetches
-+            syncWithAuthInfoInt(formatInfo)
-+        }
++        // JoTube: not under FormatFetchLock. It runs for every watched video (history) and made the
++        // Shorts preloading wait behind it.
++        syncWithAuthInfoInt(formatInfo)
 +    }
 +
 +    private fun syncWithAuthInfoInt(formatInfo: MediaItemFormatInfo) {
