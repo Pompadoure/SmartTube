@@ -28,27 +28,32 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Read task
-        id: task
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run Claude Code
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           {
-            echo 'prompt<<JOTUBE_TASK_EOF'
             cat .claude-task/TASK.md
             echo
             echo 'Write a short report of what you found and changed to .claude-task/REPORT.md (overwrite it).'
             echo 'Do not commit or push: the workflow commits your changes. Never touch secrets, signing keys or .github/.'
-            echo 'JOTUBE_TASK_EOF'
-          } >> "$GITHUB_OUTPUT"
-
-      - uses: anthropics/claude-code-action@v1
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          prompt: ${{ steps.task.outputs.prompt }}
-          claude_args: |
-            --model claude-sonnet-5-5
-            --max-turns 120
-            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git status:*),Bash(ls:*),Bash(find:*),Bash(grep:*),Bash(cat:*),Bash(wc:*)"
+          } > /tmp/prompt.md
+          claude -p "$(cat /tmp/prompt.md)" \
+            --model claude-sonnet-5-5 \
+            --max-turns 120 \
+            --permission-mode acceptEdits \
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git status:*),Bash(ls:*),Bash(find:*),Bash(grep:*),Bash(cat:*),Bash(wc:*)" \
+            > /tmp/claude-output.md 2>&1 || echo "Claude Code exited with $?" >> /tmp/claude-output.md
+          mkdir -p .claude-task
+          cp /tmp/claude-output.md .claude-task/OUTPUT.md
+          tail -c 3000 /tmp/claude-output.md
 
       - name: Commit the result
         if: always()
