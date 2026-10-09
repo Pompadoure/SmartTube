@@ -136,7 +136,26 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     private final VideoListener mFirstFrameListener = new VideoListener() {
         @Override
         public void onRenderedFirstFrame() {
+            // JoTube: only the frame of the video the overlay waits for (not a late one of the previous Short)
+            Video video = getVideo();
+            if (mPlayer != null && video != null && !ShortsQueue.isPlayerOn(video.videoId, mPlayer.getCurrentWindowIndex())) {
+                return;
+            }
             mShortsTransition.hide(true);
+        }
+    };
+    // JoTube: no first frame will come (error, audio only): don't let the thumbnail cover the screen
+    private final Player.EventListener mTransitionStateListener = new Player.EventListener() {
+        @Override
+        public void onPlayerError(com.google.android.exoplayer2.ExoPlaybackException error) {
+            mShortsTransition.hide(false);
+        }
+
+        @Override
+        public void onPlayerStateChanged(boolean playWhenReady, int playbackState) {
+            if (playbackState == Player.STATE_READY && mPlayer != null && mPlayer.getVideoFormat() == null) {
+                mShortsTransition.hide(false);
+            }
         }
     };
 
@@ -503,6 +522,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         }
         if (mPlayer != null) {
             mPlayer.removeVideoListener(mFirstFrameListener);
+            mPlayer.removeListener(mTransitionStateListener);
         }
         mShortsTransition.hide(false);
         mPlayerInitializer.release();
@@ -553,6 +573,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         DefaultRenderersFactory renderersFactory = new CustomOverridesRenderersFactory(getContext());
         mPlayer = mPlayerInitializer.createPlayer(getContext(), renderersFactory, trackSelector);
         mPlayer.addVideoListener(mFirstFrameListener);
+        mPlayer.addListener(mTransitionStateListener);
 
         mExoPlayerController.setPlayer(mPlayer);
     }
@@ -1274,6 +1295,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
     @Override
     public void onDestroyView() {
+        mLastVideo = null; // JoTube: no swipe from a video of a closed player
         mShortsTransition.detach();
         mShortsBackground.detach();
         mShortsPanel.detach();

@@ -181,8 +181,11 @@ public class VideoLoaderController extends BasePlayerController {
             return;
         }
 
-        ShortsTransitionState.setDirection(ShortsTransitionState.DIRECTION_PREVIOUS);
-        openVideoInt(mSuggestionsController.getPrevious());
+        Video previous = mSuggestionsController.getPrevious();
+        // JoTube: the direction only for a video that is actually opened (else it would swipe a later one)
+        ShortsTransitionState.setDirection(previous != null ?
+                ShortsTransitionState.DIRECTION_PREVIOUS : ShortsTransitionState.DIRECTION_NONE);
+        openVideoInt(previous);
 
         if (getPlayerTweaksData().isPlayerUiOnNextEnabled()) {
             getPlayer().showOverlay(true);
@@ -213,7 +216,8 @@ public class VideoLoaderController extends BasePlayerController {
             }
         }
 
-        ShortsTransitionState.setDirection(ShortsTransitionState.DIRECTION_NEXT);
+        ShortsTransitionState.setDirection(next != null ?
+                ShortsTransitionState.DIRECTION_NEXT : ShortsTransitionState.DIRECTION_NONE);
 
         if (next != null) {
             openVideoInt(next);

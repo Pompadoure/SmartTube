@@ -106,6 +106,16 @@ public final class ShortsQueue {
     }
 
     /**
+     * JoTube: false if the video is in the queue but the player is still on another item (a frame of the
+     * previous Short, rendered before the switch to this one was made).
+     */
+    public static boolean isPlayerOn(String videoId, int windowIndex) {
+        ShortsQueue queue = sActive;
+        int index = queue != null ? queue.indexOf(videoId) : -1;
+        return index == -1 || index == windowIndex;
+    }
+
+    /**
      * Format info of a Short that is already in the player (e.g. the previous one), so going back
      * doesn't wait for the network. Null if the video isn't queued (or it's the current one).
      */

@@ -446,7 +446,8 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
         // (FormatFetchLock) and are never cancelled midway (that broke the shared state before: 403).
         Utils.removeCallbacks(mPrefetchFocusedShort);
         if (item != null && item.hasVideo() && !item.isLive && !item.isUpcoming) {
-            Utils.postDelayed(mPrefetchFocusedShort, item.isShorts ? 400 : 700);
+            // Regular videos: only a card the user really stays on (a fetch holds the lock ~4 s, a click must not wait)
+            Utils.postDelayed(mPrefetchFocusedShort, item.isShorts ? 400 : 1500);
         }
     }
 
@@ -629,6 +630,7 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
     @Override
     public void onVideoItemClicked(Video item) {
         Utils.removeCallbacks(mPrefetchFocusedShort); // JoTube
+        mFocusPrefetchWanted = null; // JoTube: the player fetches the clicked one
         if (getContext() == null) {
             return;
         }

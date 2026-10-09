@@ -173,6 +173,12 @@ public class PlayerUIController extends BasePlayerController {
             }
         }
 
+        // JoTube: turning on without the exact track (e.g. only auto-generated here): the same language will do,
+        // instead of opening the menu every time
+        if (matchedFormat == null && !enabled) {
+            matchedFormat = findSubtitleByLanguage();
+        }
+
         // Match found
         if (matchedFormat != null) {
             FormatItem format = enabled ? FormatItem.SUBTITLE_NONE : matchedFormat;
@@ -184,6 +190,34 @@ public class PlayerUIController extends BasePlayerController {
             // Match not found
             onSubtitleLongClicked();
         }
+    }
+
+    private FormatItem findSubtitleByLanguage() {
+        for (FormatItem last : getPlayerData().getLastSubtitleFormats()) {
+            String lastLanguage = getLanguageCode(last);
+
+            if (lastLanguage == null) {
+                continue;
+            }
+
+            for (FormatItem item : getPlayer().getSubtitleFormats()) {
+                if (item != null && !item.isDefault() && lastLanguage.equals(getLanguageCode(item))) {
+                    return item;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static String getLanguageCode(FormatItem format) {
+        String language = format != null ? format.getLanguage() : null;
+
+        if (language == null || language.trim().isEmpty()) {
+            return null;
+        }
+
+        return language.trim().split("[-_ ]")[0].toLowerCase();
     }
 
     private void onSubtitleLongClicked() {
