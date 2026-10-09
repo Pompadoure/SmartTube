@@ -21,7 +21,6 @@ import com.bumptech.glide.request.transition.Transition;
 import com.liskovsoft.mediaserviceinterfaces.oauth.Account;
 import com.liskovsoft.sharedutils.locale.LocaleUtility;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
-import com.liskovsoft.smartyoutubetv2.common.app.presenters.BrowsePresenter;
 import com.liskovsoft.smartyoutubetv2.common.app.presenters.PlaybackPresenter;
 import com.liskovsoft.smartyoutubetv2.common.app.presenters.dialogs.AccountSelectionPresenter;
 import com.liskovsoft.smartyoutubetv2.common.app.presenters.settings.AccountSettingsPresenter;
@@ -55,7 +54,6 @@ import static androidx.leanback.widget.TitleViewAdapter.SEARCH_VIEW_VISIBLE;
 public class NavigateTitleView extends TitleView implements OnDataChange, AccountChangeListener {
     private LongClickSearchOrbView mAccountView;
     private SearchOrbView mLanguageView;
-    private SearchOrbView mRefreshView; // JoTube
     private SearchOrbView mExitPip;
     private TextView mPipTitle;
     private int mSearchVisibility = View.INVISIBLE;
@@ -154,10 +152,6 @@ public class NavigateTitleView extends TitleView implements OnDataChange, Accoun
             mSearchOrbView.setVisibility(View.GONE);
         }
 
-        if (mRefreshView != null) {
-            mRefreshView.setVisibility(mSearchVisibility);
-        }
-
         if (mIsAccountViewEnabled) {
             mAccountView.setVisibility(mSearchVisibility);
         }
@@ -200,13 +194,6 @@ public class NavigateTitleView extends TitleView implements OnDataChange, Accoun
 
         mSearchOrbView = findViewById(R.id.title_orb);
 
-        // JoTube: reload the current section (e.g. Home) from the network
-        mRefreshView = findViewById(R.id.refresh_orb);
-        if (mRefreshView != null) {
-            mRefreshView.setOnOrbClickedListener(v -> BrowsePresenter.instance(getContext()).refresh());
-            TooltipCompatHandler.setTooltipText(mRefreshView, getContext().getString(R.string.refresh_section));
-        }
-
         mAccountView = findViewById(R.id.account_orb);
         mAccountView.setOnOrbClickedListener(v -> AccountSelectionPresenter.instance(getContext()).nextAccountOrDialog());
         mAccountView.setOnOrbLongClickedListener(v -> {
@@ -247,9 +234,6 @@ public class NavigateTitleView extends TitleView implements OnDataChange, Accoun
         mSearchOrbView.setVisibility(mIsSearchOrbEnabled ? View.VISIBLE : View.GONE);
         mAccountView.setVisibility(mIsAccountViewEnabled ? View.VISIBLE : View.GONE);
         mLanguageView.setVisibility(mIsLanguageViewEnabled ? View.VISIBLE : View.GONE);
-        if (mRefreshView != null) {
-            mRefreshView.setVisibility(mSearchVisibility);
-        }
         mGlobalClock.setVisibility(mIsGlobalClockEnabled ? View.VISIBLE : View.GONE);
         mGlobalDate.setVisibility(mIsGlobalClockEnabled ? View.VISIBLE : View.GONE);
 

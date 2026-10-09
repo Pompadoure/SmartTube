@@ -29,6 +29,7 @@ import com.liskovsoft.smartyoutubetv2.tv.presenter.ChannelHeaderPresenter.Channe
 import com.liskovsoft.smartyoutubetv2.tv.presenter.ShortsCardPresenter;
 import com.liskovsoft.smartyoutubetv2.tv.presenter.VideoCardPresenter;
 import com.liskovsoft.smartyoutubetv2.tv.presenter.CustomListRowPresenter;
+import com.liskovsoft.smartyoutubetv2.tv.presenter.RefreshCardPresenter;
 import com.liskovsoft.smartyoutubetv2.tv.presenter.base.OnItemLongPressedListener;
 import com.liskovsoft.smartyoutubetv2.tv.ui.browse.interfaces.VideoSection;
 import com.liskovsoft.smartyoutubetv2.tv.ui.common.LeanbackActivity;
@@ -56,6 +57,8 @@ public abstract class MultipleRowsFragment extends RowsSupportFragment implement
     private ShortsCardPresenter mShortsPresenter;
     private int mSelectedRowIndex = -1;
     private ChannelHeaderCallback mChannelHeaderCallback;
+    private ListRow mRefreshRow; // JoTube: always the last row, see isRefreshCardEnabled
+    private boolean mFocusAfterRefresh; // JoTube: the clicked card is removed by the reload, focus the first row
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -76,6 +79,51 @@ public abstract class MultipleRowsFragment extends RowsSupportFragment implement
     }
 
     protected abstract VideoGroupPresenter getMainPresenter();
+
+    /**
+     * JoTube: a refresh card (thumbnail sized, reload arrow) in a row below the others.
+     */
+    protected boolean isRefreshCardEnabled() {
+        return false;
+    }
+
+    /**
+     * JoTube: the refresh card is clicked.
+     */
+    protected void onRefreshClicked() {
+    }
+
+    /**
+     * JoTube: index where a row is added at the end (before the refresh row).
+     */
+    private int getEndIndex() {
+        int index = mRefreshRow != null ? mRowsAdapter.indexOf(mRefreshRow) : -1;
+        return index != -1 ? index : mRowsAdapter.size();
+    }
+
+    private void addRefreshRowIfNeeded() {
+        if (!isRefreshCardEnabled() || mRowsAdapter == null) {
+            return;
+        }
+
+        if (mRefreshRow == null) {
+            ArrayObjectAdapter adapter = new ArrayObjectAdapter(new RefreshCardPresenter());
+            adapter.add(new RefreshCardPresenter.RefreshItem());
+            mRefreshRow = new ListRow(new HeaderItem(""), adapter);
+        }
+
+        if (mRowsAdapter.indexOf(mRefreshRow) == -1) {
+            mRowsAdapter.add(mRefreshRow);
+        }
+    }
+
+    private static VideoGroupObjectAdapter getVideoAdapter(Object row) {
+        if (row instanceof ListRow && ((ListRow) row).getAdapter() instanceof VideoGroupObjectAdapter) {
+            return (VideoGroupObjectAdapter) ((ListRow) row).getAdapter();
+        }
+
+        return null;
+    }
 
     private void applyPendingUpdates() {
         // prevent modification within update method
@@ -132,10 +180,12 @@ public abstract class MultipleRowsFragment extends RowsSupportFragment implement
 
     private void removeByIndex(int idx) {
         if (mRowsAdapter != null && mRowsAdapter.size() > idx) {
-            ListRow row = (ListRow) mRowsAdapter.get(idx);
-            mRowsAdapter.remove(row);
-            VideoGroupObjectAdapter group = (VideoGroupObjectAdapter) row.getAdapter();
-            mVideoGroupAdapters.values().remove(group);
+            Object row = mRowsAdapter.get(idx);
+            VideoGroupObjectAdapter group = getVideoAdapter(row);
+            if (group != null) {
+                mRowsAdapter.remove(row);
+                mVideoGroupAdapters.values().remove(group);
+            }
         }
     }
 
@@ -145,12 +195,10 @@ public abstract class MultipleRowsFragment extends RowsSupportFragment implement
             for (int i = 0; i < mRowsAdapter.size(); i++) {
                 Object row = mRowsAdapter.get(i);
 
-                if (row instanceof ListRow) {
-                    VideoGroupObjectAdapter adapter = (VideoGroupObjectAdapter) ((ListRow) row).getAdapter();
-                    if (adapter == needed) {
-                        mRowsAdapter.remove(row);
-                        mVideoGroupAdapters.remove(id);
-                    }
+                VideoGroupObjectAdapter adapter = getVideoAdapter(row);
+                if (adapter != null && adapter == needed) {
+                    mRowsAdapter.remove(row);
+                    mVideoGroupAdapters.remove(id);
                 }
             }
         }
@@ -162,11 +210,9 @@ public abstract class MultipleRowsFragment extends RowsSupportFragment implement
             for (int i = 0; i < mRowsAdapter.size(); i++) {
                 Object row = mRowsAdapter.get(i);
 
-                if (row instanceof ListRow) {
-                    VideoGroupObjectAdapter adapter = (VideoGroupObjectAdapter) ((ListRow) row).getAdapter();
-                    if (adapter == needed) {
-                        return i;
-                    }
+                VideoGroupObjectAdapter adapter = getVideoAdapter(row);
+                if (adapter != null && adapter == needed) {
+                    return i;
                 }
             }
         }
@@ -266,10 +312,23 @@ public abstract class MultipleRowsFragment extends RowsSupportFragment implement
 
             ListRow row = new ListRow(rowHeader, videoGroupAdapter);
 
-            if (group.getPosition() == -1 || group.getPosition() > mRowsAdapter.size()) {
-                mRowsAdapter.add(row);
+            int endIndex = getEndIndex(); // JoTube: the refresh row stays last
+            if (group.getPosition() == -1 || group.getPosition() > endIndex) {
+                mRowsAdapter.add(endIndex, row);
             } else {
                 mRowsAdapter.add(group.getPosition(), row);
+            }
+
+            addRefreshRowIfNeeded();
+
+            if (mFocusAfterRefresh) {
+                mFocusAfterRefresh = false;
+                mSelectedRowIndex = -1;
+                setSelectedPosition(0, false);
+                if (getVerticalGridView() != null) {
+                    getVerticalGridView().requestFocus();
+                }
+                return;
             }
         } else {
             Log.d(TAG, "Continue row %s %s", group.getTitle(), System.currentTimeMillis());
@@ -292,7 +351,10 @@ public abstract class MultipleRowsFragment extends RowsSupportFragment implement
 
     @Override
     public int getPosition() {
-        return getSelectedPosition();
+        int position = getSelectedPosition();
+        // JoTube: the refresh row is never restored (rows load before it)
+        int refreshIndex = mRefreshRow != null && mRowsAdapter != null ? mRowsAdapter.indexOf(mRefreshRow) : -1;
+        return refreshIndex != -1 && position == refreshIndex ? 0 : position;
     }
 
     @Override
@@ -301,7 +363,7 @@ public abstract class MultipleRowsFragment extends RowsSupportFragment implement
             return;
         }
 
-        if (mRowsAdapter != null && index < mRowsAdapter.size()) {
+        if (mRowsAdapter != null && index < getEndIndex()) { // JoTube: not the refresh row while rows are loading
             setSelectedPosition(index, false);
             mSelectedRowIndex = -1;
         } else {
@@ -350,6 +412,9 @@ public abstract class MultipleRowsFragment extends RowsSupportFragment implement
 
             if (item instanceof Video) {
                 mMainPresenter.onVideoItemClicked((Video) item);
+            } else if (item instanceof RefreshCardPresenter.RefreshItem) {
+                mFocusAfterRefresh = true;
+                onRefreshClicked();
             } else {
                 Toast.makeText(getActivity(), item.toString(), Toast.LENGTH_SHORT).show();
             }

@@ -21,6 +21,16 @@ public class VideoRowsFragment extends MultipleRowsFragment {
     }
 
     @Override
+    protected boolean isRefreshCardEnabled() {
+        return true; // JoTube: Home and the other row sections
+    }
+
+    @Override
+    protected void onRefreshClicked() {
+        BrowsePresenter.instance(getContext()).refresh();
+    }
+
+    @Override
     public void setExpand(boolean expand) {
         // force expand by default
         super.setExpand(true);
