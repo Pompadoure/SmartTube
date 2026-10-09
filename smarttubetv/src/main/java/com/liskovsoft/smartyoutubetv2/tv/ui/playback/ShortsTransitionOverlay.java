@@ -25,10 +25,9 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
 
 /**
- * Shorts switch, like the official app: the current Short (a snapshot of its last frame) slides out and the
- * real video surface slides in from the direction of navigation, covered by the next Short's thumbnail.
- * The thumbnail fades away as soon as the new video's first frame is rendered, even in the middle of the
- * slide, so the new Short is already playing while it moves into place.
+ * Shorts switch, like the official app: the current Short (a snapshot of its last frame) stays until the next
+ * one's first frame is rendered, then it slides out and the real, already playing video slides in from the
+ * direction of navigation. No placeholder thumbnail (a black cover only if the new video is late).
  */
 public class ShortsTransitionOverlay {
     // The slide starts when the new video is already playing (its first frame came during the hold)
@@ -56,6 +55,7 @@ public class ShortsTransitionOverlay {
     private ValueAnimator mSwipe;
     private Runnable mSnapshotTimeout;
     private Runnable mHoldStart; // the old picture is held until the new video's first frame
+    private float mOutStart; // where the outgoing picture is (not 0 if pressed again during a slide)
     private int mSwipeId; // a newer swipe makes the callbacks of an older one void
     private boolean mIsShown;
     private boolean mFirstFrameRendered;
@@ -203,6 +203,8 @@ public class ShortsTransitionOverlay {
             mHandler.removeCallbacks(mHoldStart);
             mHoldStart = null;
             mFirstFrameRendered = false;
+            mHandler.removeCallbacks(mFailsafeHide);
+            mHandler.postDelayed(mFailsafeHide, FAILSAFE_HIDE_MS);
             hold(++mSwipeId, direction, distance);
             return;
         }
@@ -211,8 +213,12 @@ public class ShortsTransitionOverlay {
         boolean coverOnScreen = mIsShown && !mFirstFrameRendered && mSnapshotTimeout == null &&
                 mIn.getVisibility() == View.VISIBLE && mIn.getAlpha() > 0.5f;
 
+        // Pressed again during the slide: the new outgoing picture starts where the video is now
+        float outStart = mSwipe != null && mSurfaceRoot != null ? mSurfaceRoot.getTranslationY() : 0;
+
         prepare();
-        setSurfaceOffset(0);
+        mOutStart = outStart;
+        setSurfaceOffset(outStart);
         mFirstFrameRendered = false;
         final int swipeId = ++mSwipeId;
         clearImage(mIn);
@@ -284,7 +290,7 @@ public class ShortsTransitionOverlay {
             return;
         }
 
-        mOut.setTranslationY(0);
+        mOut.setTranslationY(mOutStart);
         mOut.setVisibility(View.VISIBLE);
 
         if (mFirstFrameRendered) {
@@ -325,11 +331,12 @@ public class ShortsTransitionOverlay {
             return;
         }
 
+        final float outStart = mOutStart;
         final float outEnd = -direction * distance;
         final float inStart = direction * distance;
 
         mOut.setVisibility(View.VISIBLE);
-        mOut.setTranslationY(0);
+        mOut.setTranslationY(outStart);
         // The new video: black until its first frame (not ready only after the hold timeout)
         clearImage(mIn);
         mIn.setVisibility(View.VISIBLE);
@@ -346,7 +353,7 @@ public class ShortsTransitionOverlay {
             }
             float fraction = (float) animation.getAnimatedValue();
             float inOffset = inStart * (1f - fraction);
-            mOut.setTranslationY(outEnd * fraction);
+            mOut.setTranslationY(outStart + (outEnd - outStart) * fraction);
             mIn.setTranslationY(inOffset);
             setSurfaceOffset(inOffset);
         });
