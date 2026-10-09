@@ -124,6 +124,75 @@ import java.util.concurrent.atomic.AtomicBoolean;
         && ((PlayedPeriodsPolicy) loadControl).shouldRetainPlayedPeriods();
   }
 
+  // BEGIN JoTube: preload of the next playlist items (Shorts)
+  private static final long PRELOAD_ENQUEUE_AHEAD_US = 8_000_000; // playing period buffered ahead: enqueue the next
+  private static final long PRELOAD_QUEUED_ENQUEUE_US = 5_000_000; // queued period buffered: enqueue the one after
+  private static final long PRELOAD_LIMIT_US = 6_000_000; // a queued (not playing) period loads only its start
+  private static final long PRELOAD_URGENT_US = 10_000_000; // the playing period gets priority below this
+  private static final int PRELOAD_MAX_PERIODS = 3; // playing + 2 queued
+
+  private boolean shouldPreloadQueued() {
+    return loadControl instanceof PlayedPeriodsPolicy
+        && ((PlayedPeriodsPolicy) loadControl).shouldPreloadQueuedPeriods();
+  }
+
+  /** The loading period is a queued one (not the one being played) and preloading is on. */
+  private boolean isPreloading() {
+    return shouldPreloadQueued()
+        && queue.hasPlayingPeriod()
+        && queue.getPlayingPeriod() != queue.getLoadingPeriod();
+  }
+
+  private boolean shouldEnqueueEarly() {
+    if (!shouldPreloadQueued() || !queue.canEnqueueEarly(PRELOAD_MAX_PERIODS)) {
+      return false;
+    }
+    MediaPeriodHolder loading = queue.getLoadingPeriod();
+    if (loading.isFullyBuffered()) {
+      return true;
+    }
+    if (loading == queue.getPlayingPeriod()) {
+      return loading.getBufferedPositionUs() - loading.toPeriodTime(rendererPositionUs)
+          >= PRELOAD_ENQUEUE_AHEAD_US;
+    }
+    return loading.getBufferedPositionUs() - loading.info.startPositionUs >= PRELOAD_QUEUED_ENQUEUE_US;
+  }
+
+  /**
+   * ExoPlayer only continues the loading (last) period. While queued periods preload, the playing one
+   * is continued here as well (when its buffer gets low, or when the preload has its start), the
+   * preloading one only up to {@link #PRELOAD_LIMIT_US}.
+   */
+  private void maybeContinueQueuedLoading() {
+    MediaPeriodHolder playing = queue.getPlayingPeriod();
+    MediaPeriodHolder loading = queue.getLoadingPeriod();
+    float speed = mediaClock.getPlaybackParameters().speed;
+    boolean preloadDone = true;
+    boolean preloadMore = false;
+    if (loading.prepared) {
+      long next = loading.getNextLoadPositionUs();
+      preloadDone = next == C.TIME_END_OF_SOURCE || next - loading.info.startPositionUs >= PRELOAD_LIMIT_US;
+      preloadMore = !preloadDone;
+    }
+    boolean playingMore = false;
+    if (playing.prepared) {
+      long next = playing.getNextLoadPositionUs();
+      if (next != C.TIME_END_OF_SOURCE) {
+        long playingPositionUs = playing.toPeriodTime(rendererPositionUs);
+        long ahead = Math.max(0, next - playingPositionUs);
+        if ((ahead < PRELOAD_URGENT_US || preloadDone) && loadControl.shouldContinueLoading(ahead, speed)) {
+          playingMore = true;
+          playing.mediaPeriod.continueLoading(playingPositionUs);
+        }
+      }
+    }
+    setIsLoading(preloadMore || playingMore || !loading.prepared);
+    if (preloadMore) {
+      loading.continueLoading(rendererPositionUs);
+    }
+  }
+  // END JoTube
+
   private long getBackBufferDurationUs() {
     return loadControl instanceof PlayedPeriodsPolicy
         ? ((PlayedPeriodsPolicy) loadControl).getCurrentBackBufferDurationUs()
@@ -1570,9 +1639,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
     // Update the loading period if required.
     maybeUpdateLoadingPeriod();
     MediaPeriodHolder loadingPeriodHolder = queue.getLoadingPeriod();
-    if (loadingPeriodHolder == null || loadingPeriodHolder.isFullyBuffered()) {
+    if (loadingPeriodHolder == null || (loadingPeriodHolder.isFullyBuffered() && !isPreloading())) {
       setIsLoading(false);
-    } else if (!playbackInfo.isLoading) {
+    } else if (!playbackInfo.isLoading || shouldPreloadQueued()) {
+      // JoTube: Shorts re-poll on every cycle (a no-op while a chunk loads), so a lost "continue loading"
+      // request can't leave the period without loads
       maybeContinueLoading();
     }
 
@@ -1693,7 +1764,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
   private void maybeUpdateLoadingPeriod() throws IOException {
     queue.reevaluateBuffer(rendererPositionUs);
-    if (queue.shouldLoadNextMediaPeriod()) {
+    // JoTube: Shorts (with a playing period) decide on their own, with a limit of queued periods
+    boolean enqueue =
+        shouldPreloadQueued() && queue.hasPlayingPeriod()
+            ? shouldEnqueueEarly()
+            : queue.shouldLoadNextMediaPeriod();
+    if (enqueue) {
       MediaPeriodInfo info = queue.getNextMediaPeriodInfo(rendererPositionUs, playbackInfo);
       if (info == null) {
         maybeThrowSourceInfoRefreshError();
@@ -1733,6 +1809,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
   private void handleContinueLoadingRequested(MediaPeriod mediaPeriod) {
     if (!queue.isLoading(mediaPeriod)) {
+      // JoTube: the playing period (not the loading one while queued periods preload) asks for more
+      if (isPreloading() && queue.getPlayingPeriod().mediaPeriod == mediaPeriod) {
+        maybeContinueLoading();
+      }
       // Stale event.
       return;
     }
@@ -1752,6 +1832,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
   }
 
   private void maybeContinueLoading() {
+    if (isPreloading()) {
+      maybeContinueQueuedLoading();
+      return;
+    }
     MediaPeriodHolder loadingPeriodHolder = queue.getLoadingPeriod();
     long nextLoadPositionUs = loadingPeriodHolder.getNextLoadPositionUs();
     if (nextLoadPositionUs == C.TIME_END_OF_SOURCE) {
@@ -1886,6 +1970,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
     MediaPeriodHolder loadingPeriodHolder = queue.getLoadingPeriod();
     if (loadingPeriodHolder == null) {
       return 0;
+    }
+    if (isPreloading()) {
+      // JoTube: what plays is what counts, not the start of the queued periods behind it
+      MediaPeriodHolder playing = queue.getPlayingPeriod();
+      return Math.max(0, playing.getBufferedPositionUs() - playing.toPeriodTime(rendererPositionUs));
     }
     long totalBufferedDurationUs =
         bufferedPositionInLoadingPeriodUs - loadingPeriodHolder.toPeriodTime(rendererPositionUs);

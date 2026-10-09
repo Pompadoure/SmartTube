@@ -61,6 +61,11 @@ public class FastStartLoadControl implements LoadControl, PlayedPeriodsPolicy {
     }
 
     @Override
+    public boolean shouldPreloadQueuedPeriods() {
+        return ShortsTransitionState.isShortsMode();
+    }
+
+    @Override
     public long getCurrentBackBufferDurationUs() {
         return ShortsTransitionState.isShortsMode() ? SHORTS_BACK_BUFFER_US : mDelegate.getBackBufferDurationUs();
     }
