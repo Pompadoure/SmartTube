@@ -83,6 +83,10 @@ public class SabrStream {
     private boolean receivedNewSegments;
     private String url;
     private List<? extends  SabrPart> multiResult = null;
+    // JoTube: init-only load state (see setInitLoad())
+    private volatile boolean initLoad;
+    private boolean initSegmentEnded;
+    private boolean policyReceivedInInitLoad;
 
     private static class NoSegmentsTracker {
         public int consecutiveRequests = 0;
@@ -138,7 +142,25 @@ public class SabrStream {
     }
 
 
+    /**
+     * JoTube: marks the next request as the initialization one (only the format info is needed from it).<br/>
+     * The server also pushes media in the init response. The init chunk only needs the init segment, but the extractor
+     * used to read (and drop) the whole response before the real media request could start (~1.5 s on a 1080p video).
+     * While this flag is set the stream ends right after the init segment, once a fresh NextRequestPolicy (playback cookie)
+     * was received. Otherwise (no init segment, no policy) the response is read to the end as before.
+     */
+    public void setInitLoad(boolean initLoad) {
+        initSegmentEnded = false;
+        policyReceivedInInitLoad = false;
+        this.initLoad = initLoad;
+    }
+
     public SabrPart parse(@NonNull ExtractorInput extractorInput) {
+        if (initLoad && initSegmentEnded && policyReceivedInInitLoad) {
+            Log.d(TAG, "Init segment is read. Skipping the rest of the init response.");
+            return null;
+        }
+
         SabrPart result = null;
 
         while (result == null && (multiResult == null || multiResult.isEmpty())) {
@@ -149,6 +171,10 @@ public class SabrStream {
             }
 
             result = parsePart(part);
+
+            if (initLoad && result instanceof MediaSegmentEndSabrPart && ((MediaSegmentEndSabrPart) result).isInitSegment) {
+                initSegmentEnded = true;
+            }
 
             if (result == null) {
                 multiResult = parseMultiPart(part);
@@ -386,6 +412,7 @@ public class SabrStream {
 
         Log.d(TAG, "Process NextRequestPolicy: %s", nextRequestPolicy);
         processor.processNextRequestPolicy(nextRequestPolicy);
+        policyReceivedInInitLoad = true;
     }
 
     private void processSabrError(UMPPart part) {
