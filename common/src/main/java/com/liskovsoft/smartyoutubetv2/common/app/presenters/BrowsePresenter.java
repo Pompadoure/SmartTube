@@ -447,7 +447,7 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
         Utils.removeCallbacks(mPrefetchFocusedShort);
         if (item != null && item.hasVideo() && !item.isLive && !item.isUpcoming) {
             // Regular videos: a card the user stays on for a moment (the fetch takes ~3 s, the click then starts at once)
-            Utils.postDelayed(mPrefetchFocusedShort, item.isShorts ? 400 : 600);
+            Utils.postDelayed(mPrefetchFocusedShort, item.isShorts ? 400 : 350); // JoTube: 600 -> 350, a click's own fetch now goes before this one
         }
     }
 

@@ -1,0 +1,164 @@
+diff --git a/mediaserviceinterfaces/src/main/java/com/liskovsoft/mediaserviceinterfaces/MediaItemService.java b/mediaserviceinterfaces/src/main/java/com/liskovsoft/mediaserviceinterfaces/MediaItemService.java
+index be26635d..c300b6dc 100644
+--- a/mediaserviceinterfaces/src/main/java/com/liskovsoft/mediaserviceinterfaces/MediaItemService.java
++++ b/mediaserviceinterfaces/src/main/java/com/liskovsoft/mediaserviceinterfaces/MediaItemService.java
+@@ -56,6 +56,7 @@ public interface MediaItemService {
+     // RxJava interfaces
+     Observable<MediaItemFormatInfo> getFormatInfoObserve(MediaItem item);
+     Observable<MediaItemFormatInfo> getFormatInfoObserve(String videoId);
++    Observable<MediaItemFormatInfo> getFormatInfoObserveForeground(String videoId); // JoTube: goes before background fetches
+     Observable<MediaItemFormatInfo> getFormatInfoObserve(String videoId, String clickTrackingParams);
+     Observable<MediaItemStoryboard> getStoryboardObserve(MediaItem item);
+     Observable<MediaItemStoryboard> getStoryboardObserve(String videoId);
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/YouTubeMediaItemService.java b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/YouTubeMediaItemService.java
+index 69c0a612..91d60e85 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/YouTubeMediaItemService.java
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/YouTubeMediaItemService.java
+@@ -32,6 +32,7 @@ import com.liskovsoft.youtubeapi.playlist.PlaylistServiceWrapper;
+ import com.liskovsoft.youtubeapi.playlistgroups.PlaylistGroupServiceImpl;
+ import com.liskovsoft.youtubeapi.service.data.YouTubeMediaItem;
+ import com.liskovsoft.youtubeapi.service.data.YouTubeSponsorSegment;
++import com.liskovsoft.youtubeapi.service.internal.FormatFetchLock;
+ import com.liskovsoft.youtubeapi.service.internal.FormatInfoWrapper;
+ import com.liskovsoft.youtubeapi.track.TrackingService;
+ import com.liskovsoft.youtubeapi.videoinfo.V2.VideoInfoService;
+@@ -84,6 +85,14 @@ public class YouTubeMediaItemService implements MediaItemService {
+         return RxHelper.fromCallable(() -> getFormatInfo(videoId));
+     }
+ 
++    /**
++     * JoTube: the fetch of the video the user waits for; it takes the fetch lock before waiting background fetches.
++     */
++    @Override
++    public Observable<MediaItemFormatInfo> getFormatInfoObserveForeground(String videoId) {
++        return RxHelper.fromCallable(() -> FormatFetchLock.callForeground(() -> getFormatInfo(videoId)));
++    }
++
+     @Override
+     public Observable<MediaItemFormatInfo> getFormatInfoObserve(String videoId, String clickTrackingParams) {
+         return RxHelper.fromCallable(() -> getFormatInfo(videoId, clickTrackingParams));
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatFetchLock.java b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatFetchLock.java
+index 32d3f29b..639b8458 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatFetchLock.java
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatFetchLock.java
+@@ -1,12 +1,79 @@
+ package com.liskovsoft.youtubeapi.service.internal;
+ 
++import java.util.concurrent.Callable;
++import java.util.concurrent.atomic.AtomicInteger;
++
+ /**
+  * JoTube: one stream info fetch at a time. VideoInfoService, PoTokenGate, the decipher in AppService and the
+  * single cached info share state that isn't thread safe; parallel fetches mixed it up (streams failed with 403).
++ * <p>
++ * Priority: a foreground fetch (the video the user waits for) goes before background fetches that haven't
++ * started yet. The monitor stays a plain one: a foreground fetch counts itself in FOREGROUND_ACTIVE from before it
++ * takes the monitor until it is done, background fetches call {@link #beforeLock()} before they take the monitor
++ * and wait (bounded, holding nothing) while the counter is above zero. A running fetch is never interrupted.
+  */
+ public final class FormatFetchLock {
+     public static final Object LOCK = new Object();
+ 
++    private static final long BACKGROUND_POLL_MS = 50;
++    private static final long BACKGROUND_MAX_WAIT_MS = 4_000; // a background fetch is never starved for good
++
++    private static final AtomicInteger FOREGROUND_ACTIVE = new AtomicInteger();
++    // Set by the caller around the blocking call (the Rx callable runs on an io thread, one fetch per thread)
++    private static final ThreadLocal<Boolean> FOREGROUND = new ThreadLocal<>();
++
+     private FormatFetchLock() {
+     }
++
++    /**
++     * Marks the fetches made by the current thread inside {@code callable} as foreground.
++     */
++    public static <T> T callForeground(Callable<T> callable) throws Exception {
++        Boolean old = FOREGROUND.get();
++        FOREGROUND.set(true);
++        try {
++            return callable.call();
++        } finally {
++            if (old == null) {
++                FOREGROUND.remove();
++            } else {
++                FOREGROUND.set(old);
++            }
++        }
++    }
++
++    /**
++     * Call right before {@code synchronized (LOCK)}, and pass the result to {@link #afterFetch(boolean)} in a finally.
++     * Foreground: registers itself and returns true at once. Background: waits (bounded) while a foreground
++     * fetch is registered, returns false.
++     */
++    public static boolean beforeLock() {
++        if (Boolean.TRUE.equals(FOREGROUND.get())) {
++            FOREGROUND_ACTIVE.incrementAndGet();
++            return true;
++        }
++
++        awaitForeground();
++        return false;
++    }
++
++    public static void afterFetch(boolean foreground) {
++        if (foreground) {
++            FOREGROUND_ACTIVE.decrementAndGet();
++        }
++    }
++
++    /**
++     * Background fetches: let foreground fetches take the monitor first. Holds no lock while waiting.
++     */
++    public static void awaitForeground() {
++        long deadline = System.currentTimeMillis() + BACKGROUND_MAX_WAIT_MS;
++        try {
++            while (FOREGROUND_ACTIVE.get() > 0 && System.currentTimeMillis() < deadline) {
++                Thread.sleep(BACKGROUND_POLL_MS);
++            }
++        } catch (InterruptedException e) {
++            Thread.currentThread().interrupt(); // disposed: carry on, the interrupt flag stays set
++        }
++    }
+ }
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt
+index 3a7f6277..8739147e 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt
+@@ -54,12 +54,18 @@ internal object FormatInfoWrapper {
+             return it
+         }
+ 
+-        synchronized(FormatFetchLock.LOCK) {
+-            try {
+-                return selectPlaybackFormatInfo(videoId, clickTrackingParams)
+-            } finally {
+-                ReloadPlaybackGate.reset(videoId)
++        // JoTube: background fetches wait here while a foreground one (the player) is waiting for the lock
++        val foreground = FormatFetchLock.beforeLock()
++        try {
++            synchronized(FormatFetchLock.LOCK) {
++                try {
++                    return selectPlaybackFormatInfo(videoId, clickTrackingParams)
++                } finally {
++                    ReloadPlaybackGate.reset(videoId)
++                }
+             }
++        } finally {
++            FormatFetchLock.afterFetch(foreground)
+         }
+     }
+ 
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java
+index d0a789e3..ebc50b87 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java
+@@ -327,6 +327,8 @@ public class VideoInfoService extends VideoInfoServiceBase {
+ 
+         Thread thread = new Thread(() -> {
+             try {
++                // JoTube: background, a waiting foreground fetch goes first
++                FormatFetchLock.awaitForeground();
+                 // After the current fetch, never in parallel with another one (shared state)
+                 synchronized (FormatFetchLock.LOCK) {
+                     if (mCachedTranslationLanguages != null) {
