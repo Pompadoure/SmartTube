@@ -13,6 +13,7 @@ import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.sharedutils.locale.LocaleUtility;
 import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.sharedutils.rx.RxHelper;
+import com.liskovsoft.youtubeapi.service.YouTubeServiceManager;
 import com.liskovsoft.smartyoutubetv2.common.R;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.BrowseSection;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Playlist;
@@ -455,6 +456,7 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
     private VideoGroup mShortsGroup; // the loaded Shorts feed
     private VideoGroup mPlayingShortsGroup; // strong ref: the player follows its order (Video holds a weak ref only)
     private long mShortsLoadStartMs = -1; // the running Shorts feed load
+    private Disposable mFirstShortPrefetch;
 
     /**
      * The focus moved from the sidebar into the section content (true) or back to the sidebar (false).
@@ -472,7 +474,12 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
         if (getView() != null) {
             getView().setContentHidden(true); // the player opens on top, never show the grid meanwhile
         }
-        startShortsIfReady();
+
+        if (mShortsGroup == null && mShortsLoadStartMs == -1) {
+            updateCurrentSection(); // nothing loaded or loading (e.g. the last load failed)
+        } else {
+            startShortsIfReady();
+        }
     }
 
     /**
@@ -493,9 +500,13 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
     private void prefetchFirstShort() {
         Video first = findFirstShort(mShortsGroup);
 
-        if (first != null && !mShortsAutoStarted && !mPendingShortsStart) {
-            MediaServiceManager.instance().loadFormatInfo(first, formatInfo -> {});
+        if (first == null || mShortsAutoStarted || mPendingShortsStart || RxHelper.isAnyActionRunning(mFirstShortPrefetch)) {
+            return;
         }
+
+        // Own request, never cancelled (a cancel interrupts the fetch in the middle). The player gets it from the cache.
+        mFirstShortPrefetch = YouTubeServiceManager.instance().getMediaItemService().getFormatInfoObserve(first.videoId)
+                .subscribe(formatInfo -> {}, error -> Log.e(TAG, "First Short prefetch failed: %s", error.getMessage()));
     }
 
     private boolean isShortsAutoStarted() {
@@ -951,9 +962,31 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
                         error -> {
                             Log.e(TAG, "updateGridHeader error: %s", error.getMessage());
                             handleLoadError(error);
-                        }, () -> handleLoadError(null));
+                            if (isShortsGrid) {
+                                onShortsFeedFinished();
+                            }
+                        }, () -> {
+                            handleLoadError(null);
+                            if (isShortsGrid) {
+                                onShortsFeedFinished();
+                            }
+                        });
 
         mActions.add(updateAction);
+    }
+
+    /**
+     * The Shorts feed load ended (error or done). Nothing to play: show the section as is (e.g. the error).
+     */
+    private void onShortsFeedFinished() {
+        mShortsLoadStartMs = -1;
+
+        if (mPendingShortsStart && findFirstShort(mShortsGroup) == null) {
+            mPendingShortsStart = false;
+            if (getView() != null) {
+                getView().setContentHidden(false);
+            }
+        }
     }
 
     private void continueGroup(VideoGroup group) {

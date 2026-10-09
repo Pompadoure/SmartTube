@@ -1,5 +1,5 @@
 diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
-index 8e98bb5f..83e22376 100644
+index 8e98bb5f..a1c9b42b 100644
 --- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
 +++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
 @@ -1,6 +1,11 @@
@@ -14,7 +14,7 @@ index 8e98bb5f..83e22376 100644
  import com.liskovsoft.mediaserviceinterfaces.data.MediaItem
  import com.liskovsoft.youtubeapi.browse.v2.gen.*
  import com.liskovsoft.youtubeapi.common.helpers.AppClient
-@@ -247,12 +252,35 @@ internal open class BrowseService2 {
+@@ -247,13 +252,55 @@ internal open class BrowseService2 {
          return RetrofitHelper.get(continuation, auth)?.let {
              val result = mutableListOf<MediaItem?>()
  
@@ -36,41 +36,62 @@ index 8e98bb5f..83e22376 100644
 +                    else RetrofitHelper.get(mBrowseApi?.getReelResult(BrowseApiHelper.getReelDetailsQuery(AppClient.WEB, videoId, params)), auth)
 +                })
 +            }
+ 
+-                    RetrofitHelper.get(details, auth)?.let {
+-                            info -> result.add(ShortsMediaItem(it, info))
+-                    }
++            val loaded = mutableListOf<Pair<ReelWatchEndpoint?, ReelResult>>()
 +
-+            reels.forEachIndexed { index, reel ->
++            for (index in reels.indices) {
 +                val info: ReelResult? = try {
 +                    details[index].get(20, TimeUnit.SECONDS)
++                } catch (e: InterruptedException) {
++                    // The load was cancelled: stop waiting for the rest
++                    details.forEach { it.cancel(true) }
++                    Thread.currentThread().interrupt()
++                    return null
 +                } catch (e: Exception) {
 +                    details[index].cancel(true)
 +                    null
 +                }
- 
--                    RetrofitHelper.get(details, auth)?.let {
--                            info -> result.add(ShortsMediaItem(it, info))
++
 +                if (info != null) {
-+                    if (isReelAd(info)) {
-+                        Log.d(SHORTS_TAG, "Shorts feed: skipping an ad: %s", reel?.videoId)
-+                    } else {
-+                        result.add(ShortsMediaItem(reel, info))
-                     }
++                    loaded.add(Pair(reels[index], info))
++                }
++            }
++
++            // Promoted Shorts come without a title and a channel. If most of the page looks like that, the
++            // page format has changed instead: keep everything (a feed without titles beats an empty feed).
++            val noInfoCount = loaded.count { isReelWithoutInfo(it.second) }
++            val skipWithoutInfo = noInfoCount * 2 <= loaded.size
++            if (!skipWithoutInfo) {
++                Log.d(SHORTS_TAG, "Shorts feed: %s of %s items without title and channel, keeping them", noInfoCount, loaded.size)
++            }
++
++            loaded.forEach { (reel, info) ->
++                if (isReelMarkedAd(info) || (skipWithoutInfo && isReelWithoutInfo(info))) {
++                    Log.d(SHORTS_TAG, "Shorts feed: skipping an ad: %s", reel?.videoId)
++                } else {
++                    result.add(ShortsMediaItem(reel, info))
                  }
              }
-@@ -261,6 +289,14 @@ internal open class BrowseService2 {
+ 
+@@ -261,6 +308,14 @@ internal open class BrowseService2 {
          }
      }
  
-+    /**
-+     * An ad is marked as one, or (promoted Shorts) has no title and no channel.
-+     */
-+    private fun isReelAd(info: ReelResult): Boolean {
-+        return info.replacementEndpoint?.reelWatchEndpoint?.adClientParams?.isAd == true ||
-+                (info.getTitle() == null && info.getBrowseId() == null)
++    private fun isReelMarkedAd(info: ReelResult): Boolean {
++        return info.replacementEndpoint?.reelWatchEndpoint?.adClientParams?.isAd == true
++    }
++
++    private fun isReelWithoutInfo(info: ReelResult): Boolean {
++        return info.getTitle() == null && info.getBrowseId() == null
 +    }
 +
      open fun getChannelAsGrid(channelId: String?): MediaGroup? {
          return getChannelVideosTV(channelId) ?: getChannelVideosWeb(channelId)
      }
-@@ -613,4 +649,10 @@ internal open class BrowseService2 {
+@@ -613,4 +668,10 @@ internal open class BrowseService2 {
  
          return Pair(combinedItems, combinedKey)
      }
@@ -163,7 +184,7 @@ index 00000000..32d3f29b
 +    }
 +}
 diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt
-index d9663441..598e867e 100644
+index d9663441..dc73fed8 100644
 --- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt
 +++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt
 @@ -30,12 +30,13 @@ internal object FormatInfoWrapper {
@@ -185,6 +206,20 @@ index d9663441..598e867e 100644
          }
      }
  
+@@ -69,6 +70,13 @@ internal object FormatInfoWrapper {
+             return
+         }
+ 
++        synchronized(FormatFetchLock.LOCK) { // JoTube: shares VideoInfoService with the other fetches
++            syncWithAuthInfoInt(formatInfo)
++        }
++    }
++
++    private fun syncWithAuthInfoInt(formatInfo: MediaItemFormatInfo) {
++
+         if (shouldBeSynced(formatInfo) && !formatInfo.isSynced()) {
+             val videoInfo = getVideoInfoService().getAuthVideoInfo(formatInfo.getVideoId(), formatInfo.getClickTrackingParams())
+             formatInfo.sync(YouTubeMediaItemFormatInfo.from(videoInfo))
 diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java
 index 5baeadb3..8d945040 100644
 --- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java
