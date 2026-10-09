@@ -30,9 +30,11 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitio
  * slide, so the new Short is already playing while it moves into place.
  */
 public class ShortsTransitionOverlay {
-    private static final int SWIPE_DURATION_MS = 220;
-    private static final int REVEAL_DURATION_MS = 70; // the thumbnail over the moving video fades out
-    private static final int FADE_OUT_DURATION_MS = 100;
+    // The first frame of a preloaded Short comes ~170-320 ms after the switch (Streamer, no tunneling):
+    // a 300 ms slide lets it appear while still moving, where a soft cross-fade is hardly visible
+    private static final int SWIPE_DURATION_MS = 300;
+    private static final int REVEAL_DURATION_MS = 160; // the thumbnail over the moving video fades out
+    private static final int FADE_OUT_DURATION_MS = 160;
     private static final int FAILSAFE_HIDE_MS = 10_000;
     private static final int SNAPSHOT_TIMEOUT_MS = 40;
     private static final int GAP_DP = 16; // space between the outgoing and the incoming Short
