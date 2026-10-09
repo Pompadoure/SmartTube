@@ -154,6 +154,10 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             Log.d(TAG, "First frame rendered: %s", video != null ? video.videoId : null);
             JoTubeTiming.markFirstFrame();
             mShortsTransition.hide(true);
+            if (video != null && video.isShorts) {
+                // JoTube: the blurred backgrounds of the next Shorts, ready before the swipe
+                ShortsBackground.preload(getContext(), ShortsQueue.getUpcomingIds(3));
+            }
         }
     };
     // JoTube: no first frame will come (error, audio only): don't let the thumbnail cover the screen

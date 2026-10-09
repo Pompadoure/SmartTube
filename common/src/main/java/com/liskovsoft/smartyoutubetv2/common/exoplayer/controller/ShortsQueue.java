@@ -106,6 +106,24 @@ public final class ShortsQueue {
     }
 
     /**
+     * JoTube: ids of the queued Shorts after the current one (for preloading their images).
+     */
+    public static List<String> getUpcomingIds(int max) {
+        ShortsQueue queue = sActive;
+        List<String> result = new ArrayList<>();
+
+        if (queue == null) {
+            return result;
+        }
+
+        for (int i = queue.mCurrentIndex + 1; i < queue.mVideoIds.size() && result.size() < max; i++) {
+            result.add(queue.mVideoIds.get(i));
+        }
+
+        return result;
+    }
+
+    /**
      * JoTube: false if the video is in the queue but the player is still on another item (a frame of the
      * previous Short, rendered before the switch to this one was made).
      */

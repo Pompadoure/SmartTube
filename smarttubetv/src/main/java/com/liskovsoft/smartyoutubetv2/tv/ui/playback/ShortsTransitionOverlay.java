@@ -31,12 +31,14 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitio
  */
 public class ShortsTransitionOverlay {
     // The slide starts when the new video is already playing (its first frame came during the hold)
-    private static final int SWIPE_DURATION_MS = 250;
+    private static final int SWIPE_DURATION_MS = 220;
     private static final int REVEAL_DURATION_MS = 120; // the black cover over the moving video fades out
     private static final int FADE_OUT_DURATION_MS = 120;
     private static final int FAILSAFE_HIDE_MS = 10_000;
     private static final int SNAPSHOT_TIMEOUT_MS = 150; // the main thread can be busy ~70 ms at the switch
-    private static final int HOLD_TIMEOUT_MS = 450; // the first frame normally comes in 170-320 ms
+    // JoTube: a preloaded Short's first frame comes in 190-290 ms. Longer than that the old picture looks frozen:
+    // slide on (the new video under a black cover that fades when its frame comes)
+    private static final int HOLD_TIMEOUT_MS = 250;
     private static final String TAG = "ShortsTransition";
     private static final int GAP_DP = 16; // space between the outgoing and the incoming Short
     private static final Interpolator SWIPE_INTERPOLATOR = new FastOutSlowIn();
