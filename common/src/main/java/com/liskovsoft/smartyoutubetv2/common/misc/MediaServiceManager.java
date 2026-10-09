@@ -309,7 +309,8 @@ public class MediaServiceManager implements OnAccountChange {
     }
 
     public void disposeActions() {
-        RxHelper.disposeActions(mFormatInfoAction); // JoTube: a running grid prefetch must not run beside the player load
+        // JoTube: the format info fetch (mFormatInfoAction) is never disposed here: cancelling a running fetch
+        // mid-flight caused 403s. Fetches are serialized by FormatFetchLock anyway.
         RxHelper.disposeActions(mMetadataAction, mUploadsAction, mRowsAction, mSubscribedChannelsAction);
     }
 

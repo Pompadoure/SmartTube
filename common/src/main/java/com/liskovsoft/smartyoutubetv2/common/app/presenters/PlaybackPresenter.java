@@ -25,10 +25,13 @@ import com.liskovsoft.smartyoutubetv2.common.app.presenters.base.BasePresenter;
 import com.liskovsoft.smartyoutubetv2.common.app.presenters.dialogs.menu.VideoMenuPresenter;
 import com.liskovsoft.smartyoutubetv2.common.app.views.PlaybackView;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.FormatItem;
+import com.liskovsoft.smartyoutubetv2.common.utils.JoTubeTiming;
 import com.liskovsoft.smartyoutubetv2.common.utils.Utils;
 import com.liskovsoft.smartyoutubetv2.common.utils.Utils.ChainProcessor;
 import com.liskovsoft.smartyoutubetv2.common.utils.Utils.Processor;
 import com.liskovsoft.googlecommon.common.helpers.ServiceHelper;
+import com.liskovsoft.sharedutils.mylogger.Log;
+import com.liskovsoft.youtubeapi.service.YouTubeServiceManager;
 
 import java.lang.ref.WeakReference;
 import java.util.List;
@@ -122,10 +125,43 @@ public class PlaybackPresenter extends BasePresenter<PlaybackView> implements Pl
             //getController(VideoStateController.class).saveState();
         }
 
+        // JoTube: timing of a regular video start (ms since the click)
+        if (video.isShorts) {
+            JoTubeTiming.cancel();
+        } else {
+            JoTubeTiming.click(video.videoId);
+        }
+
+        prefetchFormatInfoOnClick(video);
+
         onNewVideo(video);
 
         getViewManager().startView(PlaybackView.class);
         mIsEmbedPlayerStarted = false;
+    }
+
+    /**
+     * JoTube: start the stream info fetch at the click, before the player activity and the engine are created
+     * (they take 0.2-0.4 s). The result lands in the format info cache, the player then gets it from there.
+     * Same as the hover prefetch: fire and forget, never cancelled (a cancel in the middle caused 403s).
+     */
+    private void prefetchFormatInfoOnClick(Video video) {
+        if (video.videoId == null || video.isLive || video.isUpcoming) {
+            return;
+        }
+
+        // The player is open: loadVideo starts the fetch at once anyway
+        if (getView() != null && getView().isEngineInitialized()) {
+            return;
+        }
+
+        // The Shorts auto start was prefetched by the browse screen
+        if (video.isShorts && getContext() != null && BrowsePresenter.instance(getContext()).isShortsAutoStarted()) {
+            return;
+        }
+
+        YouTubeServiceManager.instance().getMediaItemService().getFormatInfoObserve(video.videoId)
+                .subscribe(formatInfo -> {}, error -> Log.e(TAG, "Click prefetch failed: %s", error.getMessage()));
     }
 
     public Video getVideo() {
@@ -300,6 +336,7 @@ public class PlaybackPresenter extends BasePresenter<PlaybackView> implements Pl
 
     @Override
     public void onEngineInitialized() {
+        JoTubeTiming.mark("onEngineInitialized");
         getTickleManager().addListener(this);
 
         process(PlayerEventListener::onEngineInitialized);

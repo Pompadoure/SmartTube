@@ -70,6 +70,7 @@ import com.liskovsoft.smartyoutubetv2.common.exoplayer.versions.selector.Restore
 import com.liskovsoft.smartyoutubetv2.common.prefs.MainUIData;
 import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerData;
 import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerTweaksData;
+import com.liskovsoft.smartyoutubetv2.common.utils.JoTubeTiming;
 import com.liskovsoft.smartyoutubetv2.common.utils.Utils;
 import com.liskovsoft.smartyoutubetv2.tv.R;
 import com.liskovsoft.smartyoutubetv2.tv.adapter.VideoGroupObjectAdapter;
@@ -151,6 +152,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                 return;
             }
             Log.d(TAG, "First frame rendered: %s", video != null ? video.videoId : null);
+            JoTubeTiming.markFirstFrame();
             mShortsTransition.hide(true);
         }
     };
@@ -172,6 +174,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(null); // trying to fix bug with presets
+        JoTubeTiming.mark("PlaybackFragment.onCreate");
 
         if (getContext() == null) {
             throw new IllegalStateException("Can't create PlaybackFragment: the context is null");
