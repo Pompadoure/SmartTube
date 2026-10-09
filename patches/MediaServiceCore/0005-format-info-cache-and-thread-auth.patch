@@ -1,8 +1,8 @@
 diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt
-index 993ffb65..8c13fbf1 100644
+index 993ffb65..19a02b86 100644
 --- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt
 +++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt
-@@ -12,7 +12,14 @@ import com.liskovsoft.youtubeapi.service.data.YouTubeMediaItemFormatInfo
+@@ -12,7 +12,16 @@ import com.liskovsoft.youtubeapi.service.data.YouTubeMediaItemFormatInfo
  import com.liskovsoft.youtubeapi.videoinfo.V2.VideoInfoService
  
  internal object FormatInfoWrapper {
@@ -10,6 +10,8 @@ index 993ffb65..8c13fbf1 100644
 +    // JoTube: the last few infos (was one). A hover prefetch, the Shorts lookahead and the history update of
 +    // the video just watched each replaced the single entry, so the clicked video was fetched again.
 +    private const val CACHE_SIZE = 6
++    private const val CACHE_MAX_AGE_MS = 30 * 60 * 1000L // the stream urls must still be valid
++    private val mCachedTimesMs = HashMap<String, Long>()
 +    private val mCachedFormatInfos = object : LinkedHashMap<String, MediaItemFormatInfo>(CACHE_SIZE, 0.75f, true) {
 +        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, MediaItemFormatInfo>?): Boolean {
 +            return size > CACHE_SIZE
@@ -18,18 +20,19 @@ index 993ffb65..8c13fbf1 100644
      private var mTryInnertubeFirst: Boolean = false
      private val mInnertubeResult = object { var isUnplayable: Boolean = false; var client: AppClient? = null }
      private val mInnertubeProvider: (String, String?) -> MediaItemFormatInfo? =
-@@ -61,7 +68,9 @@ internal object FormatInfoWrapper {
+@@ -61,7 +70,10 @@ internal object FormatInfoWrapper {
  
      @JvmStatic
      fun invalidateCache() {
 -        mCachedFormatInfo = null
 +        synchronized(mCachedFormatInfos) {
 +            mCachedFormatInfos.clear()
++            mCachedTimesMs.clear()
 +        }
      }
  
      @JvmStatic
-@@ -148,20 +157,34 @@ internal object FormatInfoWrapper {
+@@ -148,20 +160,39 @@ internal object FormatInfoWrapper {
      }
  
      private fun getCachedFormatInfo(videoId: String?): MediaItemFormatInfo? {
@@ -44,8 +47,11 @@ index 993ffb65..8c13fbf1 100644
 +        synchronized(mCachedFormatInfos) {
 +            val formatInfo = mCachedFormatInfos[videoId] ?: return null
 +
-+            if (!formatInfo.isCacheActual()) {
++            val cachedTimeMs = mCachedTimesMs[videoId] ?: 0L
++
++            if (!formatInfo.isCacheActual() || System.currentTimeMillis() - cachedTimeMs > CACHE_MAX_AGE_MS) {
 +                mCachedFormatInfos.remove(videoId)
++                mCachedTimesMs.remove(videoId)
 +                return null
 +            }
 +
@@ -66,10 +72,24 @@ index 993ffb65..8c13fbf1 100644
 +
 +        synchronized(mCachedFormatInfos) {
 +            mCachedFormatInfos[videoId] = formatInfo
++            mCachedTimesMs[videoId] = System.currentTimeMillis()
++            mCachedTimesMs.keys.retainAll(mCachedFormatInfos.keys)
 +        }
      }
  
      private fun persistFormatInfoType(formatInfo: MediaItemFormatInfo?) {
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/YouTubeAccountManager.java b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/YouTubeAccountManager.java
+index c73c0ca9..4ef5f5b8 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/YouTubeAccountManager.java
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/YouTubeAccountManager.java
+@@ -257,6 +257,7 @@ public class YouTubeAccountManager {
+         mSignInService.invalidateCache();
+         AppService.instance().invalidateCache(); // regenerate visitor data
+         FormatInfoWrapper.resetFormat();
++        FormatInfoWrapper.invalidateCache(); // JoTube: the cached infos were fetched with the old account
+ 
+         notifyListeners();
+     }
 diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java
 index 8d945040..69d6db92 100644
 --- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java

@@ -60,6 +60,13 @@ public class DebugInfoMediaCodecVideoRenderer extends MediaCodecVideoRenderer {
             int width = Math.max(values.width, SHORTS_MIN_MAX_SIZE);
             int height = Math.max(values.height, SHORTS_MIN_MAX_SIZE);
 
+            if (!isSizeSupported(codecInfo, width, height, format.frameRate)) {
+                // E.g. a 1080p class decoder: at least the full 1080p size in this orientation
+                boolean portrait = format.height >= format.width;
+                width = Math.max(values.width, portrait ? 1080 : 1920);
+                height = Math.max(values.height, portrait ? 1920 : 1080);
+            }
+
             if ((width > values.width || height > values.height) && isSizeSupported(codecInfo, width, height, format.frameRate)) {
                 int inputSize = Math.max(values.inputSize,
                         getCodecMaxInputSize(codecInfo, format.sampleMimeType, width, height));

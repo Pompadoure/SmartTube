@@ -54,6 +54,7 @@ public class ShortsTransitionOverlay {
     private View mSurfaceRoot; // the real video
     private ValueAnimator mSwipe;
     private Runnable mSnapshotTimeout;
+    private Runnable mAfterSnapshot; // e.g. the player reset: only once the old picture is copied
     private Runnable mHoldStart; // the old picture is held until the new video's first frame
     private float mOutStart; // where the outgoing picture is (not 0 if pressed again during a slide)
     private int mSwipeId; // a newer swipe makes the callbacks of an older one void
@@ -122,6 +123,7 @@ public class ShortsTransitionOverlay {
         mPendingVideo = null;
         mHoldStart = null;
         mSnapshotTimeout = null;
+        flushAfterSnapshot();
         mFirstFrameRendered = false;
         mSwipeId++;
 
@@ -258,6 +260,7 @@ public class ShortsTransitionOverlay {
                 if (swipeId == mSwipeId) {
                     Log.d(TAG, "Snapshot timed out");
                     mSnapshotTimeout = null;
+                    flushAfterSnapshot();
                     setOutImage(null, from);
                     hold(swipeId, direction, distance);
                 }
@@ -272,6 +275,7 @@ public class ShortsTransitionOverlay {
                     }
                     mHandler.removeCallbacks(mSnapshotTimeout);
                     mSnapshotTimeout = null;
+                    flushAfterSnapshot();
                     setOutImage(result == PixelCopy.SUCCESS ? bitmap : null, from);
                     hold(swipeId, direction, distance);
                 }, mHandler);
@@ -307,6 +311,32 @@ public class ShortsTransitionOverlay {
             startSwipe(swipeId, direction, distance);
         };
         mHandler.postDelayed(mHoldStart, HOLD_TIMEOUT_MS);
+    }
+
+    /**
+     * Runs the action once the outgoing picture is copied (at once if no copy is pending).
+     */
+    public void runAfterSnapshot(Runnable action) {
+        if (action == null) {
+            return;
+        }
+
+        if (mSnapshotTimeout == null) {
+            action.run();
+            return;
+        }
+
+        flushAfterSnapshot(); // an older one first
+        mAfterSnapshot = action;
+    }
+
+    private void flushAfterSnapshot() {
+        Runnable action = mAfterSnapshot;
+        mAfterSnapshot = null;
+
+        if (action != null) {
+            action.run();
+        }
     }
 
     private static Bitmap captureTexture(TextureView view) {
@@ -418,6 +448,7 @@ public class ShortsTransitionOverlay {
             mHandler.removeCallbacks(mSnapshotTimeout);
             mSnapshotTimeout = null;
         }
+        flushAfterSnapshot();
         if (mHoldStart != null) {
             mHandler.removeCallbacks(mHoldStart);
             mHoldStart = null;
@@ -498,6 +529,7 @@ public class ShortsTransitionOverlay {
             mHandler.removeCallbacks(mSnapshotTimeout);
             mSnapshotTimeout = null;
         }
+        flushAfterSnapshot();
         if (mHoldStart != null) {
             mHandler.removeCallbacks(mHoldStart);
             mHoldStart = null;

@@ -1800,9 +1800,16 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             mShortsTransition.hide(false);
         }
 
-        mExoPlayerController.resetPlayerState();
-        // Hide last frame of the previous video
-        showBackgroundColor(R.color.player_background);
+        // The player reset releases the decoder's last frame: only after the snapshot (at most 150 ms), and only if
+        // the new video hasn't been opened meanwhile (its source opening resets the player itself)
+        final int generation = ExoPlayerController.getSourceGeneration();
+        mShortsTransition.runAfterSnapshot(() -> {
+            if (mExoPlayerController != null && ExoPlayerController.getSourceGeneration() == generation) {
+                mExoPlayerController.resetPlayerState();
+                // Hide last frame of the previous video
+                showBackgroundColor(R.color.player_background);
+            }
+        });
         updateShortsBackground(video);
         setChatReceiver(null);
         setSeekBarSegments(null);
