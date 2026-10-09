@@ -1,0 +1,179 @@
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt
+index 993ffb65..8c13fbf1 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt
+@@ -12,7 +12,14 @@ import com.liskovsoft.youtubeapi.service.data.YouTubeMediaItemFormatInfo
+ import com.liskovsoft.youtubeapi.videoinfo.V2.VideoInfoService
+ 
+ internal object FormatInfoWrapper {
+-    private var mCachedFormatInfo: MediaItemFormatInfo? = null
++    // JoTube: the last few infos (was one). A hover prefetch, the Shorts lookahead and the history update of
++    // the video just watched each replaced the single entry, so the clicked video was fetched again.
++    private const val CACHE_SIZE = 6
++    private val mCachedFormatInfos = object : LinkedHashMap<String, MediaItemFormatInfo>(CACHE_SIZE, 0.75f, true) {
++        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, MediaItemFormatInfo>?): Boolean {
++            return size > CACHE_SIZE
++        }
++    }
+     private var mTryInnertubeFirst: Boolean = false
+     private val mInnertubeResult = object { var isUnplayable: Boolean = false; var client: AppClient? = null }
+     private val mInnertubeProvider: (String, String?) -> MediaItemFormatInfo? =
+@@ -61,7 +68,9 @@ internal object FormatInfoWrapper {
+ 
+     @JvmStatic
+     fun invalidateCache() {
+-        mCachedFormatInfo = null
++        synchronized(mCachedFormatInfos) {
++            mCachedFormatInfos.clear()
++        }
+     }
+ 
+     @JvmStatic
+@@ -148,20 +157,34 @@ internal object FormatInfoWrapper {
+     }
+ 
+     private fun getCachedFormatInfo(videoId: String?): MediaItemFormatInfo? {
+-        return if (mCachedFormatInfo?.getVideoId() != null &&
+-            mCachedFormatInfo?.getVideoId() == videoId &&
+-            mCachedFormatInfo?.isCacheActual() ?: false
+-        ) mCachedFormatInfo else null
++        if (videoId == null) {
++            return null
++        }
++
++        synchronized(mCachedFormatInfos) {
++            val formatInfo = mCachedFormatInfos[videoId] ?: return null
++
++            if (!formatInfo.isCacheActual()) {
++                mCachedFormatInfos.remove(videoId)
++                return null
++            }
++
++            return formatInfo
++        }
+     }
+ 
+     private fun setCachedFormatInfo(formatInfo: MediaItemFormatInfo?, clickTrackingParams: String?) {
+         if (formatInfo == null || formatInfo.isUnplayable()) {
+-            mCachedFormatInfo = null
+             return
+         }
+ 
+-        mCachedFormatInfo = formatInfo
++        val videoId = formatInfo.getVideoId() ?: return
++
+         formatInfo.setClickTrackingParams(clickTrackingParams)
++
++        synchronized(mCachedFormatInfos) {
++            mCachedFormatInfos[videoId] = formatInfo
++        }
+     }
+ 
+     private fun persistFormatInfoType(formatInfo: MediaItemFormatInfo?) {
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java
+index 8d945040..69d6db92 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java
+@@ -53,7 +53,14 @@ public class VideoInfoService extends VideoInfoServiceBase {
+     private AppClient mActualInfoType = null;
+     @Nullable
+     private AppClient mNextInfoType = null;
+-    private boolean mUseAuth;
++    // JoTube: per thread. The history sync (auth info) runs outside FormatFetchLock, next to a format fetch
++    // that turns auth off for a moment (applyFixesIfNeeded): a shared flag sent requests with the wrong auth.
++    private final ThreadLocal<Boolean> mUseAuth = new ThreadLocal<Boolean>() {
++        @Override
++        protected Boolean initialValue() {
++            return false;
++        }
++    };
+     private volatile List<TranslationLanguage> mCachedTranslationLanguages;
+     private boolean mIsUnplayable;
+ 
+@@ -76,7 +83,7 @@ public class VideoInfoService extends VideoInfoServiceBase {
+ 
+         AppService.instance().resetClientPlaybackNonce(); // history fix: unique value per each video info
+ 
+-        mUseAuth = true;
++        mUseAuth.set(true);
+ 
+         VideoInfo result = firstPlayable(videoId, clickTrackingParams);
+ 
+@@ -101,7 +108,7 @@ public class VideoInfoService extends VideoInfoServiceBase {
+             return null;
+         }
+ 
+-        mUseAuth = true;
++        mUseAuth.set(true);
+ 
+         // Only the TV client supports auth features
+         return getVideoInfo(TV_CLIENT, videoId, clickTrackingParams);
+@@ -174,7 +181,7 @@ public class VideoInfoService extends VideoInfoServiceBase {
+         VideoInfo result;
+ 
+         if (client == AppClient.INITIAL) {
+-            result = InitialResponseService.getVideoInfo(videoId, client.isAuthSupported() && mUseAuth);
++            result = InitialResponseService.getVideoInfo(videoId, client.isAuthSupported() && mUseAuth.get());
+         } else {
+             String videoInfoQuery = VideoInfoApiHelper.getVideoInfoQuery(client, videoId, clickTrackingParams);
+             result = getVideoInfo(client, videoInfoQuery);
+@@ -188,7 +195,7 @@ public class VideoInfoService extends VideoInfoServiceBase {
+     }
+ 
+     private VideoInfo getVideoInfo(AppClient client, String videoInfoQuery) {
+-        boolean auth = client.isAuthSupported() && mUseAuth;
++        boolean auth = client.isAuthSupported() && mUseAuth.get();
+ 
+         if (client.isReelClient()) {
+             Call<VideoInfoReel> wrapper = mVideoInfoApi.getVideoInfoReel(videoInfoQuery, mAppService.getVisitorData(),
+@@ -234,7 +241,7 @@ public class VideoInfoService extends VideoInfoServiceBase {
+         Call<VideoInfoHls> wrapper = mVideoInfoApi.getVideoInfoHls(videoInfoQuery, mAppService.getVisitorData(),
+                 client.getUserAgent(), client.getInnerTubeName(), client.getClientVersion());
+ 
+-        return RetrofitHelper.get(wrapper, client.isAuthSupported() && mUseAuth);
++        return RetrofitHelper.get(wrapper, client.isAuthSupported() && mUseAuth.get());
+     }
+ 
+     private void applyFixesIfNeeded(VideoInfo result, String videoId, String clickTrackingParams) {
+@@ -242,11 +249,11 @@ public class VideoInfoService extends VideoInfoServiceBase {
+             return;
+         }
+ 
+-        boolean oldUseAuth = mUseAuth;
++        boolean oldUseAuth = mUseAuth.get();
+ 
+         if (shouldObtainExtendedFormats(result) || result.isStoryboardBroken()) {
+             Log.d(TAG, "Enable high bitrate formats...");
+-            mUseAuth = false;
++            mUseAuth.set(false);
+             VideoInfoHls videoInfoHls = getVideoInfoIOSHls(videoId, clickTrackingParams);
+             if (videoInfoHls != null && shouldObtainExtendedFormats(result)) {
+                 result.setHlsManifestUrl(videoInfoHls.getHlsManifestUrl());
+@@ -272,7 +279,7 @@ public class VideoInfoService extends VideoInfoServiceBase {
+             }
+         }
+ 
+-        mUseAuth = oldUseAuth;
++        mUseAuth.set(oldUseAuth);
+     }
+ 
+     private void resetInfoTypeToDefault() {
+@@ -324,15 +331,15 @@ public class VideoInfoService extends VideoInfoServiceBase {
+                         return;
+                     }
+ 
+-                    boolean oldUseAuth = mUseAuth;
+-                    mUseAuth = false;
++                    boolean oldUseAuth = mUseAuth.get();
++                    mUseAuth.set(false);
+                     try {
+                         VideoInfo webInfo = getVideoInfo(AppClient.WEB, videoId, clickTrackingParams);
+                         if (webInfo != null && webInfo.getTranslationLanguages() != null) {
+                             mCachedTranslationLanguages = webInfo.getTranslationLanguages();
+                         }
+                     } finally {
+-                        mUseAuth = oldUseAuth;
++                        mUseAuth.set(oldUseAuth);
+                     }
+                 }
+             } catch (Throwable e) {

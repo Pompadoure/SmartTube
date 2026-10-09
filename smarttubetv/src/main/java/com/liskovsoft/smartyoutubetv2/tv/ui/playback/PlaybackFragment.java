@@ -3,6 +3,7 @@ package com.liskovsoft.smartyoutubetv2.tv.ui.playback;
 import android.media.session.PlaybackState;
 import android.os.Build.VERSION;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
@@ -133,12 +134,20 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     private final ShortsBackground mShortsBackground = new ShortsBackground();
     private final ShortsSidePanel mShortsPanel = new ShortsSidePanel();
     private Video mLastVideo; // the video before the current one (for the Shorts swipe)
+    private int mCoverGeneration = -1; // the player's source when the transition cover was shown
+    private long mCoverTimeMs;
     private final VideoListener mFirstFrameListener = new VideoListener() {
         @Override
         public void onRenderedFirstFrame() {
             // JoTube: only the frame of the video the overlay waits for (not a late one of the previous Short)
             Video video = getVideo();
             if (mPlayer != null && video != null && !ShortsQueue.isPlayerOn(video.videoId, mPlayer.getCurrentWindowIndex())) {
+                return;
+            }
+            // A frame of the previous video, delivered after the new one was requested (no new source yet)
+            if (ExoPlayerController.getSourceGeneration() == mCoverGeneration &&
+                    SystemClock.uptimeMillis() - mCoverTimeMs < 1_000) {
+                Log.d(TAG, "First frame of the previous video ignored");
                 return;
             }
             Log.d(TAG, "First frame rendered: %s", video != null ? video.videoId : null);
@@ -956,6 +965,11 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     }
 
     @Override
+    public void hideTransition() {
+        mShortsTransition.hide(false);
+    }
+
+    @Override
     public void showBackground(String url) {
         if (url != null) {
             // Unplayable/upcoming video: the background image replaces the transition
@@ -1748,6 +1762,8 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     public void resetPlayerState() {
         int direction = ShortsTransitionState.consumeDirection();
         Video video = getVideo();
+        mCoverGeneration = ExoPlayerController.getSourceGeneration();
+        mCoverTimeMs = SystemClock.uptimeMillis();
         Video previous = mLastVideo;
         mLastVideo = video;
         // JoTube: the swipe between two Shorts of the feed (up/down)
@@ -1774,19 +1790,19 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             return;
         }
 
-        mExoPlayerController.resetPlayerState();
-        // Hide last frame of the previous video
-        showBackgroundColor(R.color.player_background);
-
         if (swipe) {
-            // The player is reset: the old video's thumbnail slides out
-            mShortsTransition.swipe(previous, video, direction, null);
+            // Snapshot of the old video's picture before the player is reset (the decoder releases its frame)
+            mShortsTransition.swipe(previous, video, direction, getSurfaceView());
         } else if (video != null && !isInPIPMode()) {
-            // The video's thumbnail instead of a black screen until its first frame (Shorts and regular videos)
+            // Black instead of the old picture until the new video's first frame (Shorts and regular videos)
             mShortsTransition.show(video, ShortsTransitionState.DIRECTION_NONE);
         } else {
             mShortsTransition.hide(false);
         }
+
+        mExoPlayerController.resetPlayerState();
+        // Hide last frame of the previous video
+        showBackgroundColor(R.color.player_background);
         updateShortsBackground(video);
         setChatReceiver(null);
         setSeekBarSegments(null);

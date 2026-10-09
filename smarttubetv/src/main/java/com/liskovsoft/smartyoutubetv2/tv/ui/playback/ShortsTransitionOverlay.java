@@ -120,6 +120,9 @@ public class ShortsTransitionOverlay {
     public void detach() {
         mHandler.removeCallbacksAndMessages(null);
         mPendingVideo = null;
+        mHoldStart = null;
+        mSnapshotTimeout = null;
+        mFirstFrameRendered = false;
         mSwipeId++;
 
         if (mContainer != null) {
@@ -169,7 +172,8 @@ public class ShortsTransitionOverlay {
         prepare();
         setSurfaceOffset(0);
         mFirstFrameRendered = false;
-        loadThumbnail(mIn, video);
+        // JoTube: black, never the thumbnail (a still image that pops away when the video starts)
+        clearImage(mIn);
         mIn.setVisibility(View.VISIBLE);
         mHandler.postDelayed(mFailsafeHide, FAILSAFE_HIDE_MS);
     }
@@ -392,7 +396,15 @@ public class ShortsTransitionOverlay {
             // The new video is in place and playing
             mIsShown = false;
             mHandler.removeCallbacks(mFailsafeHide);
-            reset();
+
+            if (mIn.getVisibility() == View.VISIBLE && mIn.getAlpha() > 0.01f) {
+                // The black cover is still fading out: let it finish (no black step)
+                mIn.animate().cancel();
+                mIn.animate().alpha(0f).setDuration((long) (REVEAL_DURATION_MS * mIn.getAlpha()))
+                        .withEndAction(this::reset).start();
+            } else {
+                reset();
+            }
         }
         // else: the thumbnail stays until the first frame
     }

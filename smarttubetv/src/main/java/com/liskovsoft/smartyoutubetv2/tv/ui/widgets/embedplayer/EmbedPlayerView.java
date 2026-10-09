@@ -241,6 +241,11 @@ public class EmbedPlayerView extends PlayerView implements PlaybackView {
     }
 
     @Override
+    public void hideTransition() {
+
+    }
+
+    @Override
     public void showBackgroundColor(int colorResId) {
 
     }

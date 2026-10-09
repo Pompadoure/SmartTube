@@ -375,6 +375,7 @@ public class VideoLoaderController extends BasePlayerController {
                 .subscribe(this::processFormatInfo,
                            error -> {
                                getPlayer().showProgressBar(false);
+                               getPlayer().hideTransition(); // JoTube: no black cover while the error is handled
                                mErrorFixerController.runFormatErrorAction(error);
                            });
     }

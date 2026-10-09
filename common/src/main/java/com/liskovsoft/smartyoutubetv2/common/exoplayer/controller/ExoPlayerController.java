@@ -220,6 +220,7 @@ public class ExoPlayerController implements Player.EventListener {
         mOnSourceChanged = true;
         mEventListener.onSourceChanged(getVideo());
         queue.setCurrentIndex(index);
+        sSourceGeneration++;
         cancelItemEnd();
         // Default position = where the background buffering started (keeps the preloaded data)
         mPlayer.seekToDefaultPosition(index);
@@ -418,7 +419,16 @@ public class ExoPlayerController implements Player.EventListener {
         openMediaSource(new MergingMediaSource(dashMediaSource, hlsMediaSource));
     }
 
+    // JoTube: changes with every new video in the player (new source or a queued Short), so a first-frame event
+    // that was already on its way for the previous video can be told apart
+    private static volatile int sSourceGeneration;
+
+    public static int getSourceGeneration() {
+        return sSourceGeneration;
+    }
+
     private void openMediaSource(MediaSource mediaSource) {
+        sSourceGeneration++;
         applyTunneling(); // JoTube
         resetPlayerState(); // fixes occasional video artifacts and problems with quality switching
         setQualityInfo("");

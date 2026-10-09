@@ -1,7 +1,6 @@
 package com.liskovsoft.smartyoutubetv2.common.exoplayer.versions.renderer;
 
 import android.content.Context;
-import android.graphics.Point;
 import android.media.MediaCodec;
 import android.os.Build.VERSION;
 import android.os.Handler;
@@ -54,50 +53,56 @@ public class DebugInfoMediaCodecVideoRenderer extends MediaCodecVideoRenderer {
 
         CodecMaxValues values = super.getCodecMaxValues(codecInfo, format, streamFormats);
 
-        // JoTube: Shorts are a playlist of videos of different sizes. The decoder is set up for the biggest size
-        // it supports, so the next Short doesn't need a new decoder (~350 ms before its first frame).
+        // JoTube: Shorts are a playlist of videos of different sizes. The decoder is set up for at least 1920x1920
+        // (portrait 1080x1920 and landscape 1920x1080 both fit), so the next Short doesn't need a new decoder
+        // (~350 ms before its first frame). Only a size the decoder really supports.
         if (ShortsTransitionState.isShortsMode() && codecInfo.adaptive) {
-            Point maxSize = getShortsMaxSize(codecInfo, format);
+            int width = Math.max(values.width, SHORTS_MIN_MAX_SIZE);
+            int height = Math.max(values.height, SHORTS_MIN_MAX_SIZE);
 
-            if (maxSize != null && (maxSize.x > values.width || maxSize.y > values.height)) {
-                int width = Math.max(values.width, maxSize.x);
-                int height = Math.max(values.height, maxSize.y);
+            if ((width > values.width || height > values.height) && isSizeSupported(codecInfo, width, height, format.frameRate)) {
                 int inputSize = Math.max(values.inputSize,
                         getCodecMaxInputSize(codecInfo, format.sampleMimeType, width, height));
                 Log.d(TAG, "Shorts: codec max size %sx%s (format %sx%s)", width, height, format.width, format.height);
-                return new CodecMaxValues(width, height, inputSize);
+                values = new CodecMaxValues(width, height, inputSize);
             }
         }
 
+        mMaxValues = values;
         return values;
     }
 
-    private static Point getShortsMaxSize(MediaCodecInfo codecInfo, Format format) {
-        if (VERSION.SDK_INT < 21 || format.width <= 0 || format.height <= 0) {
-            return null;
+    private static final int SHORTS_MIN_MAX_SIZE = 1920;
+    private CodecMaxValues mMaxValues;
+
+    private static boolean isSizeSupported(MediaCodecInfo codecInfo, int width, int height, float frameRate) {
+        if (VERSION.SDK_INT < 21 || codecInfo.capabilities == null) {
+            return false;
         }
 
-        boolean portrait = format.height >= format.width;
-        int[][] sizes = {{2160, 3840}, {1440, 2560}, {1080, 1920}};
-        double frameRate = format.frameRate > 0 ? format.frameRate : 30;
+        android.media.MediaCodecInfo.VideoCapabilities videoCapabilities = codecInfo.capabilities.getVideoCapabilities();
 
-        for (int[] size : sizes) {
-            int width = portrait ? size[0] : size[1];
-            int height = portrait ? size[1] : size[0];
-            Point aligned = codecInfo.alignVideoSizeV21(width, height);
-
-            if (aligned != null && aligned.x >= format.width && aligned.y >= format.height &&
-                    codecInfo.isVideoSizeAndRateSupportedV21(aligned.x, aligned.y, frameRate)) {
-                return aligned;
-            }
-        }
-
-        return null;
+        // Directly (MediaCodecInfo.isVideoSizeAndRateSupportedV21 also accepts the size rotated)
+        return videoCapabilities != null &&
+                videoCapabilities.areSizeAndRateSupported(width, height, frameRate > 0 ? frameRate : 30);
     }
 
     @Override
     protected int canKeepCodec(MediaCodec codec, MediaCodecInfo codecInfo, Format oldFormat, Format newFormat) {
         int result = super.canKeepCodec(codec, codecInfo, oldFormat, newFormat);
+
+        // JoTube: Shorts of the same kind often differ only in the color info (one has BT.709 set, the other
+        // nothing). For SDR video that doesn't need a new decoder.
+        if (result == KEEP_CODEC_RESULT_NO && ShortsTransitionState.isShortsMode() && mMaxValues != null &&
+                codecInfo.adaptive &&
+                oldFormat.sampleMimeType != null && oldFormat.sampleMimeType.equals(newFormat.sampleMimeType) &&
+                oldFormat.rotationDegrees == newFormat.rotationDegrees &&
+                newFormat.width <= mMaxValues.width && newFormat.height <= mMaxValues.height &&
+                (newFormat.maxInputSize == Format.NO_VALUE || newFormat.maxInputSize <= mMaxValues.inputSize) &&
+                isSdr(oldFormat.colorInfo) && isSdr(newFormat.colorInfo)) {
+            result = oldFormat.initializationDataEquals(newFormat) ?
+                    KEEP_CODEC_RESULT_YES_WITHOUT_RECONFIGURATION : KEEP_CODEC_RESULT_YES_WITH_RECONFIGURATION;
+        }
 
         if (result == KEEP_CODEC_RESULT_NO) {
             Log.d(TAG, "New decoder needed: %sx%s -> %sx%s, adaptive %s, color %s -> %s", oldFormat.width, oldFormat.height,
@@ -105,6 +110,11 @@ public class DebugInfoMediaCodecVideoRenderer extends MediaCodecVideoRenderer {
         }
 
         return result;
+    }
+
+    private static boolean isSdr(@Nullable com.google.android.exoplayer2.video.ColorInfo colorInfo) {
+        return colorInfo == null || (colorInfo.colorTransfer != C.COLOR_TRANSFER_ST2084 &&
+                colorInfo.colorTransfer != C.COLOR_TRANSFER_HLG);
     }
 
     // Measure real fps.

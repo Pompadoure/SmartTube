@@ -10,6 +10,10 @@ public interface PlayerManager extends PlayerEngine, PlayerUI {
     void finish();
     void finishReally();
     void showBackground(String url);
+    /**
+     * JoTube: the video won't start (e.g. its info failed to load): remove the transition cover now
+     */
+    void hideTransition();
     void showBackgroundColor(int colorResId);
     void resetPlayerState();
     boolean isEmbed();
