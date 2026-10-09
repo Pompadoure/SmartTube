@@ -235,6 +235,7 @@ public class ShortsTransitionOverlay {
             mIn.setTranslationY(direction * distance); // ready, not on screen yet
             mSnapshotTimeout = () -> {
                 if (swipeId == mSwipeId) {
+                    com.liskovsoft.sharedutils.mylogger.Log.d("ShortsTransition", "Snapshot timed out");
                     setOutImage(null, from);
                     startSwipe(swipeId, direction, distance, outStart);
                 }
@@ -248,6 +249,7 @@ public class ShortsTransitionOverlay {
                         return;
                     }
                     mHandler.removeCallbacks(mSnapshotTimeout);
+                    com.liskovsoft.sharedutils.mylogger.Log.d("ShortsTransition", "Snapshot result: %s", result);
                     setOutImage(result == PixelCopy.SUCCESS ? bitmap : null, from);
                     startSwipe(swipeId, direction, distance, outStart);
                 }, mHandler);

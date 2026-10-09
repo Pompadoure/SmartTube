@@ -141,6 +141,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             if (mPlayer != null && video != null && !ShortsQueue.isPlayerOn(video.videoId, mPlayer.getCurrentWindowIndex())) {
                 return;
             }
+            Log.d(TAG, "First frame rendered: %s", video != null ? video.videoId : null);
             mShortsTransition.hide(true);
         }
     };
