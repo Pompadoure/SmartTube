@@ -1,0 +1,64 @@
+name: Claude task (JoTube)
+
+# A task for Claude Code, paid with the ANTHROPIC_API_KEY secret (Claude Console credits).
+# Push a branch named claude-task/<name> with the instructions in .claude-task/TASK.md.
+# Claude works on that branch; its changes and .claude-task/REPORT.md are committed back to it.
+on:
+  push:
+    branches:
+      - 'claude-task/**'
+    paths:
+      - '.claude-task/TASK.md'
+
+concurrency:
+  group: claude-task
+  cancel-in-progress: false
+
+jobs:
+  task:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Read task
+        id: task
+        run: |
+          {
+            echo 'prompt<<JOTUBE_TASK_EOF'
+            cat .claude-task/TASK.md
+            echo
+            echo 'Write a short report of what you found and changed to .claude-task/REPORT.md (overwrite it).'
+            echo 'Do not commit or push: the workflow commits your changes. Never touch secrets, signing keys or .github/.'
+            echo 'JOTUBE_TASK_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: ${{ steps.task.outputs.prompt }}
+          claude_args: |
+            --model claude-sonnet-5-5
+            --max-turns 120
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git status:*),Bash(ls:*),Bash(find:*),Bash(grep:*),Bash(cat:*),Bash(wc:*)"
+
+      - name: Commit the result
+        if: always()
+        run: |
+          git config user.name "Pompadoure"
+          git config user.email "Pompadoure@users.noreply.github.com"
+          git add -A -- . ':!.github'
+          if git diff --cached --quiet; then
+            echo "Nothing to commit"
+          else
+            git commit -m "Claude task: ${GITHUB_REF_NAME#claude-task/}"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
