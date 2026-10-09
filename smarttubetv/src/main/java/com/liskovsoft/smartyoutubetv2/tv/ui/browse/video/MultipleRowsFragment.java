@@ -9,6 +9,7 @@ import androidx.leanback.widget.ClassPresenterSelector;
 import androidx.leanback.widget.HeaderItem;
 import androidx.leanback.widget.ListRow;
 import androidx.leanback.widget.ListRowPresenter;
+import androidx.leanback.widget.ObjectAdapter;
 import androidx.leanback.widget.OnItemViewSelectedListener;
 import androidx.leanback.widget.Presenter;
 import androidx.leanback.widget.Row;
@@ -32,6 +33,7 @@ import com.liskovsoft.smartyoutubetv2.tv.presenter.base.OnItemLongPressedListene
 import com.liskovsoft.smartyoutubetv2.tv.ui.browse.interfaces.VideoSection;
 import com.liskovsoft.smartyoutubetv2.tv.ui.common.LeanbackActivity;
 import com.liskovsoft.smartyoutubetv2.tv.ui.common.UriBackgroundManager;
+import com.liskovsoft.smartyoutubetv2.tv.util.ThumbnailPreloader;
 import com.liskovsoft.smartyoutubetv2.tv.util.ViewUtil;
 
 import java.lang.ref.WeakReference;
@@ -42,6 +44,8 @@ import java.util.Map;
 
 public abstract class MultipleRowsFragment extends RowsSupportFragment implements VideoSection {
     private static final String TAG = MultipleRowsFragment.class.getSimpleName();
+    private static final int PRELOAD_ROW_CARDS = 6; // JoTube: thumbnails preloaded per row
+    private static final int PRELOAD_NEXT_ROWS = 2; // JoTube: rows below the focused one
     private UriBackgroundManager mBackgroundManager;
     private ArrayObjectAdapter mRowsAdapter;
     private ListRowPresenter mRowPresenter;
@@ -257,6 +261,9 @@ public abstract class MultipleRowsFragment extends RowsSupportFragment implement
 
             mVideoGroupAdapters.put(videoGroupId, videoGroupAdapter);
 
+            // JoTube: new row arrived - warm its first cards
+            ThumbnailPreloader.preload(getContext(), videoGroupAdapter, 0, PRELOAD_ROW_CARDS);
+
             ListRow row = new ListRow(rowHeader, videoGroupAdapter);
 
             if (group.getPosition() == -1 || group.getPosition() > mRowsAdapter.size()) {
@@ -359,6 +366,38 @@ public abstract class MultipleRowsFragment extends RowsSupportFragment implement
                 mMainPresenter.onVideoItemSelected((Video) item);
 
                 checkScrollEnd((Video)item);
+
+                preloadThumbnails((Video) item, row);
+            }
+        }
+
+        /**
+         * JoTube: warm Glide cache: next cards of the focused row + first cards of the 2 rows below.
+         */
+        private void preloadThumbnails(Video item, Row row) {
+            if (mRowsAdapter == null || !(row instanceof ListRow) || getContext() == null) {
+                return;
+            }
+
+            ObjectAdapter rowAdapter = ((ListRow) row).getAdapter();
+            int itemIndex = rowAdapter instanceof VideoGroupObjectAdapter ? ((VideoGroupObjectAdapter) rowAdapter).indexOf(item) : -1;
+
+            if (itemIndex != -1) {
+                ThumbnailPreloader.preload(getContext(), rowAdapter, itemIndex + 1, PRELOAD_ROW_CARDS);
+            }
+
+            int rowIndex = mRowsAdapter.indexOf(row);
+
+            if (rowIndex == -1) {
+                return;
+            }
+
+            for (int i = rowIndex + 1; i <= rowIndex + PRELOAD_NEXT_ROWS && i < mRowsAdapter.size(); i++) {
+                Object nextRow = mRowsAdapter.get(i);
+
+                if (nextRow instanceof ListRow) {
+                    ThumbnailPreloader.preload(getContext(), ((ListRow) nextRow).getAdapter(), 0, PRELOAD_ROW_CARDS);
+                }
             }
         }
 

@@ -27,6 +27,7 @@ import com.liskovsoft.smartyoutubetv2.tv.R;
 import com.liskovsoft.smartyoutubetv2.tv.presenter.base.LongClickPresenter;
 import com.liskovsoft.smartyoutubetv2.tv.ui.browse.video.GridFragmentHelper;
 import com.liskovsoft.smartyoutubetv2.tv.ui.widgets.complexcardview.ComplexImageCardView;
+import com.liskovsoft.smartyoutubetv2.tv.util.ThumbnailPreloader;
 import com.liskovsoft.smartyoutubetv2.tv.util.ViewUtil;
 
 /*
@@ -150,16 +151,13 @@ public class VideoCardPresenter extends LongClickPresenter {
             return;
         }
 
-        Glide.with(context)
-                //.asBitmap() // disable animation (webp, gif)
-                .load(ClickbaitRemover.updateThumbnail(video, mThumbQuality))
+        // JoTube: options are shared with ThumbnailPreloader (same Glide cache key)
+        ThumbnailPreloader.applyCardOptions(
+                Glide.with(context)
+                        //.asBitmap() // disable animation (webp, gif)
+                        .load(ClickbaitRemover.updateThumbnail(video, mThumbQuality)),
+                mWidth, mHeight)
                 //.placeholder(mDefaultCardImage)
-                .apply(ViewUtil.glideOptions())
-                // improve image compression on low end devices
-                .override(mWidth, mHeight)
-                // com.liskovsoft.smartyoutubetv2.tv.util.CacheGlideModule
-                // Cache makes app crashing on old android versions
-                .diskCacheStrategy(VERSION.SDK_INT > 21 ? DiskCacheStrategy.ALL : DiskCacheStrategy.NONE)
                 .listener(mErrorListener)
                 .error(
                     // Updated thumbnail url not found
@@ -185,6 +183,22 @@ public class VideoCardPresenter extends LongClickPresenter {
 
         // Cleanup Glide resources. https://chatgpt.com/share/682120c5-e428-8010-b848-371b2dec0cd5
         Glide.with(cardView.getContext().getApplicationContext()).clear(cardView.getMainImageView());
+    }
+
+    /**
+     * JoTube: warm Glide cache with the thumbnail this presenter would load on bind.
+     */
+    public void preload(Context context, Video video) {
+        if (context == null || video == null) {
+            return;
+        }
+
+        if (mWidth <= 0 || mHeight <= 0) {
+            updateDimensions(context);
+            mThumbQuality = getThumbQuality(context);
+        }
+
+        ThumbnailPreloader.preload(context, ClickbaitRemover.updateThumbnail(video, mThumbQuality), mWidth, mHeight);
     }
 
     private void updateDimensions(Context context) {
