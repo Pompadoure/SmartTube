@@ -1358,7 +1358,7 @@ public class MediaCodecVideoRenderer extends MediaCodecRenderer {
    * @return A maximum input size in bytes, or {@link Format#NO_VALUE} if a maximum could not be
    *     determined.
    */
-  private static int getCodecMaxInputSize(
+  protected static int getCodecMaxInputSize( // JoTube: protected (Shorts codec max values)
       MediaCodecInfo codecInfo, String sampleMimeType, int width, int height) {
     if (width == Format.NO_VALUE || height == Format.NO_VALUE) {
       // We can't infer a maximum input size without video dimensions.

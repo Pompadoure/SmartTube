@@ -1,6 +1,7 @@
 package com.liskovsoft.smartyoutubetv2.common.exoplayer.versions.renderer;
 
 import android.content.Context;
+import android.graphics.Point;
 import android.media.MediaCodec;
 import android.os.Build.VERSION;
 import android.os.Handler;
@@ -16,6 +17,7 @@ import com.google.android.exoplayer2.mediacodec.MediaCodecSelector;
 import com.google.android.exoplayer2.video.MediaCodecVideoRenderer;
 import com.google.android.exoplayer2.video.VideoRendererEventListener;
 import com.liskovsoft.sharedutils.mylogger.Log;
+import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.versions.ExoUtils;
 
 public class DebugInfoMediaCodecVideoRenderer extends MediaCodecVideoRenderer {
@@ -50,7 +52,59 @@ public class DebugInfoMediaCodecVideoRenderer extends MediaCodecVideoRenderer {
             MediaCodecInfo codecInfo, Format format, Format[] streamFormats) {
         ExoUtils.updateVideoDecoderInfo(codecInfo);
 
-        return super.getCodecMaxValues(codecInfo, format, streamFormats);
+        CodecMaxValues values = super.getCodecMaxValues(codecInfo, format, streamFormats);
+
+        // JoTube: Shorts are a playlist of videos of different sizes. The decoder is set up for the biggest size
+        // it supports, so the next Short doesn't need a new decoder (~350 ms before its first frame).
+        if (ShortsTransitionState.isShortsMode() && codecInfo.adaptive) {
+            Point maxSize = getShortsMaxSize(codecInfo, format);
+
+            if (maxSize != null && (maxSize.x > values.width || maxSize.y > values.height)) {
+                int width = Math.max(values.width, maxSize.x);
+                int height = Math.max(values.height, maxSize.y);
+                int inputSize = Math.max(values.inputSize,
+                        getCodecMaxInputSize(codecInfo, format.sampleMimeType, width, height));
+                Log.d(TAG, "Shorts: codec max size %sx%s (format %sx%s)", width, height, format.width, format.height);
+                return new CodecMaxValues(width, height, inputSize);
+            }
+        }
+
+        return values;
+    }
+
+    private static Point getShortsMaxSize(MediaCodecInfo codecInfo, Format format) {
+        if (VERSION.SDK_INT < 21 || format.width <= 0 || format.height <= 0) {
+            return null;
+        }
+
+        boolean portrait = format.height >= format.width;
+        int[][] sizes = {{2160, 3840}, {1440, 2560}, {1080, 1920}};
+        double frameRate = format.frameRate > 0 ? format.frameRate : 30;
+
+        for (int[] size : sizes) {
+            int width = portrait ? size[0] : size[1];
+            int height = portrait ? size[1] : size[0];
+            Point aligned = codecInfo.alignVideoSizeV21(width, height);
+
+            if (aligned != null && aligned.x >= format.width && aligned.y >= format.height &&
+                    codecInfo.isVideoSizeAndRateSupportedV21(aligned.x, aligned.y, frameRate)) {
+                return aligned;
+            }
+        }
+
+        return null;
+    }
+
+    @Override
+    protected int canKeepCodec(MediaCodec codec, MediaCodecInfo codecInfo, Format oldFormat, Format newFormat) {
+        int result = super.canKeepCodec(codec, codecInfo, oldFormat, newFormat);
+
+        if (result == KEEP_CODEC_RESULT_NO) {
+            Log.d(TAG, "New decoder needed: %sx%s -> %sx%s, adaptive %s, color %s -> %s", oldFormat.width, oldFormat.height,
+                    newFormat.width, newFormat.height, codecInfo.adaptive, oldFormat.colorInfo, newFormat.colorInfo);
+        }
+
+        return result;
     }
 
     // Measure real fps.

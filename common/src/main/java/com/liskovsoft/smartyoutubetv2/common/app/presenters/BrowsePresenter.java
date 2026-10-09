@@ -446,8 +446,8 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
         // (FormatFetchLock) and are never cancelled midway (that broke the shared state before: 403).
         Utils.removeCallbacks(mPrefetchFocusedShort);
         if (item != null && item.hasVideo() && !item.isLive && !item.isUpcoming) {
-            // Regular videos: only a card the user really stays on (a fetch holds the lock ~4 s, a click must not wait)
-            Utils.postDelayed(mPrefetchFocusedShort, item.isShorts ? 400 : 1500);
+            // Regular videos: a card the user stays on for a moment (the fetch takes ~3 s, the click then starts at once)
+            Utils.postDelayed(mPrefetchFocusedShort, item.isShorts ? 400 : 600);
         }
     }
 
