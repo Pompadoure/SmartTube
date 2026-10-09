@@ -190,9 +190,8 @@ public class ShortsTransitionOverlay {
         }
 
         // What's on screen now, where it is (a fast second swipe starts from the middle of the first one)
-        boolean coverShown = mIsShown && !mFirstFrameRendered && mIn.getVisibility() == View.VISIBLE &&
-                mIn.getAlpha() > 0.5f && mIn.getDrawable() != null;
-        android.graphics.drawable.Drawable coverImage = coverShown ? mIn.getDrawable() : null;
+        boolean coverShown = mIsShown && !mFirstFrameRendered && mSnapshotTimeout == null &&
+                mIn.getVisibility() == View.VISIBLE && mIn.getAlpha() > 0.5f && mIn.getDrawable() != null;
         float outStart = mSurfaceRoot != null ? mSurfaceRoot.getTranslationY() : 0;
 
         prepare();
@@ -206,9 +205,9 @@ public class ShortsTransitionOverlay {
         mIn.setVisibility(View.VISIBLE);
         mHandler.postDelayed(mFailsafeHide, FAILSAFE_HIDE_MS);
 
-        if (coverImage != null) {
+        if (coverShown) {
             // The previous swipe hasn't shown its video yet: its thumbnail is what's on screen
-            mOut.setImageDrawable(coverImage);
+            setOutImage(null, from);
             startSwipe(swipeId, direction, distance, outStart);
             return;
         }
@@ -244,8 +243,8 @@ public class ShortsTransitionOverlay {
 
             try {
                 PixelCopy.request((SurfaceView) videoView, bitmap, result -> {
-                    // Void if timed out or a newer swipe started, or the new video is already on the surface
-                    if (swipeId != mSwipeId || mSwipe != null || mFirstFrameRendered) {
+                    // Void if timed out or a newer swipe started
+                    if (swipeId != mSwipeId || mSwipe != null || mSnapshotTimeout == null) {
                         return;
                     }
                     mHandler.removeCallbacks(mSnapshotTimeout);
@@ -276,6 +275,7 @@ public class ShortsTransitionOverlay {
         }
 
         if (frame != null) {
+            clearImage(mOut); // a late thumbnail load must not replace the snapshot
             mOut.setImageBitmap(frame);
         } else if (from != null) {
             loadThumbnail(mOut, from);
@@ -344,7 +344,7 @@ public class ShortsTransitionOverlay {
 
         setSurfaceOffset(0);
         mOut.setVisibility(View.GONE);
-        mOut.setImageDrawable(null);
+        clearImage(mOut);
         mOut.setTranslationY(0);
         mIn.setTranslationY(0);
 
@@ -393,8 +393,7 @@ public class ShortsTransitionOverlay {
                     .override(Target.SIZE_ORIGINAL)
                     .dontTransform()
                     .error(Glide.with(image).load(video.getCardImageUrl()))
-                    .dontAnimate()
-                    .into(image);
+                    .into(image); // no dontAnimate(): it's an option of the cache key (into() has no transition anyway)
         } catch (IllegalArgumentException e) {
             // Activity is destroyed
         }
@@ -414,7 +413,15 @@ public class ShortsTransitionOverlay {
             return;
         }
 
-        if (animate && (mSwipe != null || mSnapshotTimeout != null)) {
+        if (animate && mSnapshotTimeout != null) {
+            // The new video is ready before the snapshot: start the swipe now (the new video slides in)
+            Runnable start = mSnapshotTimeout;
+            mHandler.removeCallbacks(start);
+            start.run();
+            return;
+        }
+
+        if (animate && mSwipe != null) {
             // In the middle of the swipe: uncover the new video, it keeps moving into place
             mIn.animate().cancel();
             mIn.animate().alpha(0f).setDuration(REVEAL_DURATION_MS).start();
@@ -516,7 +523,16 @@ public class ShortsTransitionOverlay {
         mOut.setTranslationY(0);
         mIn.setVisibility(View.GONE);
         mOut.setVisibility(View.GONE);
-        mIn.setImageDrawable(null);
-        mOut.setImageDrawable(null);
+        clearImage(mIn);
+        clearImage(mOut);
+    }
+
+    private static void clearImage(ImageView image) {
+        try {
+            Glide.with(image).clear(image);
+        } catch (IllegalArgumentException e) {
+            // Activity is destroyed
+        }
+        image.setImageDrawable(null);
     }
 }
