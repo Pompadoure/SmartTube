@@ -1757,11 +1757,14 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         if (video != null && ShortsQueue.getQueuedFormatInfo(video.videoId) != null) {
             // Preloaded Short: it's already in the player, keep everything as is (no black screen, no reset).
             // The swipe covers the moment until the new video's first frame is rendered.
-            mShortsTransition.hide(false);
             if (swipe) {
-                mShortsTransition.swipe(previous, video, direction);
-            } else if (!isInPIPMode()) {
-                mShortsTransition.showIfSlow(video, 250);
+                // The old video is still on the surface: its last frame slides out
+                mShortsTransition.swipe(previous, video, direction, getSurfaceView());
+            } else {
+                mShortsTransition.hide(false);
+                if (!isInPIPMode()) {
+                    mShortsTransition.showIfSlow(video, 250);
+                }
             }
             updateShortsBackground(video);
             setChatReceiver(null);
@@ -1775,7 +1778,8 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         showBackgroundColor(R.color.player_background);
 
         if (swipe) {
-            mShortsTransition.swipe(previous, video, direction);
+            // The player is reset: the old video's thumbnail slides out
+            mShortsTransition.swipe(previous, video, direction, null);
         } else if (video != null && !isInPIPMode()) {
             // The video's thumbnail instead of a black screen until its first frame (Shorts and regular videos)
             mShortsTransition.show(video, ShortsTransitionState.DIRECTION_NONE);

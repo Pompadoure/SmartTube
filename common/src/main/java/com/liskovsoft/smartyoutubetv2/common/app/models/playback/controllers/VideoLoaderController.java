@@ -279,6 +279,12 @@ public class VideoLoaderController extends BasePlayerController {
                 if (history != null) {
                     history.markSeen(item.videoId); // JoTube: not again in the next feeds
                 }
+                // JoTube: the swipe back to this Short shows its thumbnail at once (memory cache)
+                try {
+                    Glide.with(getContext()).load(ShortsTransitionState.getThumbnailUrl(item.videoId)).preload();
+                } catch (IllegalArgumentException e) {
+                    // Activity destroyed
+                }
             } else {
                 mShortsFeedGroup = null;
             }
