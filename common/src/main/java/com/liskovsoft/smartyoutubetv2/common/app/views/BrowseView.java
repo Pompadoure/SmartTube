@@ -24,6 +24,10 @@ public interface BrowseView {
      * JoTube: back to the sidebar (e.g. after the Shorts player that was started from the sidebar is closed)
      */
     void showHeaders();
+    /**
+     * JoTube: the section content is invisible (the Shorts player is about to open on top of it)
+     */
+    void setContentHidden(boolean hidden);
     boolean isEmpty();
     void updateBadge();
 }

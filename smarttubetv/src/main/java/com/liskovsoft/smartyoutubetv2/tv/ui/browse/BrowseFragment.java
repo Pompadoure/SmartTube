@@ -134,7 +134,7 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
                         getHeadersSupportFragment().setSelectedPosition(newPosition);
                     } else {
                         // update section when clicked or pressed
-                        mBrowsePresenter.onSectionFocused((int) headerId);
+                        mBrowsePresenter.onSectionClicked((int) headerId);
                         startHeadersTransitionSafe(false);
                     }
                 }
@@ -365,6 +365,15 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
         }
         if (getMainFragment() != null && getMainFragment().getView() != null) {
             getMainFragment().getView().requestFocus();
+        }
+    }
+
+    @Override
+    public void setContentHidden(boolean hidden) {
+        Fragment mainFragment = getMainFragment();
+
+        if (mainFragment != null && mainFragment.getView() != null) {
+            mainFragment.getView().setAlpha(hidden ? 0f : 1f);
         }
     }
 

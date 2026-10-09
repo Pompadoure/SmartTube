@@ -454,6 +454,7 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
     private boolean mShortsAutoStarted; // the player was started from the sidebar, back returns to the sidebar
     private VideoGroup mShortsGroup; // the loaded Shorts feed
     private VideoGroup mPlayingShortsGroup; // strong ref: the player follows its order (Video holds a weak ref only)
+    private long mShortsLoadStartMs = -1; // the running Shorts feed load
 
     /**
      * The focus moved from the sidebar into the section content (true) or back to the sidebar (false).
@@ -461,11 +462,40 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
     public void onContentEntered(boolean entered) {
         if (!entered || !isShortsSection()) {
             mPendingShortsStart = false;
+            if (getView() != null) {
+                getView().setContentHidden(false);
+            }
             return;
         }
 
         mPendingShortsStart = true;
+        if (getView() != null) {
+            getView().setContentHidden(true); // the player opens on top, never show the grid meanwhile
+        }
         startShortsIfReady();
+    }
+
+    /**
+     * OK on a sidebar item. The Shorts feed loaded (or loading) since the item got the focus is used as is.
+     */
+    public void onSectionClicked(int sectionId) {
+        boolean shortsFeedReady = isShortsSection() && mCurrentSection.getId() == sectionId &&
+                (mShortsGroup != null || (mShortsLoadStartMs != -1 && System.currentTimeMillis() - mShortsLoadStartMs < 15_000));
+
+        if (!shortsFeedReady) {
+            onSectionFocused(sectionId);
+        }
+    }
+
+    /**
+     * The first Short's stream info is fetched as soon as the feed is there, so it plays right away when entered.
+     */
+    private void prefetchFirstShort() {
+        Video first = findFirstShort(mShortsGroup);
+
+        if (first != null && !mShortsAutoStarted && !mPendingShortsStart) {
+            MediaServiceManager.instance().loadFormatInfo(first, formatInfo -> {});
+        }
     }
 
     private boolean isShortsAutoStarted() {
@@ -515,6 +545,10 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
         mShortsAutoStarted = false;
         mPendingShortsStart = false;
         mPlayingShortsGroup = null;
+
+        if (getView() != null) {
+            getView().setContentHidden(false);
+        }
 
         if (getView() != null && isShortsSection()) {
             // Back to the sidebar with a fresh feed for the next time
@@ -880,6 +914,7 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
         boolean isShortsGrid = section.getType() == BrowseSection.TYPE_SHORTS_GRID;
         if (isShortsGrid) {
             mShortsGroup = null; // reloading
+            mShortsLoadStartMs = System.currentTimeMillis();
         }
 
         if (group == null) {
@@ -908,7 +943,9 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
 
                             if (isShortsGrid && mCurrentSection != null && mCurrentSection.getId() == section.getId()) {
                                 mShortsGroup = videoGroup;
+                                mShortsLoadStartMs = -1;
                                 startShortsIfReady();
+                                prefetchFirstShort();
                             }
                         },
                         error -> {

@@ -1,0 +1,283 @@
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
+index 8e98bb5f..83e22376 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
+@@ -1,6 +1,11 @@
+ package com.liskovsoft.youtubeapi.browse.v2
+ 
+ import com.liskovsoft.mediaserviceinterfaces.data.MediaGroup
++import com.liskovsoft.sharedutils.mylogger.Log
++import java.util.concurrent.Callable
++import java.util.concurrent.Executors
++import java.util.concurrent.Future
++import java.util.concurrent.TimeUnit
+ import com.liskovsoft.mediaserviceinterfaces.data.MediaItem
+ import com.liskovsoft.youtubeapi.browse.v2.gen.*
+ import com.liskovsoft.youtubeapi.common.helpers.AppClient
+@@ -247,12 +252,35 @@ internal open class BrowseService2 {
+         return RetrofitHelper.get(continuation, auth)?.let {
+             val result = mutableListOf<MediaItem?>()
+ 
+-            it.getItems()?.forEach {
+-                if (it?.videoId != null && it.params != null) {
+-                    val details = mBrowseApi?.getReelResult(BrowseApiHelper.getReelDetailsQuery(AppClient.WEB, it.videoId, it.params))
++            // JoTube: no ads, and the details of all the items are fetched in parallel (one by one took ~5 s per page)
++            val reels = it.getItems()?.filter { reel ->
++                val isAd = reel?.adClientParams?.isAd == true
++                if (isAd) Log.d(SHORTS_TAG, "Shorts feed: skipping an ad: %s", reel?.videoId)
++                reel?.videoId != null && reel.params != null && !isAd
++            } ?: emptyList()
++
++            val details: List<Future<ReelResult?>> = reels.map { reel ->
++                val videoId = reel?.videoId
++                val params = reel?.params
++                sShortsDetailsExecutor.submit(Callable<ReelResult?> {
++                    if (videoId == null || params == null) null
++                    else RetrofitHelper.get(mBrowseApi?.getReelResult(BrowseApiHelper.getReelDetailsQuery(AppClient.WEB, videoId, params)), auth)
++                })
++            }
++
++            reels.forEachIndexed { index, reel ->
++                val info: ReelResult? = try {
++                    details[index].get(20, TimeUnit.SECONDS)
++                } catch (e: Exception) {
++                    details[index].cancel(true)
++                    null
++                }
+ 
+-                    RetrofitHelper.get(details, auth)?.let {
+-                            info -> result.add(ShortsMediaItem(it, info))
++                if (info != null) {
++                    if (isReelAd(info)) {
++                        Log.d(SHORTS_TAG, "Shorts feed: skipping an ad: %s", reel?.videoId)
++                    } else {
++                        result.add(ShortsMediaItem(reel, info))
+                     }
+                 }
+             }
+@@ -261,6 +289,14 @@ internal open class BrowseService2 {
+         }
+     }
+ 
++    /**
++     * An ad is marked as one, or (promoted Shorts) has no title and no channel.
++     */
++    private fun isReelAd(info: ReelResult): Boolean {
++        return info.replacementEndpoint?.reelWatchEndpoint?.adClientParams?.isAd == true ||
++                (info.getTitle() == null && info.getBrowseId() == null)
++    }
++
+     open fun getChannelAsGrid(channelId: String?): MediaGroup? {
+         return getChannelVideosTV(channelId) ?: getChannelVideosWeb(channelId)
+     }
+@@ -613,4 +649,10 @@ internal open class BrowseService2 {
+ 
+         return Pair(combinedItems, combinedKey)
+     }
+-}
+\ No newline at end of file
++}
++private const val SHORTS_TAG = "BrowseService2"
++
++// JoTube: Shorts feed details (parallel requests)
++private val sShortsDetailsExecutor = Executors.newFixedThreadPool(6) { runnable ->
++    Thread(runnable, "JoTubeShortsDetails").apply { isDaemon = true }
++}
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/gen/BrowseItems.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/gen/BrowseItems.kt
+index e2bff13c..dee60d1a 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/gen/BrowseItems.kt
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/gen/BrowseItems.kt
+@@ -202,8 +202,13 @@ internal data class ReelWatchEndpoint(
+     val videoId: String?,
+     val playerParams: String?,
+     val params: String?,
+-    val thumbnail: ThumbnailItem?
+-)
++    val thumbnail: ThumbnailItem?,
++    val adClientParams: AdClientParams? // JoTube: set on ads in the Shorts feed
++) {
++    data class AdClientParams(
++        val isAd: Boolean?
++    )
++}
+ 
+ // Reel only. Extended data.
+ internal data class ReelPlayerHeaderRenderer(
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/YouTubeServiceManager.java b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/YouTubeServiceManager.java
+index a3de4254..8bf7d28e 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/YouTubeServiceManager.java
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/YouTubeServiceManager.java
+@@ -15,7 +15,10 @@ import com.liskovsoft.mediaserviceinterfaces.SignInService;
+ import com.liskovsoft.sharedutils.mylogger.Log;
+ import com.liskovsoft.sharedutils.rx.RxHelper;
+ import com.liskovsoft.youtubeapi.app.AppService;
++import com.liskovsoft.youtubeapi.app.PoTokenGate;
+ import com.liskovsoft.youtubeapi.app.ReloadPlaybackGate;
++import com.liskovsoft.youtubeapi.common.helpers.AppClient;
++import com.liskovsoft.youtubeapi.service.internal.FormatFetchLock;
+ import com.liskovsoft.youtubeapi.channelgroups.ChannelGroupServiceImpl;
+ import com.liskovsoft.googlecommon.common.locale.LocaleManager;
+ import com.liskovsoft.youtubeapi.service.internal.FormatInfoWrapper;
+@@ -129,7 +132,24 @@ public class YouTubeServiceManager implements ServiceManager {
+             return;
+         }
+ 
+-        mRefreshCoreDataAction = RxHelper.execute(RxHelper.fromRunnable(getAppService()::refreshCacheIfNeeded));
++        mRefreshCoreDataAction = RxHelper.execute(RxHelper.fromRunnable(() -> {
++            getAppService().refreshCacheIfNeeded();
++            warmUpPoToken();
++        }));
++    }
++
++    /**
++     * JoTube: the TV poToken (a BotGuard run in a WebView, ~2 s) is made while the app starts,
++     * not when the first video is opened.
++     */
++    private static void warmUpPoToken() {
++        try {
++            synchronized (FormatFetchLock.LOCK) {
++                PoTokenGate.getPoToken(AppClient.TV);
++            }
++        } catch (Throwable e) {
++            Log.e(TAG, "PoToken warm up failed: %s", e.getMessage());
++        }
+     }
+ 
+     @NonNull
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatFetchLock.java b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatFetchLock.java
+new file mode 100644
+index 00000000..32d3f29b
+--- /dev/null
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatFetchLock.java
+@@ -0,0 +1,12 @@
++package com.liskovsoft.youtubeapi.service.internal;
++
++/**
++ * JoTube: one stream info fetch at a time. VideoInfoService, PoTokenGate, the decipher in AppService and the
++ * single cached info share state that isn't thread safe; parallel fetches mixed it up (streams failed with 403).
++ */
++public final class FormatFetchLock {
++    public static final Object LOCK = new Object();
++
++    private FormatFetchLock() {
++    }
++}
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt
+index d9663441..598e867e 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/internal/FormatInfoWrapper.kt
+@@ -30,12 +30,13 @@ internal object FormatInfoWrapper {
+     // the single cached info) share state that isn't thread safe; parallel fetches (focus prefetch, Shorts
+     // lookahead, the player) mixed it up and the streams failed with 403.
+     @JvmStatic
+-    @Synchronized
+     fun getFormatInfo(videoId: String, clickTrackingParams: String?): MediaItemFormatInfo? {
+-        try {
+-            return selectPlaybackFormatInfo(videoId, clickTrackingParams)
+-        } finally {
+-            ReloadPlaybackGate.reset(videoId)
++        synchronized(FormatFetchLock.LOCK) {
++            try {
++                return selectPlaybackFormatInfo(videoId, clickTrackingParams)
++            } finally {
++                ReloadPlaybackGate.reset(videoId)
++            }
+         }
+     }
+ 
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java
+index 5baeadb3..8d945040 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java
+@@ -9,6 +9,7 @@ import com.liskovsoft.youtubeapi.app.AppService;
+ import com.liskovsoft.youtubeapi.app.PoTokenGate;
+ import com.liskovsoft.youtubeapi.common.helpers.AppClient;
+ import com.liskovsoft.googlecommon.common.helpers.RetrofitHelper;
++import com.liskovsoft.youtubeapi.service.internal.FormatFetchLock;
+ import com.liskovsoft.youtubeapi.service.internal.MediaServiceData;
+ import com.liskovsoft.youtubeapi.innertube.initialresponse.InitialResponseService;
+ import com.liskovsoft.youtubeapi.videoinfo.VideoInfoServiceBase;
+@@ -19,6 +20,7 @@ import com.liskovsoft.youtubeapi.videoinfo.models.VideoInfoHls;
+ import com.liskovsoft.youtubeapi.videoinfo.models.VideoInfoReel;
+ 
+ import java.util.List;
++import java.util.concurrent.atomic.AtomicBoolean;
+ 
+ import retrofit2.Call;
+ 
+@@ -52,7 +54,7 @@ public class VideoInfoService extends VideoInfoServiceBase {
+     @Nullable
+     private AppClient mNextInfoType = null;
+     private boolean mUseAuth;
+-    private List<TranslationLanguage> mCachedTranslationLanguages;
++    private volatile List<TranslationLanguage> mCachedTranslationLanguages;
+     private boolean mIsUnplayable;
+ 
+     private VideoInfoService() {
+@@ -259,17 +261,10 @@ public class VideoInfoService extends VideoInfoServiceBase {
+         if (needMoreSubtitles(result) && !isShortVideo(result)) {
+             Log.d(TAG, "Enable full list of auto generated subtitles...");
+ 
++            // JoTube: the list is the same for every video. Don't make the video wait for it (an extra WEB
++            // request plus a BotGuard run: 1-3 s), fetch it once in the background and use it from then on.
+             if (mCachedTranslationLanguages == null || mCachedTranslationLanguages.size() < 100) {
+-                mUseAuth = false;
+-                VideoInfo webInfo = null;
+-                try {
+-                    webInfo = getVideoInfo(AppClient.WEB, videoId, clickTrackingParams);
+-                } catch (Exception e) {
+-                    e.printStackTrace();
+-                }
+-                if (webInfo != null) {
+-                    mCachedTranslationLanguages = webInfo.getTranslationLanguages();
+-                }
++                fetchTranslationLanguagesInBackground(videoId, clickTrackingParams);
+             }
+ 
+             if (mCachedTranslationLanguages != null) {
+@@ -311,6 +306,45 @@ public class VideoInfoService extends VideoInfoServiceBase {
+         return videoInfo != null && videoInfo.hasSubtitles() && getData().isMoreSubtitlesUnlocked();
+     }
+ 
++    private final AtomicBoolean mTranslationFetchRunning = new AtomicBoolean();
++    private volatile long mTranslationFetchTimeMs;
++
++    private void fetchTranslationLanguagesInBackground(String videoId, String clickTrackingParams) {
++        if (System.currentTimeMillis() - mTranslationFetchTimeMs < 10 * 60 * 1_000 || !mTranslationFetchRunning.compareAndSet(false, true)) {
++            return;
++        }
++
++        mTranslationFetchTimeMs = System.currentTimeMillis();
++
++        Thread thread = new Thread(() -> {
++            try {
++                // After the current fetch, never in parallel with another one (shared state)
++                synchronized (FormatFetchLock.LOCK) {
++                    if (mCachedTranslationLanguages != null && mCachedTranslationLanguages.size() >= 100) {
++                        return;
++                    }
++
++                    boolean oldUseAuth = mUseAuth;
++                    mUseAuth = false;
++                    try {
++                        VideoInfo webInfo = getVideoInfo(AppClient.WEB, videoId, clickTrackingParams);
++                        if (webInfo != null && webInfo.getTranslationLanguages() != null) {
++                            mCachedTranslationLanguages = webInfo.getTranslationLanguages();
++                        }
++                    } finally {
++                        mUseAuth = oldUseAuth;
++                    }
++                }
++            } catch (Throwable e) {
++                Log.e(TAG, "Can't get the translation languages: %s", e.getMessage());
++            } finally {
++                mTranslationFetchRunning.set(false);
++            }
++        }, "JoTubeTranslationLanguages");
++        thread.setDaemon(true);
++        thread.start();
++    }
++
+     private static boolean isShortVideo(VideoInfo videoInfo) {
+         try {
+             return videoInfo != null && videoInfo.getVideoDetails() != null &&
