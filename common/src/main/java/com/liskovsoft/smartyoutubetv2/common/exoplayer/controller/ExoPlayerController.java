@@ -419,6 +419,7 @@ public class ExoPlayerController implements Player.EventListener {
     }
 
     private void openMediaSource(MediaSource mediaSource) {
+        applyTunneling(); // JoTube
         resetPlayerState(); // fixes occasional video artifacts and problems with quality switching
         setQualityInfo("");
 
@@ -520,12 +521,36 @@ public class ExoPlayerController implements Player.EventListener {
     
     public void setTrackSelector(DefaultTrackSelector trackSelector) {
         mTrackSelectorManager.setTrackSelector(trackSelector);
+        mTunnelingTrackSelector = null;
 
         if (mContext != null && trackSelector != null && PlayerTweaksData.instance(mContext).isTunneledPlaybackEnabled()) {
             // Enable tunneling if supported by the current media and device configuration.
             if (VERSION.SDK_INT >= 21) {
-                trackSelector.setParameters(trackSelector.buildUponParameters().setTunnelingAudioSessionId(C.generateAudioSessionIdV21(mContext)));
+                mTunnelingSessionId = C.generateAudioSessionIdV21(mContext);
+                mTunnelingTrackSelector = trackSelector;
+                trackSelector.setParameters(trackSelector.buildUponParameters().setTunnelingAudioSessionId(mTunnelingSessionId));
             }
+        }
+    }
+
+    private DefaultTrackSelector mTunnelingTrackSelector; // tunneling is enabled in the settings
+    private int mTunnelingSessionId = C.AUDIO_SESSION_ID_UNSET;
+
+    /**
+     * JoTube: no tunneled playback for Shorts. In tunnel mode every Short switch re-creates the audio track and
+     * waits for the A/V sync (~0.5-0.9 s on the Streamer) before the first frame shows. Regular videos keep it.
+     */
+    private void applyTunneling() {
+        DefaultTrackSelector trackSelector = mTunnelingTrackSelector;
+
+        if (trackSelector == null) {
+            return;
+        }
+
+        int sessionId = ShortsTransitionState.isShortsMode() ? C.AUDIO_SESSION_ID_UNSET : mTunnelingSessionId;
+
+        if (trackSelector.getParameters().tunnelingAudioSessionId != sessionId) {
+            trackSelector.setParameters(trackSelector.buildUponParameters().setTunnelingAudioSessionId(sessionId));
         }
     }
     
