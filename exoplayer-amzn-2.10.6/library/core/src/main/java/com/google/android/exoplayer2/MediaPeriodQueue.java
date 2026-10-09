@@ -115,6 +115,19 @@ import com.google.android.exoplayer2.util.Assertions;
   }
 
   /**
+   * JoTube: whether the next period can be enqueued before the loading one is fully buffered (preload
+   * of the next playlist items). The caller decides if enough is buffered.
+   */
+  public boolean canEnqueueEarly(int maxLength) {
+    return loading != null
+        && playing != null
+        && loading.prepared
+        && !loading.info.isFinal
+        && loading.info.durationUs != C.TIME_UNSET
+        && length < maxLength;
+  }
+
+  /**
    * Returns the {@link MediaPeriodInfo} for the next media period to load.
    *
    * @param rendererPositionUs The current renderer position.

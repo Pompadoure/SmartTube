@@ -9,4 +9,11 @@ public interface PlayedPeriodsPolicy {
   boolean shouldRetainPlayedPeriods();
 
   long getCurrentBackBufferDurationUs();
+
+  /**
+   * Whether the start of the next queued playlist periods is loaded while the playing period is still
+   * loading (Shorts). When false, the original behavior applies (the next period is only loaded once
+   * the loading one is fully buffered).
+   */
+  boolean shouldPreloadQueuedPeriods();
 }
