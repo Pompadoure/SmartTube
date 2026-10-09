@@ -585,6 +585,10 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
                 representationHolder.representation.getCacheKey(),
                 0,
                 sabrHeaders);
+        if (sabrStream != null) {
+            // JoTube: don't download the media that comes with the init response, it is dropped anyway
+            sabrStream.setInitLoad(true);
+        }
         Log.e(TAG, "Load init chunk: track=" + trackType + ", rn=" + manifest.getSabrRequestNumber());
         return new InitializationChunk(dataSource, dataSpec, trackFormat,
                 trackSelectionReason, trackSelectionData, representationHolder.extractorWrapper);
@@ -614,6 +618,7 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
         }
 
         SabrStream sabrStream = Assertions.checkNotNull(this.sabrStream);
+        sabrStream.setInitLoad(false); // JoTube: the init chunk is done
         boolean isInit = nexChunkIdx == -1;
         FormatId formatId = formatSelector.getSelectedFormatId();
         int iTag = formatId != null ? formatId.getItag() : -1;
