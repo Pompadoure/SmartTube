@@ -7,6 +7,7 @@ import com.bumptech.glide.Glide;
 import com.liskovsoft.mediaserviceinterfaces.MediaItemService;
 import com.liskovsoft.mediaserviceinterfaces.ServiceManager;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaFormat;
+import com.liskovsoft.mediaserviceinterfaces.data.MediaGroup;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItemMetadata;
 import com.liskovsoft.sharedutils.helpers.Helpers;
@@ -732,6 +733,12 @@ public class VideoLoaderController extends BasePlayerController {
             }
         }
 
+        // JoTube: a Short opened from another list (e.g. the Shorts shelf on Home, a channel): when that list ends,
+        // carry on with the Shorts feed (like the official app) instead of stopping at "Please wait..."
+        if (result.size() < PREFETCH_LOOKAHEAD && !current.belongsToShorts()) {
+            appendFallbackShorts(current, group, result);
+        }
+
         if (result.isEmpty()) {
             Video next = mSuggestionsController.getNext();
 
@@ -741,6 +748,73 @@ public class VideoLoaderController extends BasePlayerController {
         }
 
         return result;
+    }
+
+    private static final long FALLBACK_FEED_MAX_AGE_MS = 10 * 60 * 1000;
+    private VideoGroup mFallbackShortsGroup; // JoTube: the Shorts feed, after the list a Short was opened from
+    private long mFallbackShortsTimeMs;
+    private Disposable mFallbackShortsAction;
+
+    private void appendFallbackShorts(Video current, VideoGroup currentGroup, List<Video> result) {
+        VideoGroup fallback = mFallbackShortsGroup;
+
+        if (fallback == null || System.currentTimeMillis() - mFallbackShortsTimeMs > FALLBACK_FEED_MAX_AGE_MS) {
+            loadFallbackShorts();
+            return;
+        }
+
+        for (Video item : fallback.getVideos()) {
+            if (result.size() >= PREFETCH_LOOKAHEAD) {
+                break;
+            }
+
+            if (item == null || !item.isShorts || !item.hasVideo() || item.isUpcoming || item.isLive ||
+                    Helpers.equals(item.videoId, current.videoId) || containsVideo(result, item.videoId) ||
+                    (currentGroup != null && containsVideo(currentGroup.getVideos(), item.videoId))) {
+                continue;
+            }
+
+            result.add(item); // its group is the Shorts feed: from there on the feed continues as usual
+        }
+    }
+
+    private static boolean containsVideo(List<Video> videos, String videoId) {
+        if (videos == null || videoId == null) {
+            return false;
+        }
+
+        for (Video video : videos) {
+            if (video != null && videoId.equals(video.videoId)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void loadFallbackShorts() {
+        if (RxHelper.isAnyActionRunning(mFallbackShortsAction)) {
+            return;
+        }
+
+        Log.d(TAG, "Shorts: loading the Shorts feed to continue after the current list");
+
+        mFallbackShortsAction = YouTubeServiceManager.instance().getContentService().getShortsObserve()
+                .subscribe(mediaGroup -> {
+                    if (mediaGroup == null || mediaGroup.getMediaItems() == null || mediaGroup.getMediaItems().isEmpty()) {
+                        return;
+                    }
+
+                    VideoGroup group = VideoGroup.from(mediaGroup);
+                    group.setType(MediaGroup.TYPE_SHORTS); // belongsToShorts(): the feed continuation works for it
+                    ShortsHistory history = ShortsHistory.instance(getContext());
+                    if (history != null) {
+                        history.filterNew(group, 0);
+                    }
+                    mFallbackShortsGroup = group;
+                    mFallbackShortsTimeMs = System.currentTimeMillis();
+                    Utils.post(mPrefetchNext);
+                }, error -> Log.e(TAG, "Shorts: fallback feed failed: %s", error.getMessage()));
     }
 
     /**
