@@ -909,7 +909,9 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
      */
     private void updateShortsPanel() {
         Video video = getVideo();
-        mShortsPanel.setEnabled(video != null && video.isShorts && !video.isLive && !isInPIPMode() && !isControlsOverlayVisible());
+        boolean isShort = video != null && video.isShorts && !video.isLive && !isInPIPMode();
+        mShortsPanel.setShortsFrame(isShort);
+        mShortsPanel.setEnabled(isShort && !isControlsOverlayVisible());
     }
 
     @Override

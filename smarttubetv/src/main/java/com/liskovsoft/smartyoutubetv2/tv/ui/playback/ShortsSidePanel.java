@@ -45,7 +45,7 @@ public class ShortsSidePanel {
     private static final int ITEM_LIKE = 1;
     private static final int ITEM_DISLIKE = 2;
     private static final int ITEM_COMMENTS = 3;
-    private static final int ITEM_MORE = 4;
+    private static final int ITEM_LAST = ITEM_COMMENTS;
     private static final int FOCUS_TIMEOUT_MS = 10_000;
     private static final int MIN_WIDTH_DP = 180;
     private static final int MAX_WIDTH_DP = 460;
@@ -62,7 +62,8 @@ public class ShortsSidePanel {
     private LinearLayout mChannelRow;
     private ImageView mAvatar;
     private TextView mAuthor;
-    private final ImageView[] mButtons = new ImageView[5]; // index = item (channel slot unused)
+    private final ImageView[] mButtons = new ImageView[ITEM_LAST + 1]; // index = item (channel slot unused)
+    private boolean mFrameEnabled; // a Short is playing: the video sits in a fixed 9:16 frame
     private TextView mLikeCount;
     private Callback mCallback;
     private int mFocus = ITEM_NONE;
@@ -130,7 +131,7 @@ public class ShortsSidePanel {
         buttonRow.addView(mLikeCount, countParams);
         mButtons[ITEM_DISLIKE] = createButton(context, buttonRow, R.drawable.lb_ic_thumb_down);
         mButtons[ITEM_COMMENTS] = createButton(context, buttonRow, R.drawable.action_chat);
-        mButtons[ITEM_MORE] = createButton(context, buttonRow, R.drawable.lb_ic_more);
+
         LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         rowParams.topMargin = dp(20);
         mPanel.addView(buttonRow, rowParams);
@@ -173,6 +174,7 @@ public class ShortsSidePanel {
         mCallback = null;
         mFocus = ITEM_NONE;
         mEnabled = false;
+        mFrameEnabled = false;
         mAvatarUrl = null;
     }
 
@@ -190,6 +192,7 @@ public class ShortsSidePanel {
         mAuthor.setText(author != null ? author : "");
         mChannelRow.setVisibility(author != null || video.authorImageUrl != null ? View.VISIBLE : View.INVISIBLE);
         mLikeCount.setText(video.likeCount != null ? video.likeCount : "");
+        mLikeCount.setVisibility(video.likeCount != null && !video.likeCount.isEmpty() ? View.VISIBLE : View.GONE);
         loadAvatar(video.authorImageUrl);
         updateStyles();
     }
@@ -295,7 +298,7 @@ public class ShortsSidePanel {
             case KeyEvent.KEYCODE_DPAD_RIGHT:
                 if (mFocus == ITEM_CHANNEL) {
                     setFocus(ITEM_LIKE);
-                } else if (mFocus < ITEM_MORE) {
+                } else if (mFocus < ITEM_LAST) {
                     setFocus(mFocus + 1);
                 } else {
                     restartTimeout();
@@ -358,10 +361,6 @@ public class ShortsSidePanel {
                 setFocus(ITEM_NONE);
                 callback.clickButton(R.id.action_chat);
                 break;
-            case ITEM_MORE:
-                setFocus(ITEM_NONE);
-                callback.showControls(); // all the player options
-                break;
         }
     }
 
@@ -394,7 +393,42 @@ public class ShortsSidePanel {
     /**
      * Next to the right edge of the video (the surface container is resized to the video).
      */
+    /**
+     * A Short is playing (independent of the controls): the video is fitted into a fixed 9:16 frame in the middle,
+     * so the panel next to it never moves (wider videos get smaller, like in the official app).
+     */
+    public void setShortsFrame(boolean enabled) {
+        if (mFrameEnabled == enabled) {
+            return;
+        }
+
+        mFrameEnabled = enabled;
+        applyFrame();
+    }
+
+    private void applyFrame() {
+        if (mSurface == null || mRoot == null) {
+            return;
+        }
+
+        ViewGroup.LayoutParams params = mSurface.getLayoutParams();
+        int rootHeight = mRoot.getHeight();
+
+        if (params == null || (mFrameEnabled && rootHeight <= 0)) {
+            return; // after the first layout
+        }
+
+        int width = mFrameEnabled ? Math.round(rootHeight * 9f / 16f) : ViewGroup.LayoutParams.MATCH_PARENT;
+
+        if (params.width != width) {
+            params.width = width;
+            mSurface.setLayoutParams(params);
+        }
+    }
+
     private void updatePosition() {
+        applyFrame();
+
         if (mPanel == null || mRoot == null || mSurface == null || !mEnabled) {
             return;
         }
@@ -402,13 +436,12 @@ public class ShortsSidePanel {
         int rootWidth = mRoot.getWidth();
         int rootHeight = mRoot.getHeight();
 
-        if (rootWidth <= 0 || rootHeight <= 0 || mSurface.getWidth() <= 0) {
+        if (rootWidth <= 0 || rootHeight <= 0) {
             return;
         }
 
-        float center = (mSurface.getLeft() + mSurface.getRight()) / 2f + mSurface.getTranslationX();
-        int videoRight = Math.round(center + mSurface.getWidth() * mSurface.getScaleX() / 2f);
-        int left = videoRight + dp(GAP_DP);
+        // Fixed place: next to the 9:16 frame, whatever the video's own width
+        int left = rootWidth / 2 + Math.round(rootHeight * 9f / 32f) + dp(GAP_DP);
         int width = Math.min(rootWidth - left - dp(GAP_DP), dp(MAX_WIDTH_DP));
 
         boolean fits = width >= dp(MIN_WIDTH_DP);
@@ -494,7 +527,7 @@ public class ShortsSidePanel {
 
         int highlight = ActionHelpers.getIconHighlightColor(mPanel.getContext());
 
-        for (int item = ITEM_LIKE; item <= ITEM_MORE; item++) {
+        for (int item = ITEM_LIKE; item <= ITEM_LAST; item++) {
             ImageView button = mButtons[item];
             boolean focused = mFocus == item;
             boolean on = isOn(item);
