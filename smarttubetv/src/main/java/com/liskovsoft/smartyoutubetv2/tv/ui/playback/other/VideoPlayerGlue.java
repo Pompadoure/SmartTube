@@ -557,7 +557,8 @@ public class VideoPlayerGlue extends MaxControlsVideoPlayerGlue<PlayerAdapter> i
             return false;
         }
 
-        return (action == mActions.get(R.id.lb_control_closed_captioning) || action == mActions.get(R.id.action_video_speed)) &&
+        // JoTube: CC always toggles the subtitles on a short press (the long press opens the menu)
+        return action == mActions.get(R.id.action_video_speed) &&
                 dispatchLongClickAction(action); // replace short with long
     }
 

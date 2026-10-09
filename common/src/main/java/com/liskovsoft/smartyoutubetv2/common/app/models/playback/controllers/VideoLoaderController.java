@@ -20,6 +20,7 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.VideoGroup;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.BasePlayerController;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
+import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsHistory;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.manager.PlayerConstants;
 import com.liskovsoft.smartyoutubetv2.common.app.presenters.AppDialogPresenter;
 import com.liskovsoft.smartyoutubetv2.common.app.presenters.dialogs.VideoActionPresenter;
@@ -269,6 +270,10 @@ public class VideoLoaderController extends BasePlayerController {
                 VideoGroup feed = item.getGroup();
                 if (feed != null) {
                     mShortsFeedGroup = feed;
+                }
+                ShortsHistory history = ShortsHistory.instance(getContext());
+                if (history != null) {
+                    history.markSeen(item.videoId); // JoTube: not again in the next feeds
                 }
             } else {
                 mShortsFeedGroup = null;
@@ -816,6 +821,10 @@ public class VideoLoaderController extends BasePlayerController {
                     if (nextPage != null && nextPage.getMediaItems() != null && !nextPage.getMediaItems().isEmpty()) {
                         int sizeBefore = group.getSize();
                         VideoGroup.from(group, nextPage); // appends (duplicates are skipped)
+                        ShortsHistory history = ShortsHistory.instance(getContext());
+                        if (history != null) {
+                            history.filterNew(group, Math.max(0, sizeBefore)); // less repetition
+                        }
                         if (group.getSize() > sizeBefore) {
                             Utils.post(mPrefetchNext);
                         }

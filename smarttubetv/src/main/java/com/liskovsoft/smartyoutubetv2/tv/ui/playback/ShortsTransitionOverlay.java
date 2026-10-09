@@ -4,29 +4,29 @@ import android.graphics.Color;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.animation.AccelerateInterpolator;
-import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 
+import android.view.animation.Interpolator;
+
 import com.bumptech.glide.Glide;
-import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
 
 /**
- * Like the official app's feed: the current video slides out and the upcoming video (its thumbnail,
- * replaced by the video itself as soon as its first frame is rendered) slides in from the direction
- * of navigation. The video surface is moved together with the thumbnail, so the old picture doesn't
- * stay in place under it.
+ * Shorts switch, like the official app: inside the (fixed) Shorts frame the current Short slides out and the
+ * next one slides in from the direction of navigation. Thumbnails are moved, never the video surface. The next
+ * Short's thumbnail stays until the first frame of the new video is rendered, then it fades out quickly, so the
+ * old picture never shows up again and the new one never "pops" in behind.
  */
 public class ShortsTransitionOverlay {
-    private static final int SLIDE_DURATION_MS = 300;
-    private static final int FADE_IN_DURATION_MS = 0; // static: no animation
-    private static final int FADE_OUT_DURATION_MS = 120;
+    private static final int SWIPE_DURATION_MS = 250;
+    private static final int FADE_OUT_DURATION_MS = 100;
     private static final int FAILSAFE_HIDE_MS = 10_000;
+    private static final Interpolator SWIPE_INTERPOLATOR = new FastOutSlowIn();
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private final Runnable mFailsafeHide = () -> hide(false);
     private final Runnable mDeferredHide = () -> hide(true);
@@ -36,83 +36,95 @@ public class ShortsTransitionOverlay {
             show(mPendingVideo, ShortsTransitionState.DIRECTION_NONE);
         }
     };
-    private ImageView mOverlay;
-    private View mSurface; // the video surface (moves together with the overlay)
+    private FrameLayout mContainer; // clips the slide to the frame
+    private ImageView mIn; // the upcoming video
+    private ImageView mOut; // the current video, slides out
     private boolean mIsShown;
+    private boolean mFirstFrameRendered;
     private long mShowAnimationEndMs;
 
     /**
-     * Place the overlay right above the video surface (index 0) and below the player controls.
+     * Place the overlay right above the video surface and below the player controls.
      */
     public void attach(ViewGroup root) {
-        if (root == null || mOverlay != null) {
+        if (root == null || mContainer != null) {
             return;
         }
 
-        mSurface = root.findViewById(com.liskovsoft.smartyoutubetv2.tv.R.id.surface_root); // the video surface container
+        mContainer = new FrameLayout(root.getContext());
+        mContainer.setClipChildren(true);
+        mContainer.setVisibility(View.GONE);
+        mContainer.setFocusable(false);
+        mContainer.setClickable(false);
 
-        mOverlay = new ImageView(root.getContext());
-        mOverlay.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        mOverlay.setBackgroundColor(Color.BLACK);
-        mOverlay.setVisibility(View.GONE);
-        mOverlay.setFocusable(false);
-        mOverlay.setClickable(false);
+        mOut = createImage(mContainer);
+        mIn = createImage(mContainer);
 
         View surfaceRoot = root.findViewById(com.liskovsoft.smartyoutubetv2.tv.R.id.surface_root);
         int index = surfaceRoot != null ? root.indexOfChild(surfaceRoot) + 1 : Math.min(1, root.getChildCount());
-        root.addView(mOverlay, index, new FrameLayout.LayoutParams(
+        root.addView(mContainer, index, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
+    }
+
+    private static ImageView createImage(FrameLayout container) {
+        ImageView image = new ImageView(container.getContext());
+        image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        image.setBackgroundColor(Color.BLACK);
+        image.setVisibility(View.GONE);
+        container.addView(image, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        return image;
     }
 
     /**
-     * JoTube: in the Shorts frame the thumbnail covers only the frame (0 = the whole screen).
+     * JoTube: in the Shorts frame the overlay covers only the frame (0 = the whole screen).
      */
     public void setFrame(int width, int height) {
-        if (mOverlay == null || !(mOverlay.getLayoutParams() instanceof FrameLayout.LayoutParams)) {
+        if (mContainer == null || !(mContainer.getLayoutParams() instanceof FrameLayout.LayoutParams)) {
             return;
         }
 
-        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) mOverlay.getLayoutParams();
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) mContainer.getLayoutParams();
         int newWidth = width > 0 ? width : ViewGroup.LayoutParams.MATCH_PARENT;
         int newHeight = height > 0 ? height : ViewGroup.LayoutParams.MATCH_PARENT;
 
-        if (params.width != newWidth || params.height != newHeight || params.gravity != android.view.Gravity.CENTER) {
+        if (params.width != newWidth || params.height != newHeight || params.gravity != Gravity.CENTER) {
             params.width = newWidth;
             params.height = newHeight;
-            params.gravity = android.view.Gravity.CENTER;
-            mOverlay.setLayoutParams(params);
+            params.gravity = Gravity.CENTER;
+            mContainer.setLayoutParams(params);
         }
     }
 
     public void detach() {
-        mHandler.removeCallbacks(mFailsafeHide);
-        mHandler.removeCallbacks(mDeferredHide);
-        cancelPendingShow();
+        mHandler.removeCallbacksAndMessages(null);
+        mPendingVideo = null;
 
-        if (mOverlay != null) {
-            mOverlay.animate().cancel();
-            if (mOverlay.getParent() instanceof ViewGroup) {
-                ((ViewGroup) mOverlay.getParent()).removeView(mOverlay);
+        if (mContainer != null) {
+            cancelAnimations();
+            if (mContainer.getParent() instanceof ViewGroup) {
+                ((ViewGroup) mContainer.getParent()).removeView(mContainer);
             }
-            mOverlay = null;
+            mContainer = null;
+            mIn = null;
+            mOut = null;
         }
 
-        resetSurface();
-        mSurface = null;
         mIsShown = false;
     }
 
     /**
-     * Preloaded video: normally its first frame comes within a few frames, so nothing is shown.
+     * Preloaded video, no swipe: normally its first frame comes within a few frames, so nothing is shown.
      * If it takes longer (e.g. the data has to be loaded again), the thumbnail covers the old picture.
      */
     public void showIfSlow(Video video, long delayMs) {
         cancelPendingShow();
 
-        if (mOverlay == null || video == null) {
+        if (mContainer == null || video == null) {
             return;
         }
 
+        mFirstFrameRendered = false;
         mPendingVideo = video;
         mHandler.postDelayed(mPendingShow, delayMs);
     }
@@ -123,108 +135,134 @@ public class ShortsTransitionOverlay {
     }
 
     /**
-     * Called when a new video is about to load (the previous one is already stopped).
+     * A new video is about to load: its thumbnail covers the old picture (no animation).
      */
     public void show(Video video, int direction) {
-        if (mOverlay == null || video == null) {
+        if (mContainer == null || video == null) {
             return;
         }
 
-        mHandler.removeCallbacks(mFailsafeHide);
-        mHandler.removeCallbacks(mDeferredHide);
-        cancelPendingShow();
-        mOverlay.animate().cancel();
-        resetSurface();
-
-        String fallbackUrl = video.getCardImageUrl();
-        try {
-            Glide.with(mOverlay)
-                    .load(ShortsTransitionState.getThumbnailUrl(video.videoId))
-                    .error(Glide.with(mOverlay).load(fallbackUrl))
-                    .transition(DrawableTransitionOptions.withCrossFade(120))
-                    .into(mOverlay);
-        } catch (IllegalArgumentException e) {
-            // Activity is destroyed
-            return;
-        }
-
-        mOverlay.setVisibility(View.VISIBLE);
-        mIsShown = true;
-
-        // The overlay itself may be GONE (not measured), so use the parent size
-        View parent = (View) mOverlay.getParent();
-        int height = parent != null ? parent.getHeight() : 0;
-
-        boolean slide = direction != ShortsTransitionState.DIRECTION_NONE && height > 0;
-        mShowAnimationEndMs = SystemClock.uptimeMillis() + (slide ? SLIDE_DURATION_MS : FADE_IN_DURATION_MS);
-
-        if (slide) {
-            // Next: comes from the bottom. Previous: comes from the top.
-            mOverlay.setAlpha(1f);
-            mOverlay.setTranslationY(direction * height);
-            mOverlay.animate()
-                    .translationY(0)
-                    .setDuration(SLIDE_DURATION_MS)
-                    .setInterpolator(new DecelerateInterpolator(1.6f))
-                    .withEndAction(this::resetSurface) // fully covered now: put the surface back for the new video
-                    .start();
-
-            // The current video goes out the same way (SurfaceView follows view transforms since Android 7)
-            if (mSurface != null) {
-                mSurface.animate().cancel();
-                mSurface.setTranslationY(0);
-                mSurface.animate()
-                        .translationY(-direction * height)
-                        .setDuration(SLIDE_DURATION_MS)
-                        .setInterpolator(new DecelerateInterpolator(1.6f))
-                        .start();
-            }
-        } else {
-            mOverlay.setTranslationY(0);
-            mOverlay.setAlpha(0f);
-            mOverlay.animate()
-                    .alpha(1f)
-                    .setDuration(FADE_IN_DURATION_MS)
-                    .start();
-        }
-
+        mFirstFrameRendered = false;
+        prepare();
+        loadThumbnail(mIn, video);
+        mIn.setVisibility(View.VISIBLE);
+        mShowAnimationEndMs = SystemClock.uptimeMillis();
         mHandler.postDelayed(mFailsafeHide, FAILSAFE_HIDE_MS);
     }
 
     /**
-     * Called when the first frame of the new video is on screen.
+     * The swipe from one Short to the next (direction: next = the new one comes from the bottom).
+     */
+    public void swipe(Video from, Video to, int direction) {
+        if (mContainer == null || to == null) {
+            return;
+        }
+
+        int height = mContainer.getHeight() > 0 ? mContainer.getHeight() :
+                mContainer.getParent() instanceof View ? ((View) mContainer.getParent()).getHeight() : 0;
+
+        if (direction == ShortsTransitionState.DIRECTION_NONE || height <= 0) {
+            show(to, ShortsTransitionState.DIRECTION_NONE);
+            return;
+        }
+
+        mFirstFrameRendered = false;
+        prepare();
+
+        if (from != null) {
+            loadThumbnail(mOut, from);
+            mOut.setVisibility(View.VISIBLE);
+            mOut.setTranslationY(0);
+            mOut.animate()
+                    .translationY(-direction * height)
+                    .setDuration(SWIPE_DURATION_MS)
+                    .setInterpolator(SWIPE_INTERPOLATOR)
+                    .withEndAction(() -> {
+                        if (mOut != null) {
+                            mOut.setVisibility(View.GONE);
+                            mOut.setImageDrawable(null);
+                        }
+                    })
+                    .start();
+        }
+
+        loadThumbnail(mIn, to);
+        mIn.setVisibility(View.VISIBLE);
+        mIn.setTranslationY(direction * height);
+        mIn.animate()
+                .translationY(0)
+                .setDuration(SWIPE_DURATION_MS)
+                .setInterpolator(SWIPE_INTERPOLATOR)
+                .start();
+
+        mShowAnimationEndMs = SystemClock.uptimeMillis() + SWIPE_DURATION_MS;
+        mHandler.postDelayed(mFailsafeHide, FAILSAFE_HIDE_MS);
+    }
+
+    private void prepare() {
+        mHandler.removeCallbacks(mFailsafeHide);
+        mHandler.removeCallbacks(mDeferredHide);
+        cancelPendingShow();
+        cancelAnimations();
+
+        mContainer.setVisibility(View.VISIBLE);
+        mContainer.setAlpha(1f);
+        mIn.setTranslationY(0);
+        mOut.setTranslationY(0);
+        mOut.setVisibility(View.GONE);
+        mIsShown = true;
+    }
+
+    private void loadThumbnail(ImageView image, Video video) {
+        try {
+            // Shorts: the vertical thumbnail. Regular videos: the HD one (the card image has black bars)
+            String url = video.isShorts ? ShortsTransitionState.getThumbnailUrl(video.videoId) :
+                    "https://i.ytimg.com/vi/" + video.videoId + "/maxresdefault.jpg";
+            Glide.with(image)
+                    .load(url)
+                    .error(Glide.with(image).load(video.getCardImageUrl()))
+                    .dontAnimate()
+                    .into(image);
+        } catch (IllegalArgumentException e) {
+            // Activity is destroyed
+        }
+    }
+
+    /**
+     * The first frame of the new video is on screen (animate = true), or the overlay isn't needed (false).
      */
     public void hide(boolean animate) {
+        if (animate) {
+            mFirstFrameRendered = true;
+        }
+
         mHandler.removeCallbacks(mFailsafeHide);
         mHandler.removeCallbacks(mDeferredHide);
         cancelPendingShow();
 
-        if (mOverlay == null || !mIsShown) {
+        if (mContainer == null || !mIsShown) {
             return;
         }
 
         long remainingMs = mShowAnimationEndMs - SystemClock.uptimeMillis();
 
         if (animate && remainingMs > 0) {
-            // The video is ready before the slide is over (preloaded Short): finish the slide first
+            // The video is ready before the swipe is over (preloaded Short): finish the swipe first
             mHandler.postDelayed(mDeferredHide, remainingMs);
             return;
         }
 
         mIsShown = false;
-        mOverlay.animate().cancel();
-        resetSurface(); // the overlay covers the whole screen at this point
+        cancelAnimations();
 
         if (!animate) {
             reset();
             return;
         }
 
-        mOverlay.animate()
+        mContainer.animate()
                 .alpha(0f)
-                .translationY(0)
                 .setDuration(FADE_OUT_DURATION_MS)
-                .setInterpolator(new AccelerateInterpolator())
                 .withEndAction(this::reset)
                 .start();
     }
@@ -233,23 +271,68 @@ public class ShortsTransitionOverlay {
         return mIsShown;
     }
 
-    private void resetSurface() {
-        if (mSurface != null) {
-            mSurface.animate().cancel();
-            mSurface.setTranslationY(0);
+    private void cancelAnimations() {
+        if (mContainer != null) {
+            mContainer.animate().cancel();
+        }
+        if (mIn != null) {
+            mIn.animate().cancel();
+        }
+        if (mOut != null) {
+            mOut.animate().cancel();
+        }
+    }
+
+    /**
+     * Material "fast out, slow in": cubic bezier (0.4, 0, 0.2, 1), the curve of the official app's swipe.
+     */
+    private static final class FastOutSlowIn implements Interpolator {
+        @Override
+        public float getInterpolation(float t) {
+            if (t <= 0f) {
+                return 0f;
+            }
+            if (t >= 1f) {
+                return 1f;
+            }
+
+            // Find the curve parameter u for x(u) = t (Newton), then return y(u)
+            float u = t;
+            for (int i = 0; i < 8; i++) {
+                float x = bezier(u, 0.4f, 0.2f) - t;
+                float dx = bezierDerivative(u, 0.4f, 0.2f);
+                if (Math.abs(x) < 1e-4f || dx == 0f) {
+                    break;
+                }
+                u = Math.max(0f, Math.min(1f, u - x / dx));
+            }
+
+            return bezier(u, 0f, 1f);
+        }
+
+        private static float bezier(float u, float p1, float p2) {
+            float v = 1f - u;
+            return 3f * v * v * u * p1 + 3f * v * u * u * p2 + u * u * u;
+        }
+
+        private static float bezierDerivative(float u, float p1, float p2) {
+            float v = 1f - u;
+            return 3f * v * v * p1 + 6f * v * u * (p2 - p1) + 3f * u * u * (1f - p2);
         }
     }
 
     private void reset() {
-        resetSurface();
-
-        if (mOverlay == null || mIsShown) {
+        if (mContainer == null || mIsShown) {
             return;
         }
 
-        mOverlay.setVisibility(View.GONE);
-        mOverlay.setAlpha(1f);
-        mOverlay.setTranslationY(0);
-        mOverlay.setImageDrawable(null);
+        mContainer.setVisibility(View.GONE);
+        mContainer.setAlpha(1f);
+        mIn.setTranslationY(0);
+        mOut.setTranslationY(0);
+        mIn.setVisibility(View.GONE);
+        mOut.setVisibility(View.GONE);
+        mIn.setImageDrawable(null);
+        mOut.setImageDrawable(null);
     }
 }

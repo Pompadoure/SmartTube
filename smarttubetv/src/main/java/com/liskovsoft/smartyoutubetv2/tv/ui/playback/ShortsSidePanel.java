@@ -49,11 +49,13 @@ public class ShortsSidePanel {
     private static final int ITEM_LIKE = 1;
     private static final int ITEM_DISLIKE = 2;
     private static final int ITEM_COMMENTS = 3;
-    private static final int ITEM_LAST = ITEM_COMMENTS;
+    private static final int ITEM_CC = 4;
+    private static final int ITEM_LAST = ITEM_CC;
     private static final int FOCUS_TIMEOUT_MS = 10_000;
     private static final int MIN_WIDTH_DP = 180;
     private static final int MAX_WIDTH_DP = 460;
-    private static final int GAP_DP = 48;
+    private static final int GAP_DP = 32; // between the frame and the panel
+    private static final int RIGHT_MARGIN_DP = 20;
     // The frame around the video: white when the video gets the focus, then it fades to grey (like the official app)
     private static final int FRAME_MARGIN_DP = 16; // above and below the 9:16 frame (room for the border)
     private static final int BORDER_DP = 3;
@@ -152,6 +154,7 @@ public class ShortsSidePanel {
         buttonRow.addView(mLikeCount, countParams);
         mButtons[ITEM_DISLIKE] = createButton(context, buttonRow, R.drawable.lb_ic_thumb_down);
         mButtons[ITEM_COMMENTS] = createButton(context, buttonRow, R.drawable.action_chat);
+        mButtons[ITEM_CC] = createButton(context, buttonRow, R.drawable.lb_ic_cc);
 
         LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         rowParams.topMargin = dp(20);
@@ -443,6 +446,11 @@ public class ShortsSidePanel {
                 setFocus(ITEM_NONE);
                 callback.clickButton(R.id.action_chat);
                 break;
+            case ITEM_CC:
+                callback.clickButton(R.id.lb_control_closed_captioning); // subtitles on/off
+                restartTimeout();
+                updateStyles();
+                break;
         }
     }
 
@@ -659,7 +667,7 @@ public class ShortsSidePanel {
 
         // Fixed place: next to the 9:16 frame, whatever the video's own width
         int left = rootWidth / 2 + Math.round(getFrameHeight(rootHeight) * 9f / 32f) + dp(GAP_DP);
-        int width = Math.min(rootWidth - left - dp(GAP_DP), dp(MAX_WIDTH_DP));
+        int width = Math.min(rootWidth - left - dp(RIGHT_MARGIN_DP), dp(MAX_WIDTH_DP));
 
         boolean fits = width >= dp(MIN_WIDTH_DP);
 
@@ -724,13 +732,13 @@ public class ShortsSidePanel {
         ImageView button = new ImageView(context);
         button.setImageResource(iconResId);
         button.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        int padding = dp(14);
+        int padding = dp(11);
         button.setPadding(padding, padding, padding, padding);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(60), dp(60));
-        params.rightMargin = dp(16);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(46), dp(46));
+        params.rightMargin = dp(8);
 
         if (row.getChildCount() > 0 && !(row.getChildAt(row.getChildCount() - 1) instanceof ImageView)) {
-            params.leftMargin = dp(16); // after the like count
+            params.leftMargin = dp(8); // after the like count
         }
 
         row.addView(button, params);
@@ -780,6 +788,10 @@ public class ShortsSidePanel {
 
         if (item == ITEM_DISLIKE) {
             return mCallback.getButtonState(R.id.action_thumbs_down) == 1;
+        }
+
+        if (item == ITEM_CC) {
+            return mCallback.getButtonState(R.id.lb_control_closed_captioning) == 1;
         }
 
         return false;

@@ -15,6 +15,7 @@ import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.sharedutils.rx.RxHelper;
 import com.liskovsoft.youtubeapi.service.YouTubeServiceManager;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
+import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsHistory;
 import com.liskovsoft.smartyoutubetv2.common.R;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.BrowseSection;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Playlist;
@@ -440,21 +441,46 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
 
         mCurrentVideo = item;
 
-        // JoTube: the focused Short is probably the one that gets opened. Fetch its stream info now
-        // (one video cache in the service), so the player starts right away instead of after ~3 s.
-        // Only Shorts: prefetching every focused card ran fetches in parallel with the player's and broke streams (403).
+        // JoTube: the card the focus stays on is probably the one that gets opened. Fetch its stream info now
+        // (one video cache in the service), so the player starts 2-4 s sooner. The fetches run one at a time
+        // (FormatFetchLock) and are never cancelled midway (that broke the shared state before: 403).
         Utils.removeCallbacks(mPrefetchFocusedShort);
-        if (item != null && item.isShorts && item.hasVideo() && !item.isLive) {
-            Utils.postDelayed(mPrefetchFocusedShort, 400);
+        if (item != null && item.hasVideo() && !item.isLive && !item.isUpcoming) {
+            Utils.postDelayed(mPrefetchFocusedShort, item.isShorts ? 400 : 700);
         }
     }
 
-    private final Runnable mPrefetchFocusedShort = () -> {
-        Video item = mCurrentVideo;
-        if (item != null && item.isShorts && getView() != null && !isShortsAutoStarted()) {
-            MediaServiceManager.instance().loadFormatInfo(item, formatInfo -> {});
+    private final Runnable mPrefetchFocusedShort = () -> prefetchFocused(mCurrentVideo);
+    private Disposable mFocusPrefetchAction;
+    private Video mFocusPrefetchWanted; // focused while another prefetch was running
+
+    private void prefetchFocused(Video item) {
+        if (item == null || item.videoId == null || getView() == null || isShortsAutoStarted()) {
+            return;
         }
-    };
+
+        if (RxHelper.isAnyActionRunning(mFocusPrefetchAction)) {
+            mFocusPrefetchWanted = item; // after the running one
+            return;
+        }
+
+        mFocusPrefetchWanted = null;
+        mFocusPrefetchAction = YouTubeServiceManager.instance().getMediaItemService().getFormatInfoObserve(item.videoId)
+                .subscribe(formatInfo -> {}, error -> {
+                    Log.e(TAG, "Focus prefetch failed: %s", error.getMessage());
+                    onFocusPrefetchDone();
+                }, this::onFocusPrefetchDone);
+    }
+
+    private void onFocusPrefetchDone() {
+        Video wanted = mFocusPrefetchWanted;
+        mFocusPrefetchWanted = null;
+
+        // Still on that card: fetch it now
+        if (wanted != null && wanted == mCurrentVideo && !RxHelper.isAnyActionRunning(mFocusPrefetchAction)) {
+            prefetchFocused(wanted);
+        }
+    }
 
     // JoTube: the Shorts section plays right away (like the official app) instead of showing the grid first
     private boolean mPendingShortsStart; // the user entered the Shorts section, start once the feed is loaded
@@ -978,7 +1004,11 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
                                 return;
                             }
 
+                            int sizeBefore = Math.max(0, baseGroup.getSize());
                             VideoGroup videoGroup = VideoGroup.from(baseGroup, mediaGroup);
+                            if (isShortsGrid && ShortsHistory.instance(getContext()) != null) {
+                                ShortsHistory.instance(getContext()).filterNew(videoGroup, sizeBefore); // JoTube: less repetition
+                            }
                             appendLocalHistory(videoGroup);
                             getView().updateSection(videoGroup);
                             mBrowseProcessor.process(videoGroup);
@@ -1066,7 +1096,11 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
                         continueGroup -> {
                             getView().showProgressBar(false);
 
+                            int sizeBefore = Math.max(0, group.getSize());
                             VideoGroup videoGroup = VideoGroup.from(group, continueGroup);
+                            if (videoGroup == mShortsGroup && ShortsHistory.instance(getContext()) != null) {
+                                ShortsHistory.instance(getContext()).filterNew(videoGroup, sizeBefore); // JoTube: less repetition
+                            }
                             getView().updateSection(videoGroup);
                             mBrowseProcessor.process(videoGroup);
 

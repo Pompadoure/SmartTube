@@ -132,6 +132,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     private final ShortsTransitionOverlay mShortsTransition = new ShortsTransitionOverlay();
     private final ShortsBackground mShortsBackground = new ShortsBackground();
     private final ShortsSidePanel mShortsPanel = new ShortsSidePanel();
+    private Video mLastVideo; // the video before the current one (for the Shorts swipe)
     private final VideoListener mFirstFrameListener = new VideoListener() {
         @Override
         public void onRenderedFirstFrame() {
@@ -1443,7 +1444,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             mPlayerGlue.setButtonState(buttonId, buttonState);
         }
 
-        if (buttonId == R.id.action_thumbs_up || buttonId == R.id.action_thumbs_down) {
+        if (buttonId == R.id.action_thumbs_up || buttonId == R.id.action_thumbs_down || buttonId == R.id.lb_control_closed_captioning) {
             mShortsPanel.refreshStates();
         }
     }
@@ -1724,13 +1725,20 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     public void resetPlayerState() {
         int direction = ShortsTransitionState.consumeDirection();
         Video video = getVideo();
+        Video previous = mLastVideo;
+        mLastVideo = video;
+        // JoTube: the swipe between two Shorts of the feed (up/down)
+        boolean swipe = video != null && video.isShorts && previous != null && previous.isShorts &&
+                direction != ShortsTransitionState.DIRECTION_NONE && !isInPIPMode() &&
+                !Helpers.equals(previous.videoId, video.videoId);
 
         if (video != null && ShortsQueue.getQueuedFormatInfo(video.videoId) != null) {
             // Preloaded Short: it's already in the player, keep everything as is (no black screen, no reset).
-            // Straight cut to the new video (no animation), as preferred. If the first frame takes
-            // longer than a few frames (data loaded again), the thumbnail covers the old picture meanwhile.
+            // The swipe covers the moment until the new video's first frame is rendered.
             mShortsTransition.hide(false);
-            if (!isInPIPMode()) {
+            if (swipe) {
+                mShortsTransition.swipe(previous, video, direction);
+            } else if (!isInPIPMode()) {
                 mShortsTransition.showIfSlow(video, 250);
             }
             updateShortsBackground(video);
@@ -1744,8 +1752,10 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         // Hide last frame of the previous video
         showBackgroundColor(R.color.player_background);
 
-        if (video != null && video.isShorts && !isInPIPMode()) {
-            // Shorts feed: show the upcoming video's thumbnail instead of the black screen (no animation)
+        if (swipe) {
+            mShortsTransition.swipe(previous, video, direction);
+        } else if (video != null && !isInPIPMode()) {
+            // The video's thumbnail instead of a black screen until its first frame (Shorts and regular videos)
             mShortsTransition.show(video, ShortsTransitionState.DIRECTION_NONE);
         } else {
             mShortsTransition.hide(false);
