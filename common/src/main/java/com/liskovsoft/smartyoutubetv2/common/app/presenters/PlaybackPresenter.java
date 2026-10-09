@@ -160,7 +160,8 @@ public class PlaybackPresenter extends BasePresenter<PlaybackView> implements Pl
             return;
         }
 
-        YouTubeServiceManager.instance().getMediaItemService().getFormatInfoObserve(video.videoId)
+        // JoTube: foreground, the user already clicked
+        YouTubeServiceManager.instance().getMediaItemService().getFormatInfoObserveForeground(video.videoId)
                 .subscribe(formatInfo -> {}, error -> Log.e(TAG, "Click prefetch failed: %s", error.getMessage()));
     }
 

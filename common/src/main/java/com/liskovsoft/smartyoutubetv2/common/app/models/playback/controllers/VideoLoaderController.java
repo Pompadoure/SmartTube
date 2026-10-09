@@ -375,7 +375,8 @@ public class VideoLoaderController extends BasePlayerController {
 
         ServiceManager service = YouTubeServiceManager.instance();
         MediaItemService mediaItemManager = service.getMediaItemService();
-        mFormatInfoAction = mediaItemManager.getFormatInfoObserve(video.videoId)
+        // JoTube: foreground, goes before background fetches that wait for the lock
+        mFormatInfoAction = mediaItemManager.getFormatInfoObserveForeground(video.videoId)
                 .subscribe(this::processFormatInfo,
                            error -> {
                                // JoTube: the player may be gone when the async error arrives
