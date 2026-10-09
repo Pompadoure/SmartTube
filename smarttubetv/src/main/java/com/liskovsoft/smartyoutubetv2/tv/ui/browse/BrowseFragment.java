@@ -1,5 +1,6 @@
 package com.liskovsoft.smartyoutubetv2.tv.ui.browse;
 
+import android.content.Context;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Handler;
@@ -21,12 +22,14 @@ import androidx.leanback.widget.PageRow;
 import androidx.leanback.widget.Presenter;
 import androidx.leanback.widget.PresenterSelector;
 import androidx.leanback.widget.TitleHelper;
+import com.bumptech.glide.Glide;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.BrowseSection;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.SettingsGroup;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.VideoGroup;
 import com.liskovsoft.smartyoutubetv2.common.app.models.errors.ErrorFragmentData;
+import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
 import com.liskovsoft.smartyoutubetv2.common.app.presenters.BrowsePresenter;
 import com.liskovsoft.smartyoutubetv2.common.app.presenters.SearchPresenter;
 import com.liskovsoft.smartyoutubetv2.common.app.presenters.SplashPresenter;
@@ -35,11 +38,16 @@ import com.liskovsoft.smartyoutubetv2.common.misc.CrashRestorer;
 import com.liskovsoft.smartyoutubetv2.common.utils.Utils;
 import com.liskovsoft.smartyoutubetv2.tv.R;
 import com.liskovsoft.smartyoutubetv2.tv.presenter.IconHeaderItemPresenter;
+import com.liskovsoft.smartyoutubetv2.tv.presenter.ShortsCardPresenter;
+import com.liskovsoft.smartyoutubetv2.tv.presenter.VideoCardPresenter;
 import com.liskovsoft.smartyoutubetv2.tv.ui.browse.dialog.ErrorDialogFragment;
 import com.liskovsoft.smartyoutubetv2.tv.ui.mod.leanback.headers.ExtendedHeadersSupportFragment;
 import com.liskovsoft.smartyoutubetv2.tv.ui.mod.leanback.misc.ProgressBarManager;
+import com.liskovsoft.smartyoutubetv2.tv.ui.playback.ShortsBackground;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /*
@@ -57,6 +65,8 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
     private boolean mFocusOnContent;
     private boolean mContentFocusedByApp; // JoTube: the running headers transition was started by the app
     private CrashRestorer mCrashRestorer;
+    private VideoCardPresenter mPreloadCardPresenter; // JoTube: sidebar warm-up, the same presenter classes as the section fragments
+    private ShortsCardPresenter mPreloadShortsPresenter;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -158,6 +168,9 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
                 boolean byApp = mContentFocusedByApp;
                 mContentFocusedByApp = false;
                 mBrowsePresenter.onContentEntered(!withHeaders && !byApp);
+                if (withHeaders) {
+                    mBrowsePresenter.onSidebarFocused(); // JoTube: warm up the sections
+                }
             }
         });
     }
@@ -165,8 +178,12 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
     private void setupFragmentFactory() {
         mSectionFragmentFactory = new BrowseSectionFragmentFactory(
                 (row) -> {
+                    boolean inSidebar = isShowingHeaders() && !mFocusOnContent; // JoTube: before the focus moves on
                     focusOnContentIfNeeded();
                     mBrowsePresenter.onSectionFocused(getSelectedHeaderId());
+                    if (inSidebar) {
+                        mBrowsePresenter.onSidebarFocused();
+                    }
                 }
         );
 
@@ -378,6 +395,54 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
     }
 
     @Override
+    public void preloadCardThumbnails(List<Video> videos) {
+        Context context = getContext();
+
+        if (context == null || videos == null) {
+            return;
+        }
+
+        if (mPreloadCardPresenter == null) {
+            mPreloadCardPresenter = new VideoCardPresenter();
+            mPreloadShortsPresenter = new ShortsCardPresenter();
+        }
+
+        for (Video video : videos) {
+            if (video != null && video.hasVideo()) {
+                (video.isShorts ? mPreloadShortsPresenter : mPreloadCardPresenter).preload(context, video);
+            }
+        }
+    }
+
+    @Override
+    public void preloadShorts(List<Video> videos) {
+        Context context = getContext();
+
+        if (context == null || videos == null) {
+            return;
+        }
+
+        List<String> ids = new ArrayList<>();
+
+        for (Video video : videos) {
+            if (video == null || video.videoId == null) {
+                continue;
+            }
+
+            ids.add(video.videoId);
+
+            try {
+                // The same request as the player's (VideoLoaderController): the vertical thumbnail
+                Glide.with(context.getApplicationContext()).load(ShortsTransitionState.getThumbnailUrl(video.videoId)).preload();
+            } catch (RuntimeException e) {
+                // optional
+            }
+        }
+
+        ShortsBackground.preload(context, ids);
+    }
+
+    @Override
     public void showHeaders() {
         // After the fragment has restored its own focus
         new Handler(Looper.getMainLooper()).post(() -> {
@@ -505,6 +570,9 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
 
         if (!mIsFragmentCreated) {
             mBrowsePresenter.onViewResumed();
+            if (isShowingHeaders()) {
+                mBrowsePresenter.onSidebarFocused(); // JoTube: back from the player into the sidebar
+            }
         }
 
         mIsFragmentCreated = false;
