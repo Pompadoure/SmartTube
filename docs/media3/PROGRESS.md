@@ -1,7 +1,7 @@
 # JoTube M3 progress
 
 Status: ACTIVE
-Next step: 1a (inventory, see PLAN.md)
+Next step: 1b (fork changes in exoplayer-amzn-2.10.6 and their Media3 counterparts, see PLAN.md)
 
 Status values: ACTIVE (the scheduled runs keep going), WAITING_FOR_JOHAN (a question to Johan, runs only check
 for his answer), BLOCKED (a stage can't be made stable; reason below), DONE (stage 6 finished).
@@ -17,7 +17,7 @@ The Claude plan's usage can't be read by a run, so the work is cut into pieces t
 - API credits: hard cap per claude-task run and a total budget (below). At 12.00 USD spent the runs stop using
   the API and tell Johan; the last 2.00 USD stay untouched.
 
-Run: STARTED 2026-10-10T13:37Z
+Run: FINISHED 2026-10-10T13:38Z
 Step size: normal (one sub-step, e.g. "1a")
 Cut-offs in a row: 0
 
@@ -35,3 +35,7 @@ Spent so far: 0.00 USD
 - 2026-10-10: branch `media3` created from master (j66, 997b69a). Package org.smarttube.johan.media3, app
   "JoTube M3", CI build-media3.yml (pre-release latest-media3), claude-task.yml with a budget cap and cost logging,
   PLAN.md, this file, CLAUDE.md. Scheduled runs set up (every 5 hours, at the usage resets).
+- 2026-10-10: 1a done: `docs/media3/INVENTORY.md` (36 app files + doubletapplayerview, grouped by feature with
+  Media3 counterparts; unsure mappings marked (?) for 1d). Found: doubletapplayerview also depends on the fork; no app
+  use of the ffmpeg/vp9/opus/flac extensions; MediaSessionConnector and ControlDispatcher have no direct Media3
+  counterpart. Docs only, no CI build needed.
