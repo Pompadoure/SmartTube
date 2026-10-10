@@ -17,6 +17,7 @@ import com.liskovsoft.sharedutils.rx.RxHelper;
 import com.liskovsoft.youtubeapi.service.YouTubeServiceManager;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsHistory;
+import com.liskovsoft.smartyoutubetv2.common.app.models.playback.SmartNext;
 import com.liskovsoft.smartyoutubetv2.common.R;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.BrowseSection;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Playlist;
@@ -120,6 +121,15 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
     @Override
     public void onViewInitialized() {
         super.onViewInitialized();
+
+        // JoTube: the seen/played lists are read from the disk in the background, not when the first video starts
+        Context appContext = getContext() != null ? getContext().getApplicationContext() : null;
+        if (appContext != null) {
+            new Thread(() -> {
+                ShortsHistory.instance(appContext);
+                SmartNext.instance(appContext);
+            }, "JoTubeHistoryInit").start();
+        }
 
         // JoTube: a new browse view (e.g. recreated after low memory) never auto starts the Shorts player again
         mPendingShortsStart = false;
@@ -242,7 +252,8 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
         mRowMapping.put(MediaGroup.TYPE_GAMING, getContentService().getGamingObserve());
         mRowMapping.put(MediaGroup.TYPE_USER_PLAYLISTS, getContentService().getPlaylistRowsObserve());
 
-        mGridMapping.put(MediaGroup.TYPE_SHORTS, getContentService().getShortsObserve());
+        // JoTube: a new feed is now and then seeded with a Short the user engaged with (chosen per load)
+        mGridMapping.put(MediaGroup.TYPE_SHORTS, ShortsHistory.newFeedObserve(getContext(), getContentService()));
         mGridMapping.put(MediaGroup.TYPE_SUBSCRIPTIONS, getContentService().getSubscriptionsObserve());
         mGridMapping.put(MediaGroup.TYPE_HISTORY, getContentService().getHistoryObserve());
         mGridMapping.put(MediaGroup.TYPE_CHANNEL_UPLOADS, getContentService().getSubscribedChannelsByNewContentObserve());

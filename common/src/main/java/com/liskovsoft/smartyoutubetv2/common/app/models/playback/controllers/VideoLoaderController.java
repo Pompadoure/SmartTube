@@ -23,6 +23,7 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.playback.BasePlayerContr
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsHistory;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.manager.PlayerConstants;
+import com.liskovsoft.smartyoutubetv2.common.app.models.playback.manager.PlayerUI;
 import com.liskovsoft.smartyoutubetv2.common.app.presenters.AppDialogPresenter;
 import com.liskovsoft.smartyoutubetv2.common.app.presenters.dialogs.VideoActionPresenter;
 import com.liskovsoft.smartyoutubetv2.common.app.views.PlaybackView;
@@ -49,6 +50,9 @@ public class VideoLoaderController extends BasePlayerController {
     private static final int PREFETCH_MAX_RETRIES = 10;
     private static final int PREFETCH_CACHE_SIZE = 8;
     private static final int PREFETCH_LOOKAHEAD = 4; // Shorts preloaded ahead of the current one
+    private static final int FEED_PAGE_MIN_KEEP = 2; // a background page that was seen completely: keep this many
+    private static final int FEED_EXTRA_PAGES_MAX = 2; // more pages in a row when a page had (almost) nothing new
+    private static final float ENGAGED_PERCENT = 0.75f; // a Short watched this far counts as engaged
     private final Playlist mPlaylist;
     private Video mPendingVideo;
     private SuggestionsController mSuggestionsController;
@@ -112,6 +116,8 @@ public class VideoLoaderController extends BasePlayerController {
         if (item == null) {
             return;
         }
+
+        checkShortEngaged(item); // JoTube: the Short that is left (the player still has it)
 
         item.isShuffled = false;
 
@@ -242,6 +248,11 @@ public class VideoLoaderController extends BasePlayerController {
             return;
         }
 
+        Video ended = getVideo();
+        if (ended != null && ended.isShorts) {
+            markShortEngaged(ended, "watched to the end"); // JoTube: also every loop (counted once)
+        }
+
         // Stop the playback if the user is browsing options or reading comments
         int playbackMode = getPlaybackMode();
         if (getAppDialogPresenter().isDialogShown() && !getAppDialogPresenter().isOverlay() && playbackMode != PlayerConstants.PLAYBACK_MODE_ONE) {
@@ -264,6 +275,49 @@ public class VideoLoaderController extends BasePlayerController {
         Utils.removeCallbacks(mRestartEngine);
 
         return false;
+    }
+
+    @Override
+    public void onButtonClicked(int buttonId, int buttonState) {
+        // JoTube: a liked Short seeds the feed (the state is the one before the click)
+        if (buttonId == R.id.action_thumbs_up && buttonState == PlayerUI.BUTTON_OFF) {
+            Video video = getVideo();
+            if (video != null && video.isShorts) {
+                markShortEngaged(video, "liked");
+            }
+        }
+    }
+
+    /**
+     * JoTube: the Short the user is leaving: watched most of it?
+     */
+    private void checkShortEngaged(Video newItem) {
+        Video previous = getVideo();
+        PlaybackView player = getPlayer();
+
+        if (previous == null || !previous.isShorts || player == null || previous == newItem ||
+                Helpers.equals(previous.videoId, newItem.videoId) || !player.containsMedia()) {
+            return;
+        }
+
+        long durationMs = player.getDurationMs();
+        long positionMs = player.getPositionMs();
+
+        if (durationMs > 0 && positionMs >= durationMs * ENGAGED_PERCENT) {
+            markShortEngaged(previous, "watched most of it");
+        }
+    }
+
+    private void markShortEngaged(Video video, String reason) {
+        ShortsHistory history = ShortsHistory.instance(getContext());
+
+        if (history == null || video == null || video.videoId == null) {
+            return;
+        }
+
+        // Known only for the Shorts of the Shorts feed (null: can't be a seed)
+        String params = YouTubeServiceManager.instance().getContentService().getShortsParams(video.videoId);
+        history.markEngaged(video.videoId, params, reason);
     }
 
     /**
@@ -799,7 +853,7 @@ public class VideoLoaderController extends BasePlayerController {
 
         Log.d(TAG, "Shorts: loading the Shorts feed to continue after the current list");
 
-        mFallbackShortsAction = YouTubeServiceManager.instance().getContentService().getShortsObserve()
+        mFallbackShortsAction = ShortsHistory.newFeedObserve(getContext(), YouTubeServiceManager.instance().getContentService())
                 .subscribe(mediaGroup -> {
                     if (mediaGroup == null || mediaGroup.getMediaItems() == null || mediaGroup.getMediaItems().isEmpty()) {
                         return;
@@ -808,12 +862,13 @@ public class VideoLoaderController extends BasePlayerController {
                     VideoGroup group = VideoGroup.from(mediaGroup);
                     group.setType(MediaGroup.TYPE_SHORTS); // belongsToShorts(): the feed continuation works for it
                     ShortsHistory history = ShortsHistory.instance(getContext());
-                    if (history != null) {
-                        history.filterNew(group, 0);
-                    }
+                    int newCount = history != null ? history.filterNew(group, 0) : ShortsHistory.MIN_NEW_PER_PAGE;
                     mFallbackShortsGroup = group;
                     mFallbackShortsTimeMs = System.currentTimeMillis();
                     Utils.post(mPrefetchNext);
+                    if (newCount < ShortsHistory.MIN_NEW_PER_PAGE) {
+                        continueShortsFeed(group, 1); // JoTube: almost nothing new, one more page in the background
+                    }
                 }, error -> Log.e(TAG, "Shorts: fallback feed failed: %s", error.getMessage()));
     }
 
@@ -905,6 +960,14 @@ public class VideoLoaderController extends BasePlayerController {
         // Only the Shorts feed (other sections mix in regular videos, so there'd always be "too few" Shorts ahead)
         VideoGroup group = current != null && current.belongsToShorts() ? current.getGroup() : null;
 
+        continueShortsFeed(group, 0);
+    }
+
+    /**
+     * @param extraPage 0: the usual next page (now and then from the sequence of a Short the user engaged with),
+     *                  1..: one more (linear) page because the previous one had almost nothing new
+     */
+    private void continueShortsFeed(VideoGroup group, int extraPage) {
         if (group == null || group.isEmpty() || group.getMediaGroup() == null || group.getNextPageKey() == null ||
                 RxHelper.isAnyActionRunning(mFeedContinueAction)) {
             return;
@@ -917,24 +980,46 @@ public class VideoLoaderController extends BasePlayerController {
         }
 
         mContinuedFeedPage = page;
-        Log.d(TAG, "Shorts: loading the next page of the feed");
 
-        mFeedContinueAction = YouTubeServiceManager.instance().getContentService().continueGroupObserve(group.getMediaGroup())
+        ShortsHistory history = ShortsHistory.instance(getContext());
+        // JoTube: personal variety: now and then the next page comes from a Short the user liked/watched to the end
+        String seedVideoId = extraPage == 0 && history != null ? history.pickSessionSeed() : null;
+
+        if (seedVideoId != null) {
+            Log.d(TAG, "Shorts feed: loading the next page from the engaged Short %s", seedVideoId);
+        } else {
+            Log.d(TAG, "Shorts feed: loading the next page (linear%s)", extraPage > 0 ? ", extra " + extraPage : "");
+        }
+
+        boolean[] wantMore = {false};
+
+        mFeedContinueAction = YouTubeServiceManager.instance().getContentService().continueShortsObserve(group.getMediaGroup(), seedVideoId)
                 .subscribe(nextPage -> {
                     if (nextPage != null && nextPage.getMediaItems() != null && !nextPage.getMediaItems().isEmpty()) {
                         int sizeBefore = group.getSize();
                         VideoGroup.from(group, nextPage); // appends (duplicates are skipped)
-                        ShortsHistory history = ShortsHistory.instance(getContext());
+                        int newCount = ShortsHistory.MIN_NEW_PER_PAGE;
                         if (history != null) {
-                            history.filterNew(group, Math.max(0, sizeBefore)); // less repetition
+                            // Less repetition: a page that was seen completely keeps nothing while one more page is
+                            // still to come, a few on the last try (a repeated Short beats a feed that stops)
+                            int minKeep = extraPage < FEED_EXTRA_PAGES_MAX ? 0 : FEED_PAGE_MIN_KEEP;
+                            newCount = history.filterNew(group, Math.max(0, sizeBefore), minKeep);
+                            // Not shown nor preloaded yet (the lookahead is before sizeBefore): the order may change
+                            history.shuffleNew(group, Math.max(0, sizeBefore));
                         }
                         if (group.getSize() > sizeBefore) {
                             Utils.post(mPrefetchNext);
                         }
+                        wantMore[0] = newCount < ShortsHistory.MIN_NEW_PER_PAGE;
                     }
                 }, error -> {
                     Log.e(TAG, "Shorts: feed continuation failed: %s", error.getMessage());
                     mContinuedFeedPage = null; // try again later
+                }, () -> {
+                    // Almost nothing new on the page: the next one right away (bounded, in the background)
+                    if (wantMore[0] && extraPage < FEED_EXTRA_PAGES_MAX) {
+                        continueShortsFeed(group, extraPage + 1);
+                    }
                 });
     }
 

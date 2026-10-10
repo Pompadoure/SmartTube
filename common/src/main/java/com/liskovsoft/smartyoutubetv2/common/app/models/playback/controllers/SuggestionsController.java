@@ -20,6 +20,7 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.data.Playlist;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.VideoGroup;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.BasePlayerController;
+import com.liskovsoft.smartyoutubetv2.common.app.models.playback.SmartNext;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.manager.PlayerConstants;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.OptionItem;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.SeekBarSegment;
@@ -44,6 +45,8 @@ public class SuggestionsController extends BasePlayerController {
     private ContentService mContentService;
     private BrowseProcessorManager mBrowseProcessor;
     private Video mNextSectionVideo;
+    private Video mSmartNext; // JoTube: what plays after the current regular video (see SmartNext)
+    private String mSmartNextFor; // id of the video mSmartNext was picked for
     private int mFocusCount;
     private int mNextRetryCount;
     private List<ChapterItem> mChapters;
@@ -227,6 +230,8 @@ public class SuggestionsController extends BasePlayerController {
         video.sync(mediaItemMetadata);
         getPlayer().setVideo(video);
 
+        pickSmartNextIfNeeded(video, mediaItemMetadata);
+
         getPlayer().setNextTitle(getNext());
 
         appendDislikes(video);
@@ -285,6 +290,8 @@ public class SuggestionsController extends BasePlayerController {
             result = next;
         } else if (mNextSectionVideo != null && !getVideo().isShuffled) {
             result = mNextSectionVideo;
+        } else if (isSmartNextFor(getVideo())) {
+            result = mSmartNext;
         } else if (getVideo().nextMediaItem != null) {
             result = Video.from(getVideo().nextMediaItem);
         }
@@ -297,7 +304,10 @@ public class SuggestionsController extends BasePlayerController {
             return null;
         }
 
-        Video result = getPreviousFromGroup(getVideo());
+        // JoTube: a video clicked in the suggestions of the previous video: the card before it there isn't what
+        // played before (playlist rows keep their order)
+        Video result = getVideo().belongsToSuggestions() && !getVideo().hasPlaylist() && Playlist.instance().getPrevious() != null ?
+                null : getPreviousFromGroup(getVideo());
 
         if (result == null) {
             Video previous = Playlist.instance().getPrevious();
@@ -690,6 +700,13 @@ public class SuggestionsController extends BasePlayerController {
     }
 
     private void findNextSectionVideoIfNeeded(Video video) {
+        // JoTube: only real playlist sections (a playlist, Watch later, the user's playlists) play card by card.
+        // Feeds (Home, Subscriptions, History, search, channel uploads...) continue like YouTube does (SmartNext).
+        if (!isPlaylistSection(video)) {
+            mNextSectionVideo = null;
+            return;
+        }
+
         //if (getPlayerData().getPlaybackMode() == PlayerConstants.PLAYBACK_MODE_SHUFFLE) {
         //    findRandomSectionVideo(video);
         //} else {
@@ -697,6 +714,40 @@ public class SuggestionsController extends BasePlayerController {
         //}
 
         findNextSectionVideo(video);
+    }
+
+    private static boolean isPlaylistSection(Video video) {
+        return video.belongsToSamePlaylistGroup() || video.belongsToUserPlaylists();
+    }
+
+    private void pickSmartNextIfNeeded(Video video, MediaItemMetadata metadata) {
+        if (video == null || video.videoId == null || (video.videoId.equals(mSmartNextFor) && !video.hasPlaylist() && !video.isRemote)) {
+            return; // picked already: the next title stays the same
+        }
+
+        mSmartNext = null;
+        mSmartNextFor = null;
+
+        // Shorts have their own feed, playlists/mixes and remote (cast) queues keep YouTube's order
+        if (video.isShorts || video.hasPlaylist() || video.isRemote || metadata == null) {
+            return;
+        }
+
+        SmartNext smartNext = SmartNext.instance(getContext());
+
+        if (smartNext == null) {
+            return;
+        }
+
+        smartNext.markPlayed(video.videoId);
+        mSmartNext = smartNext.pick(video, metadata.getNextVideo(), metadata.getSuggestions());
+        mSmartNextFor = video.videoId;
+    }
+
+    private boolean isSmartNextFor(Video current) {
+        // Not when the same video is now played in a playlist/mix or from the phone
+        return mSmartNext != null && current != null && !current.isShuffled && !current.hasPlaylist() && !current.isRemote
+                && current.videoId != null && current.videoId.equals(mSmartNextFor);
     }
 
     private void findRandomSectionVideo(Video video) {

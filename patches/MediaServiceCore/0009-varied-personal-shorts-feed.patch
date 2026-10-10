@@ -1,0 +1,317 @@
+diff --git a/mediaserviceinterfaces/src/main/java/com/liskovsoft/mediaserviceinterfaces/ContentService.java b/mediaserviceinterfaces/src/main/java/com/liskovsoft/mediaserviceinterfaces/ContentService.java
+index 490fd9c..e04de4c 100644
+--- a/mediaserviceinterfaces/src/main/java/com/liskovsoft/mediaserviceinterfaces/ContentService.java
++++ b/mediaserviceinterfaces/src/main/java/com/liskovsoft/mediaserviceinterfaces/ContentService.java
+@@ -48,6 +48,20 @@ public interface ContentService {
+     Observable<List<MediaGroup>> getHomeObserve();
+     Observable<List<MediaGroup>> getTrendingObserve();
+     Observable<MediaGroup> getShortsObserve();
++    /**
++     * JoTube: a new Shorts feed that starts from the given Short (its "more like this" sequence, the Short itself
++     * isn't in the result). Falls back to the usual feed. Null id/params: the usual feed.
++     */
++    Observable<MediaGroup> getShortsObserve(String seedVideoId, String seedParams);
++    /**
++     * JoTube: the next page of the Shorts feed from the sequence of the given Short (loaded in the feed during this run).
++     * The page keeps the feed's own next page key. Falls back to the usual next page in the same call.
++     */
++    Observable<MediaGroup> continueShortsObserve(MediaGroup mediaGroup, String seedVideoId);
++    /**
++     * JoTube: the reel params of a Short loaded in the Shorts feed during this run (null if unknown). No network.
++     */
++    String getShortsParams(String videoId);
+     Observable<List<MediaGroup>> getKidsHomeObserve();
+     Observable<List<MediaGroup>> getSportsObserve();
+     Observable<List<MediaGroup>> getLiveObserve();
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
+index 5f0f5cd..95f4908 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
+@@ -6,6 +6,10 @@ import java.util.concurrent.Callable
+ import java.util.concurrent.Executors
+ import java.util.concurrent.Future
+ import java.util.concurrent.TimeUnit
++import java.util.concurrent.atomic.AtomicBoolean
++import java.util.concurrent.atomic.AtomicInteger
++import java.io.IOException
++import com.liskovsoft.googlecommon.common.helpers.RetrofitOkHttpHelper
+ import com.liskovsoft.mediaserviceinterfaces.data.MediaItem
+ import com.liskovsoft.youtubeapi.browse.v2.gen.*
+ import com.liskovsoft.youtubeapi.common.helpers.AppClient
+@@ -149,18 +153,153 @@ internal open class BrowseService2 {
+         return getShortsWeb()
+     }
+ 
+-    private fun getShortsWeb(auth: Boolean = false): MediaGroup? {
+-        val firstResult = mBrowseApi.getReelResult(BrowseApiHelper.getReelQuery())
++    /**
++     * JoTube: a new feed that starts from a Short the user liked/watched to the end (YouTube's own "more like this"
++     * sequence of that Short). The seed request replaces the seedless one (same number of requests).
++     * The seed itself isn't in the result (it was watched already). Falls back to the usual feed.
++     */
++    fun getShortsSeeded(seedVideoId: String?, seedParams: String?): MediaGroup? {
++        if (seedVideoId == null || seedParams == null) {
++            return getShorts()
++        }
++
++        if (sShortsSeedFailures.get() >= SHORTS_SEED_MAX_FAILURES) {
++            // Seeded feeds don't work in this run: no extra round trips
++            Log.d(SHORTS_TAG, "Shorts feed: seeded feeds are off in this run, the usual feed")
++            return getShorts()
++        }
++
++        Log.d(SHORTS_TAG, "Shorts feed: new feed seeded with %s", seedVideoId)
++
++        val seeded = getShortsWeb(seedVideoId, seedParams)
++
++        if (seeded == null || seeded.mediaItems.isNullOrEmpty()) {
++            if (Thread.currentThread().isInterrupted) {
++                return null // cancelled
++            }
++            sShortsSeedFailures.incrementAndGet()
++            Log.d(SHORTS_TAG, "Shorts feed: the seeded feed is empty, using the usual one")
++            return getShorts()
++        }
+ 
+-        return RetrofitHelper.get(firstResult, auth) ?.let { firstItem ->
+-            val result = continueShortsWeb(firstItem.getContinuationToken(), auth)
+-            result?.mediaItems?.add(0, ShortsMediaItem(null, firstItem))
++        sShortsSeedFailures.set(0)
+ 
+-            if (auth)
+-                getSubscribedShortsWeb()?.let { result?.mediaItems?.addAll(0, it) }
++        return seeded
++    }
++
++    /**
++     * JoTube: the next page of the feed from the given Short's own sequence (the Short must have been loaded
++     * in the Shorts feed during this run). The result keeps the linear page token of [linearGroup], so the
++     * feed goes on as usual afterwards. Null if there's no sequence of that Short or it gave nothing.
++     */
++    fun continueShortsFrom(seedVideoId: String?, linearGroup: MediaGroup?): MediaGroup? {
++        val token = getShortsSeed(seedVideoId)?.token ?: return null
++
++        Log.d(SHORTS_TAG, "Shorts feed: next page from the sequence of %s", seedVideoId)
+ 
+-            return result
++        val result = continueShortsWebAuth(token, "seeded page")
++
++        if (result == null || result.mediaItems.isNullOrEmpty()) {
++            Log.d(SHORTS_TAG, "Shorts feed: the sequence of %s gave nothing", seedVideoId)
++            return null
+         }
++
++        return ShortsMediaGroup(result.mediaItems, linearGroup?.nextPageKey, MediaGroupOptions.create(MediaGroup.TYPE_SHORTS))
++    }
++
++    /**
++     * JoTube: the reel params of a Short loaded in the Shorts feed during this run (null if unknown).
++     */
++    fun getShortsParams(videoId: String?): String? {
++        return getShortsSeed(videoId)?.params
++    }
++
++    private fun getShortsWeb(seedVideoId: String? = null, seedParams: String? = null): MediaGroup? {
++        // JoTube: signed in when possible (personalized by the account's history). No subscriptions shelf prepended.
++        return withShortsAuth<MediaGroup>(if (seedVideoId != null) "seeded feed" else "feed", { isEmptyShorts(it) }) { auth ->
++            val query = if (seedVideoId != null && seedParams != null)
++                BrowseApiHelper.getReelDetailsQuery(AppClient.WEB, seedVideoId, seedParams)
++            else BrowseApiHelper.getReelQuery()
++            val firstResult = mBrowseApi.getReelResult(query)
++
++            RetrofitHelper.get(firstResult, auth)?.let { firstItem ->
++                val result = continueShortsWeb(firstItem.getContinuationToken(), auth)
++
++                if (seedVideoId == null) {
++                    rememberShortsSeed(firstItem.getVideoId(), firstItem.getContinuationToken(),
++                        firstItem.replacementEndpoint?.reelWatchEndpoint?.params)
++                    result?.mediaItems?.add(0, ShortsMediaItem(null, firstItem))
++                } else {
++                    // The seed itself was watched already
++                    val items = result?.mediaItems
++                    if (items != null) {
++                        for (i in items.indices.reversed()) {
++                            if (items[i]?.videoId == seedVideoId) items.removeAt(i)
++                        }
++                    }
++                }
++
++                result
++            }
++        }
++    }
++
++    private fun continueShortsWebAuth(continuationKey: String?, what: String): MediaGroup? {
++        if (continuationKey == null) {
++            return null
++        }
++
++        return withShortsAuth<MediaGroup>(what, { isEmptyShorts(it) }) { auth -> continueShortsWeb(continuationKey, auth) }
++    }
++
++    private fun isEmptyShorts(group: MediaGroup?): Boolean {
++        return group == null || group.mediaItems.isNullOrEmpty()
++    }
++
++    /**
++     * JoTube: the reel requests go out signed in when there's an account, so YouTube shapes the feed by the account's
++     * history. If a signed-in request gives nothing (or fails with a non-network error) and the anonymous one works,
++     * signed-in reel requests are off for the rest of the run (the extra round trip happens at most once).
++     */
++    private fun <T> withShortsAuth(what: String, isEmpty: (T?) -> Boolean, request: (Boolean) -> T?): T? {
++        if (!isShortsSignedIn()) {
++            Log.d(SHORTS_TAG, if (sShortsAuthBroken.get()) "Shorts feed: anonymous (fallback) [%s]" else "Shorts feed: anonymous (not signed in) [%s]", what)
++            return request(false)
++        }
++
++        val signed: T? = try {
++            request(true)
++        } catch (e: Exception) {
++            if (e is IllegalStateException && e.cause is IOException) {
++                throw e // network problem: the caller handles it as before
++            }
++            Log.e(SHORTS_TAG, "Shorts feed: signed-in request failed [%s]: %s", what, e.message)
++            null
++        }
++
++        if (!isEmpty(signed)) {
++            Log.d(SHORTS_TAG, "Shorts feed: signed-in [%s]", what)
++            return signed
++        }
++
++        if (Thread.currentThread().isInterrupted) {
++            return null // cancelled, not a failure
++        }
++
++        val anonymous = request(false)
++
++        if (!isEmpty(anonymous)) {
++            if (sShortsAuthBroken.compareAndSet(false, true)) {
++                Log.w(SHORTS_TAG, "Shorts feed: signed-in reel requests return nothing, anonymous for the rest of the run")
++            }
++            Log.d(SHORTS_TAG, "Shorts feed: anonymous (fallback) [%s]", what)
++        }
++
++        return anonymous
++    }
++
++    private fun isShortsSignedIn(): Boolean {
++        return !sShortsAuthBroken.get() && RetrofitOkHttpHelper.authHeaders["Authorization"] != null
+     }
+ 
+     private fun getShortsTV(): MediaGroup? {
+@@ -298,6 +437,7 @@ internal open class BrowseService2 {
+                         Log.d(SHORTS_TAG, "Shorts feed: no title/channel: %s overlay=%s panels=%s",
+                             reel?.videoId, info.overlay != null, info.engagementPanels?.size)
+                     }
++                    rememberShortsSeed(reel?.videoId, info.getContinuationToken(), reel?.params)
+                     result.add(ShortsMediaItem(reel, info))
+                 }
+             }
+@@ -477,7 +617,7 @@ internal open class BrowseService2 {
+ 
+     fun continueGroup(group: MediaGroup?): MediaGroup? {
+         return when (group) {
+-            is ShortsMediaGroup -> continueShortsWeb(group.nextPageKey)
++            is ShortsMediaGroup -> continueShortsWebAuth(group.nextPageKey, "page")
+             is ShelfSectionMediaGroup -> continueGroupTV(group)
+             is BrowseMediaGroupTV, is MergedMediaGroup -> continueGroupTV(group)
+             is WatchNexContinuationMediaGroup -> continueGroupTV(group)
+@@ -669,6 +809,44 @@ internal open class BrowseService2 {
+ }
+ private const val SHORTS_TAG = "BrowseService2"
+ 
++// JoTube: signed-in reel requests turned out not to work in this run
++private val sShortsAuthBroken = AtomicBoolean(false)
++
++// JoTube: seeded new feeds that gave nothing in a row (then the usual feed only, no extra round trips)
++private val sShortsSeedFailures = AtomicInteger(0)
++private const val SHORTS_SEED_MAX_FAILURES = 2
++
++// JoTube: the own sequence token and the reel params of the Shorts loaded in the feed (videoId -> seed)
++private class ShortsSeed(val token: String?, val params: String?)
++
++private const val SHORTS_SEEDS_MAX = 500
++
++private val sShortsSeeds = object : LinkedHashMap<String, ShortsSeed>(64, 0.75f, true) {
++    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ShortsSeed>?): Boolean {
++        return size > SHORTS_SEEDS_MAX
++    }
++}
++
++private fun rememberShortsSeed(videoId: String?, token: String?, params: String?) {
++    if (videoId == null || (token == null && params == null)) {
++        return
++    }
++
++    synchronized(sShortsSeeds) {
++        sShortsSeeds[videoId] = ShortsSeed(token, params)
++    }
++}
++
++private fun getShortsSeed(videoId: String?): ShortsSeed? {
++    if (videoId == null) {
++        return null
++    }
++
++    synchronized(sShortsSeeds) {
++        return sShortsSeeds[videoId]
++    }
++}
++
+ // JoTube: Shorts feed details (parallel requests)
+ private val sShortsDetailsExecutor = Executors.newFixedThreadPool(4) { runnable ->
+     Thread(runnable, "JoTubeShortsDetails").apply { isDaemon = true }
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/YouTubeContentService.java b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/YouTubeContentService.java
+index 1bfecfd..cf222d9 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/YouTubeContentService.java
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/YouTubeContentService.java
+@@ -306,6 +306,48 @@ class YouTubeContentService implements ContentService {
+         });
+     }
+ 
++    @Override
++    public Observable<MediaGroup> getShortsObserve(String seedVideoId, String seedParams) {
++        if (seedVideoId == null || seedParams == null) {
++            return getShortsObserve();
++        }
++
++        return RxHelper.create(emitter -> {
++            checkSigned();
++
++            // JoTube: the seed request replaces the seedless one (falls back to the usual feed inside)
++            MediaGroup shorts = getBrowseService2().getShortsSeeded(seedVideoId, seedParams);
++
++            if (shorts != null && shorts.getNextPageKey() != null) {
++                emitGroup(emitter, shorts);
++            } else {
++                emitGroupPartial(emitter, shorts);
++                emitGroup(emitter, getBrowseService2().getShorts2());
++            }
++        });
++    }
++
++    @Override
++    public Observable<MediaGroup> continueShortsObserve(MediaGroup mediaGroup, String seedVideoId) {
++        if (seedVideoId == null) {
++            return continueGroupObserve(mediaGroup);
++        }
++
++        return RxHelper.fromCallable(() -> {
++            checkSigned();
++
++            MediaGroup seeded = getBrowseService2().continueShortsFrom(seedVideoId, mediaGroup);
++
++            // JoTube: no sequence of that Short (no request made) or it gave nothing: the usual next page
++            return seeded != null ? seeded : continueGroup(mediaGroup);
++        });
++    }
++
++    @Override
++    public String getShortsParams(String videoId) {
++        return getBrowseService2().getShortsParams(videoId);
++    }
++
+     @Override
+     public Observable<List<MediaGroup>> getKidsHomeObserve() {
+         return RxHelper.create(emitter -> {
