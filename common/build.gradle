@@ -77,8 +77,9 @@ dependencies {
     api "androidx.media3:media3-exoplayer-dash:$m3Media3Version"
     api "androidx.media3:media3-exoplayer-hls:$m3Media3Version"
     api "androidx.media3:media3-exoplayer-smoothstreaming:$m3Media3Version"
-    implementation "androidx.media3:media3-datasource-okhttp:$m3Media3Version"
     implementation "androidx.media3:media3-datasource-cronet:$m3Media3Version"
+    // JoTube M3: OkHttp3DataSource (own copy of Media3's OkHttpDataSource for OkHttp 3.12)
+    implementation 'com.squareup.okhttp3:okhttp:' + okhttpVersion
     api "androidx.media3:media3-ui:$m3Media3Version"
 
     // implementation 'com.amazon.android:exoplayer:' + amazonExoplayerVersion

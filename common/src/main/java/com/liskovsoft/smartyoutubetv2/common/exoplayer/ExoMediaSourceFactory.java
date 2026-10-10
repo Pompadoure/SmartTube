@@ -12,7 +12,6 @@ import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.datasource.ResolvingDataSource;
 import androidx.media3.datasource.cronet.CronetDataSource;
-import androidx.media3.datasource.okhttp.OkHttpDataSource;
 import androidx.media3.extractor.DefaultExtractorsFactory;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.exoplayer.source.ProgressiveMediaSource;
@@ -44,6 +43,7 @@ import com.liskovsoft.sharedutils.helpers.FileHelpers;
 import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.sharedutils.okhttp.OkHttpManager;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.dash.DashManifestParser2;
+import com.liskovsoft.smartyoutubetv2.common.exoplayer.datasource.OkHttp3DataSource;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.errors.DashDefaultLoadErrorHandlingPolicy;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.errors.SabrDefaultLoadErrorHandlingPolicy;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.errors.TrackErrorFixer;
@@ -294,7 +294,7 @@ public class ExoMediaSourceFactory {
      * Use OkHttp for networking
      */
     private HttpDataSource.Factory buildOkHttpDataSourceFactory(DefaultBandwidthMeter bandwidthMeter) {
-        OkHttpDataSource.Factory dataSourceFactory = new OkHttpDataSource.Factory(OkHttpManager.instance().getClient())
+        OkHttp3DataSource.Factory dataSourceFactory = new OkHttp3DataSource.Factory(OkHttpManager.instance().getClient())
                 .setUserAgent(USER_AGENT)
                 .setTransferListener(bandwidthMeter);
         addCommonHeaders(dataSourceFactory);

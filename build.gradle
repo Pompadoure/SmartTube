@@ -18,9 +18,6 @@ buildscript {
     ext.m3CompileSdk = 36
     // Media3 version for every module (PLAN.md Decisions 1)
     ext.m3Media3Version = '1.11.1'
-    // JoTube M3: media3-datasource-okhttp 1.11.1 is built against OkHttp 4.12 (e.g. RequestBody.create(byte[]) for
-    // the SABR POST requests, missing in 3.12 -> NoSuchMethodError). minSdk is 23, so the Android 4 pin is not needed.
-    ext.m3OkHttpVersion = '4.12.0'
 
     repositories {
         google()
@@ -53,10 +50,10 @@ allprojects {
         // resolutionStrategy.force 'androidx.lifecycle:lifecycle-livedata-core:' + liveDataVersion
         // resolutionStrategy.force 'androidx.lifecycle:lifecycle-livedata:' + liveDataVersion
         // resolutionStrategy.force 'androidx.lifecycle:lifecycle-runtime:' + liveDataVersion
-        // JoTube M3: OkHttp 4.12 (Media3 needs it; was the Android 4 compatible 3.12.13)
-        resolutionStrategy.force 'com.squareup.okhttp3:okhttp:' + m3OkHttpVersion
-        resolutionStrategy.force 'com.squareup.okhttp3:okhttp-dnsoverhttps:' + m3OkHttpVersion
-        resolutionStrategy.force 'com.squareup.okhttp3:logging-interceptor:' + m3OkHttpVersion
+        // Force Android 4 compatible okHttp version
+        // JoTube M3: kept (SharedModules Kotlin code doesn't compile against OkHttp 4); the app uses its own
+        // OkHttp3DataSource instead of media3-datasource-okhttp (built against OkHttp 4)
+        resolutionStrategy.force 'com.squareup.okhttp3:okhttp:' + okhttpVersion
         // JoTube M3: Kotlin stdlib pinned to the Kotlin compiler version (was a downgrade for WorkManager);
         // coroutines/core-ktx stay at their older, binary-compatible versions
         resolutionStrategy.force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:' + m3KotlinVersion
