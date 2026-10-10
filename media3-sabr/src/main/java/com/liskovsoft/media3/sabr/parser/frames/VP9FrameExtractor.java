@@ -10,7 +10,7 @@ public class VP9FrameExtractor extends BaseFrameExtractor {
     @Override
     protected int findNextFrameStart(int from) {
         for (int i = from; i < buffer.limit(); i++) {
-            int b = buffer.data[i] & 0xFF;
+            int b = buffer.getData()[i] & 0xFF;
             if ((b & 0xC0) == 0x80) return i; // VP9 frame_marker
         }
         return -1;

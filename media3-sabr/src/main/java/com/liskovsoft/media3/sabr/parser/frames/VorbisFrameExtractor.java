@@ -11,8 +11,8 @@ public class VorbisFrameExtractor extends BaseFrameExtractor {
     protected int findNextFrameStart(int from) {
         // Vorbis is stored in Ogg pages, each page starts with "OggS"
         for (int i = from; i < buffer.limit() - 3; i++) {
-            if (buffer.data[i] == 'O' && buffer.data[i+1] == 'g' &&
-                    buffer.data[i+2] == 'g' && buffer.data[i+3] == 'S') {
+            if (buffer.getData()[i] == 'O' && buffer.getData()[i+1] == 'g' &&
+                    buffer.getData()[i+2] == 'g' && buffer.getData()[i+3] == 'S') {
                 return i;
             }
         }

@@ -74,8 +74,13 @@ jobs:
           set -o pipefail
           # :media3-sabr is built on its own too while the app doesn't depend on it yet (stage 2b)
           if ! ./gradlew assembleStjohanRelease :media3-sabr:assembleRelease 2>&1 | tee build.log; then
-            # Compiler errors as annotations (readable without the raw log)
-            grep -E "error:|\.java:[0-9]+: |^e: |What went wrong" -A2 build.log | head -150 | while IFS= read -r line; do
+            # Compiler errors as annotations (readable without the raw log). GitHub keeps only 10 error
+            # annotations per step, so all compiler errors go into one annotation, one compact line each.
+            errs=$(grep -E "^/.*\.(java|kt):[0-9]+: error: |^e: " build.log | sed -E 's#^.*/(media3-sabr|common|smarttubetv|doubletapplayerview)/src/main/java/##' | sort -u | head -200)
+            if [ -n "$errs" ]; then
+              echo "::error::COMPILER ERRORS ($(echo "$errs" | wc -l))%0A$(echo "$errs" | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
+            fi
+            grep -E "What went wrong" -A3 build.log | head -8 | while IFS= read -r line; do
               echo "::error::${line}"
             done
             exit 1

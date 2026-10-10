@@ -27,7 +27,7 @@ public abstract class BaseFrameExtractor {
      * Read data from ExtractorInput and emit complete frames zero-copy.
      */
     public void readFromInput(ExtractorInput input, int maxLength) throws IOException {
-        int bytesRead = input.read(buffer.data, buffer.limit(), maxLength);
+        int bytesRead = input.read(buffer.getData(), buffer.limit(), maxLength);
         if (bytesRead <= 0) return;
 
         buffer.setLimit(buffer.limit() + bytesRead);
@@ -56,7 +56,7 @@ public abstract class BaseFrameExtractor {
             // Shift remaining data to the beginning of the buffer
             int remaining = buffer.limit() - frameEnd;
             if (remaining > 0) {
-                System.arraycopy(buffer.data, frameEnd, buffer.data, 0, remaining);
+                System.arraycopy(buffer.getData(), frameEnd, buffer.getData(), 0, remaining);
             }
             buffer.setPosition(0);
             buffer.setLimit(remaining);
