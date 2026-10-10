@@ -11,16 +11,11 @@ The Claude plan's usage can't be read by a run, so the work goes as fast as poss
 a cut-off (Johan's decision 2026-10-10):
 - Fast pace: a run keeps working step after step until the work is done, its context gets long, or the usage cap
   stops it. Commit and push after every meaningful change (never more than ~15 minutes uncommitted) and keep
-  `Doing now: 2c on branch m3/stage2. Ported this run (all pushed): CI symbol details, lint opt-in, group 1 sources
-(ExoMediaSourceFactory, DashManifestParser2 -> common/exoplayer/dash, error policies, FastStartLoadControl,
-ExoPlayerInitializer), own OkHttp3DataSource (copy of Media3's, OkHttp stays 3.12.13: SharedModules Kotlin fails on
-OkHttp 4), renderer API task merged + review fixes, track selection (RestoreTrackSelector on MappedTrackInfo,
-TrackSelectorManager, ExoFormatItem, MediaTrack, TrackSelectorUtil), TrackErrorFixer, SubtitleManager (Player.Listener),
-ExoPlayerController (Player.Listener), PlaybackFragment (media3-session via ForwardingPlayer; BackboneQueueNavigator
-removed). Next action: read the CI annotations of the latest m3/stage2 run (don't push while a run is in progress:
-cancel-in-progress kills it), fix the remaining compile errors (expected: smarttubetv EmbedPlayerView, ShortsQueue,
-DebugInfoManager, doubletapplayerview, anything javac shows next), until green; then the stage 2 review agent and
-merge into media3. Media3 sources: see the clone command in the run log entry of 2026-10-10 20:15Z.
+  `Doing now: 2c on branch m3/stage2: CI GREEN (APK builds, 20 SABR unit tests pass) at "PlaybackFragment transition
+listener as Player.Listener". Next action: independent stage 2 review agent over `git diff origin/media3...origin/m3/stage2`
+(verify against Media3 sources), fix BLOCKER/SHOULD-FIX on m3/stage2, CI green, merge m3/stage2 into media3, mark 2c and
+stage 2 done; then stage 3 (track selection behaviour, subtitles incl. fork WebVTT fixes, MediaSession metadata refresh,
+LeanbackPlayerAdapter no-surface fix, audio sync fix, seek-end event timing, Cronet API 105 vs Media3 check).
 Cut-offs in a row: 1
 
 ## API credits (Claude Console, used only by the claude-task workflow)
