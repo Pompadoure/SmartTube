@@ -1,16 +1,14 @@
 package com.liskovsoft.smartyoutubetv2.common.exoplayer.versions.renderer;
 
 import android.content.Context;
-import android.media.MediaCodec;
 import android.os.Build.VERSION;
 import android.os.Handler;
-import android.view.Surface;
 import androidx.annotation.Nullable;
 import androidx.media3.common.C;
-import androidx.media3.exoplayer.ExoPlaybackException;
 import androidx.media3.common.Format;
-import androidx.media3.exoplayer.drm.DrmSessionManager;
-import androidx.media3.exoplayer.drm.FrameworkMediaCrypto;
+import androidx.media3.common.MimeTypes;
+import androidx.media3.exoplayer.DecoderReuseEvaluation;
+import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter;
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
 import androidx.media3.exoplayer.video.MediaCodecVideoRenderer;
@@ -21,30 +19,14 @@ import com.liskovsoft.smartyoutubetv2.common.exoplayer.versions.ExoUtils;
 
 public class DebugInfoMediaCodecVideoRenderer extends MediaCodecVideoRenderer {
     private static final String TAG = DebugInfoMediaCodecVideoRenderer.class.getSimpleName();
-    private int mFrameIndex;
     private boolean mIsSetOutputSurfaceWorkaroundEnabled;
 
-    // Exo 2.9
-    //public DebugInfoMediaCodecVideoRenderer(Context context, MediaCodecSelector mediaCodecSelector, long allowedJoiningTimeMs,
-    //                                     @Nullable DrmSessionManager<FrameworkMediaCrypto> drmSessionManager, boolean playClearSamplesWithoutKeys,
-    //                                     @Nullable Handler eventHandler, @Nullable VideoRendererEventListener eventListener,
-    //                                     int maxDroppedFramesToNotify) {
-    //    super(context, mediaCodecSelector, allowedJoiningTimeMs, drmSessionManager, playClearSamplesWithoutKeys, eventHandler, eventListener,
-    //            maxDroppedFramesToNotify);
-    //}
-
-    // Exo 2.10, 2.11
-    public DebugInfoMediaCodecVideoRenderer(Context context, MediaCodecSelector mediaCodecSelector, long allowedJoiningTimeMs,
-                                            @Nullable DrmSessionManager<FrameworkMediaCrypto> drmSessionManager, boolean playClearSamplesWithoutKeys, boolean enableDecoderFallback, @Nullable Handler eventHandler, @Nullable VideoRendererEventListener eventListener, int maxDroppedFramesToNotify) {
-        super(context, mediaCodecSelector, allowedJoiningTimeMs, drmSessionManager, playClearSamplesWithoutKeys, enableDecoderFallback, eventHandler, eventListener, maxDroppedFramesToNotify);
+    public DebugInfoMediaCodecVideoRenderer(Context context, MediaCodecAdapter.Factory codecAdapterFactory, MediaCodecSelector mediaCodecSelector,
+                                            long allowedJoiningTimeMs, boolean enableDecoderFallback, @Nullable Handler eventHandler,
+                                            @Nullable VideoRendererEventListener eventListener, int maxDroppedFramesToNotify) {
+        super(context, codecAdapterFactory, mediaCodecSelector, allowedJoiningTimeMs, enableDecoderFallback, eventHandler, eventListener,
+                maxDroppedFramesToNotify);
     }
-
-    // Exo 2.12, 2.13
-    //public DebugInfoMediaCodecVideoRenderer(Context context, MediaCodecSelector mediaCodecSelector, long allowedJoiningTimeMs,
-    //                                     boolean enableDecoderFallback, @Nullable Handler eventHandler,
-    //                                     @Nullable VideoRendererEventListener eventListener, int maxDroppedFramesToNotify) {
-    //    super(context, mediaCodecSelector, allowedJoiningTimeMs, enableDecoderFallback, eventHandler, eventListener, maxDroppedFramesToNotify);
-    //}
 
     @Override
     protected CodecMaxValues getCodecMaxValues(
@@ -69,7 +51,7 @@ public class DebugInfoMediaCodecVideoRenderer extends MediaCodecVideoRenderer {
 
             if ((width > values.width || height > values.height) && isSizeSupported(codecInfo, width, height, format.frameRate)) {
                 int inputSize = Math.max(values.inputSize,
-                        getCodecMaxInputSize(codecInfo, format.sampleMimeType, width, height));
+                        getCodecMaxInputSize(format.sampleMimeType, width, height));
                 Log.d(TAG, "Shorts: codec max size %sx%s (format %sx%s)", width, height, format.width, format.height);
                 values = new CodecMaxValues(width, height, inputSize);
             }
@@ -94,53 +76,71 @@ public class DebugInfoMediaCodecVideoRenderer extends MediaCodecVideoRenderer {
                 videoCapabilities.areSizeAndRateSupported(width, height, frameRate > 0 ? frameRate : 30);
     }
 
+    /**
+     * M3: copy of the (private) estimate used by MediaCodecVideoRenderer; the Amazon/Samsung/Nvidia AVC special cases
+     * are dropped, only the generic max input size is needed here.
+     */
+    private static int getCodecMaxInputSize(@Nullable String sampleMimeType, int width, int height) {
+        if (sampleMimeType == null || width == Format.NO_VALUE || height == Format.NO_VALUE) {
+            return Format.NO_VALUE;
+        }
+
+        int maxPixels;
+        int minCompressionRatio;
+
+        switch (sampleMimeType) {
+            case MimeTypes.VIDEO_H263:
+            case MimeTypes.VIDEO_MP4V:
+            case MimeTypes.VIDEO_AVC:
+            case MimeTypes.VIDEO_VP8:
+            case MimeTypes.VIDEO_H265:
+                maxPixels = width * height;
+                minCompressionRatio = 2;
+                break;
+            case MimeTypes.VIDEO_VP9:
+            case MimeTypes.VIDEO_AV1:
+                maxPixels = width * height;
+                minCompressionRatio = 4;
+                break;
+            default:
+                // Leave the default max input size.
+                return Format.NO_VALUE;
+        }
+
+        return (maxPixels * 3 / 2) / minCompressionRatio;
+    }
+
+    // M3: canKeepCodec(MediaCodec, ...) + KEEP_CODEC_RESULT_* became canReuseCodec(...) + DecoderReuseEvaluation.REUSE_RESULT_*
     @Override
-    protected int canKeepCodec(MediaCodec codec, MediaCodecInfo codecInfo, Format oldFormat, Format newFormat) {
-        int result = super.canKeepCodec(codec, codecInfo, oldFormat, newFormat);
+    protected DecoderReuseEvaluation canReuseCodec(MediaCodecInfo codecInfo, Format oldFormat, Format newFormat) {
+        DecoderReuseEvaluation evaluation = super.canReuseCodec(codecInfo, oldFormat, newFormat);
 
         // JoTube: Shorts of the same kind often differ only in the color info (one has BT.709 set, the other
         // nothing). For SDR video that doesn't need a new decoder.
-        if (result == KEEP_CODEC_RESULT_NO && ShortsTransitionState.isShortsMode() && mMaxValues != null &&
+        if (evaluation.result == DecoderReuseEvaluation.REUSE_RESULT_NO && ShortsTransitionState.isShortsMode() && mMaxValues != null &&
                 codecInfo.adaptive &&
                 oldFormat.sampleMimeType != null && oldFormat.sampleMimeType.equals(newFormat.sampleMimeType) &&
                 oldFormat.rotationDegrees == newFormat.rotationDegrees &&
                 newFormat.width <= mMaxValues.width && newFormat.height <= mMaxValues.height &&
                 (newFormat.maxInputSize == Format.NO_VALUE || newFormat.maxInputSize <= mMaxValues.inputSize) &&
                 isSdr(oldFormat.colorInfo) && isSdr(newFormat.colorInfo)) {
-            result = oldFormat.initializationDataEquals(newFormat) ?
-                    KEEP_CODEC_RESULT_YES_WITHOUT_RECONFIGURATION : KEEP_CODEC_RESULT_YES_WITH_RECONFIGURATION;
+            int result = oldFormat.initializationDataEquals(newFormat) ?
+                    DecoderReuseEvaluation.REUSE_RESULT_YES_WITHOUT_RECONFIGURATION : DecoderReuseEvaluation.REUSE_RESULT_YES_WITH_RECONFIGURATION;
+            evaluation = new DecoderReuseEvaluation(codecInfo.name, oldFormat, newFormat, result, /* discardReasons= */ 0);
         }
 
-        if (result == KEEP_CODEC_RESULT_NO) {
+        if (evaluation.result == DecoderReuseEvaluation.REUSE_RESULT_NO) {
             Log.d(TAG, "New decoder needed: %sx%s -> %sx%s, adaptive %s, color %s -> %s", oldFormat.width, oldFormat.height,
                     newFormat.width, newFormat.height, codecInfo.adaptive, oldFormat.colorInfo, newFormat.colorInfo);
         }
 
-        return result;
+        return evaluation;
     }
 
     private static boolean isSdr(@Nullable androidx.media3.common.ColorInfo colorInfo) {
         return colorInfo == null || (colorInfo.colorTransfer != C.COLOR_TRANSFER_ST2084 &&
                 colorInfo.colorTransfer != C.COLOR_TRANSFER_HLG);
     }
-
-    // Measure real fps.
-    // Note, that you can't accurate measure frame rate because actual frame rate is the average frame rate for the whole video track!
-    // 29.97fps test: https://www.youtube.com/watch?v=LXb3EKWsInQ (Costa Rica)
-    // More info: https://github.com/google/ExoPlayer/issues/4088
-    //@Override
-    //protected void renderOutputBuffer(MediaCodec codec, int index, long presentationTimeUs) {
-    //    super.renderOutputBuffer(codec, index, presentationTimeUs);
-    //}
-    //
-    //@Override
-    //protected void renderOutputBufferV21(MediaCodec codec, int index, long presentationTimeUs, long releaseTimeNs) {
-    //    super.renderOutputBufferV21(codec, index, presentationTimeUs, releaseTimeNs);
-    //
-    //    mFrameIndex++;
-    //
-    //    Log.d(TAG, "Real fps: %s", 1_000_000f / (presentationTimeUs / mFrameIndex));
-    //}
 
     @Override
     protected boolean codecNeedsSetOutputSurfaceWorkaround(String name) {

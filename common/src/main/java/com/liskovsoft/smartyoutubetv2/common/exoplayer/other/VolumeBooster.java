@@ -7,12 +7,12 @@ import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 
 import androidx.media3.exoplayer.ExoPlayer;
-import androidx.media3.exoplayer.audio.AudioListener;
+import androidx.media3.common.Player;
 import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.smartyoutubetv2.common.misc.TickleManager;
 import com.liskovsoft.smartyoutubetv2.common.misc.TickleManager.TickleListener;
 
-public class VolumeBooster implements AudioListener, TickleListener {
+public class VolumeBooster implements Player.Listener, TickleListener {
     private static final String TAG = VolumeBooster.class.getSimpleName();
     private static final int DRIFT_FIX_INTERVAL_MINUTES = 5;
     private boolean mIsEnabled;
@@ -31,7 +31,8 @@ public class VolumeBooster implements AudioListener, TickleListener {
     }
 
     @Override
-    public void onAudioSessionId(int audioSessionId) {
+    public void onAudioSessionIdChanged(int audioSessionId) {
+        // M3: was AudioListener.onAudioSessionId; callers must register with player.addListener(...)
         if (VERSION.SDK_INT < 19 || mVolume <= 1) {
             return;
         }
