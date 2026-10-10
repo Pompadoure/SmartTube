@@ -1,0 +1,110 @@
+name: Build JoTube M3 (media3 branch)
+
+# Media3 rewrite (branch media3, package org.smarttube.johan.media3, app "JoTube M3").
+# Every push to media3 builds a signed APK and publishes it as the pre-release "latest-media3".
+# Never touches the release of the daily JoTube.
+
+on:
+  push:
+    branches: [ "media3" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-media3
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          submodules: recursive
+
+      - name: Apply JoTube patches to the submodules
+        run: |
+          # Small fixes on top of the upstream submodules (kept as patches, the submodules stay upstream)
+          for p in patches/MediaServiceCore/*.patch; do
+            echo "Applying $p"
+            git -C MediaServiceCore apply --verbose "../$p"
+          done
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Version name
+        id: version
+        run: |
+          sed -i "s/versionName \"\(.*\)\"/versionName \"\1-m3-${{ github.run_number }}\"/" smarttubetv/build.gradle
+          # Always increasing, independent of the upstream base version (updates never become downgrades)
+          sed -i "s/versionCode [0-9]*/versionCode $((2000000 + ${{ github.run_number }}))/" smarttubetv/build.gradle
+          echo "name=$(grep -m1 'versionName' smarttubetv/build.gradle | awk -F'"' '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Configure signing
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          ALIAS: ${{ secrets.ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "$SIGNING_KEY" ]; then
+            echo "::error::Signing secrets are missing (SIGNING_KEY, KEY_STORE_PASSWORD, ALIAS, KEY_PASSWORD)"
+            exit 1
+          fi
+          echo "$SIGNING_KEY" | base64 --decode > "$RUNNER_TEMP/key.jks"
+          {
+            echo "storeFile=$RUNNER_TEMP/key.jks"
+            echo "storePassword=$KEY_STORE_PASSWORD"
+            echo "keyAlias=$ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > keystore.properties
+
+      - name: Build
+        run: |
+          chmod +x gradlew
+          set -o pipefail
+          if ! ./gradlew assembleStjohanRelease 2>&1 | tee build.log; then
+            # Compiler errors as annotations (readable without the raw log)
+            grep -E "error:|\.java:[0-9]+: |^e: |What went wrong" -A2 build.log | head -40 | while IFS= read -r line; do
+              echo "::error::${line}"
+            done
+            exit 1
+          fi
+
+      - name: Collect APKs
+        run: |
+          mkdir -p out
+          dir=smarttubetv/build/outputs/apk/stjohan/release
+          ls -l "$dir"
+          cp "$dir"/*_armeabi-v7a.apk out/JoTubeM3_armeabi-v7a.apk
+          cp "$dir"/*_arm64-v8a.apk out/JoTubeM3_arm64-v8a.apk
+          sha256sum out/*.apk | tee out/SHA256SUMS.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: JoTubeM3_${{ steps.version.outputs.name }}
+          path: out/*
+          if-no-files-found: error
+
+      - name: Publish pre-release "latest-media3"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest-media3 --cleanup-tag --yes || true
+          sleep 10
+          # A pre-release, not marked latest: the daily JoTube release stays the latest one
+          gh release create latest-media3 out/* --prerelease --latest=false \
+            --target "${{ github.sha }}" \
+            --title "JoTube M3 ${{ steps.version.outputs.name }}" \
+            --notes "Media3 rewrite, test build from ${{ github.sha }} (package org.smarttube.johan.media3). Not installed until the rewrite is done."
+          gh release edit latest-media3 --draft=false

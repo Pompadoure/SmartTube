@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string translatable="false" name="app_name"><![CDATA[JoTube]]></string>
-    <string translatable="false" name="browse_title"><![CDATA[JoTube]]></string>
+    <string translatable="false" name="app_name"><![CDATA[JoTube M3]]></string>
+    <string translatable="false" name="browse_title"><![CDATA[JoTube M3]]></string>
     <!-- Overrides leanbackassistant (stable fallback) -->
-    <string translatable="false" name="search_label">JoTube</string>
-    <string translatable="false" name="settings_description">JoTube Videos</string>
-    <string translatable="false" name="search_authority">org.smarttube.johan</string>
+    <string translatable="false" name="search_label">JoTube M3</string>
+    <string translatable="false" name="settings_description">JoTube M3 Videos</string>
+    <string translatable="false" name="search_authority">org.smarttube.johan.media3</string>
 </resources>
