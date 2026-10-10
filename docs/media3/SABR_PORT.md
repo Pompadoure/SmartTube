@@ -51,6 +51,15 @@ This pattern ports 1:1: Media3's `BundledChunkExtractor.read(input)` also calls 
 5. **Error policy** (app `SabrDefaultLoadErrorHandlingPolicy` extends `DashDefaultLoadErrorHandlingPolicy`): the 2.10 methods `getBlacklistDurationMsFor/getRetryDelayMsFor(dataType, loadDurationMs, exception, errorCount)` become `getFallbackSelectionFor(FallbackOptions, LoadErrorInfo)` / `getRetryDelayMsFor(LoadErrorInfo)` on `DefaultLoadErrorHandlingPolicy` (stage 2, app side).
 6. **Format fields** `isDrc` / `lastModified` (fork-only, 1b): put them into `SabrFormatMetadata` (already a `Metadata.Entry` on `Format.metadata` carrying `xTags`/`audioTrackId`), set via `Format.Builder.setMetadata`. Readers: `FormatSelector.createFormatId` (SABR) and app `ExoFormatItem`, `TrackSelectorUtil.isDrc` → one static helper `SabrFormatMetadata.isDrc(format)` / `lastModified(format)`. No `Format` subclassing needed.
 
+### Subtitles (decide in 2b)
+SABR delivers text tracks as raw `SingleSampleMediaChunk`s (`DefaultSabrChunkSource` ~618, 1036-1042). Since Media3
+1.4 the `TextRenderer` only accepts `application/x-media3-cues` samples unless legacy decoding is switched on. Options:
+parse at extraction time like Media3's `DefaultDashChunkSource` (a `SubtitleExtractor`/`BundledChunkExtractor` with a
+`SubtitleParser.Factory`, set the output format to cues), or `TextRenderer.experimentalSetLegacyDecodingEnabled(true)`.
+The choice also decides where the fork's WebVTT fixes (FORK_CHANGES §E: HTML entities, 10 s cue cap) live: in a
+wrapping `SubtitleParser.Factory` (extraction-time) or in the legacy decoder path. Preferred: extraction time
+(the modern path, same as DASH).
+
 ### SABR-specific code (no ExoPlayer types, copy as is)
 `parser/models`, `parser/parts`, `parser/results`, `parser/exceptions`, `parser/frames`, `parser/ump` (except the
 `InterruptedException` cleanup), `SabrStream` logic, `SabrCdnSelector`, all protos. Keep the proto `java_package` as is

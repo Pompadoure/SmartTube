@@ -142,3 +142,13 @@ Files: `ShortsQueue` (151, `ConcatenatingMediaSource`), `ExoPlayerController` (q
 Player/controller ~3.9k (incl. PlaybackFragment 1.9k, only parts touch the player), track selection ~2.9k (+ DebugInfoManager 0.6k),
 renderers ~0.8k, sources ~0.9k, UI ~1.1k, Shorts ~0.3k, doubletapplayerview 4 files. Plus the SABR module
 (~9k lines, step 1c) and the fork changes (step 1b).
+
+## Non-Java references (found in the stage 1 review)
+The counts above are Java imports only. Also referencing `com.google.android.exoplayer2`:
+- `smarttubetv/.../res/layout/lb_playback_fragment.xml` lines 17, 27: `ui.AspectRatioFrameLayout` and `ui.SubtitleView`
+  by full class name (fails only at runtime when inflated; must point at our zoom `AspectRatioFrameLayout` copy).
+- `smarttubetv/src/main/AndroidManifest.xml` lines 23-32: `tools:overrideLibrary` entries for exoplayer2 packages.
+- `multidex-keep.pro` lines 108-208: exoplayer2 keep rules.
+- `common/res/values/dimens.xml` lines 3-6: overrides of `exo_media_button_*` dimensions.
+- Tunneling is live code switched off by `TUNNELING_ALLOWED = false` plus `applyTunneling()`
+  (`ExoPlayerController` ~537-567): port it switched off or delete it (tunneling stays off).

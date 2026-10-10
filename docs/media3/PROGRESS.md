@@ -57,4 +57,5 @@ Spent so far: 0.00 USD
 - 2026-10-10: 1d done: Decisions in PLAN.md. CI probes on m3/probe-* branches: Media3 1.11.1 needs compileSdk 36,
   1.5.1 needs 35, 1.4.1 builds with today's AGP 7.4.2/compileSdk 34. Chosen: 1.11.1 after a toolchain upgrade (AGP 8.x,
   compileSdk 36, Kotlin 2.x, targetSdk pinned to 34), fallback 1.4.1; minSdk 23; no decoder extensions; stage 2 on a
-  work branch. CI now also builds `m3/**` branches without publishing. Probe branches deleted.
+  work branch. CI now also builds `m3/**` branches without publishing. Probe branches stay (runs can't delete
+  branches: the proxy blocks it); they are harmless, Johan may delete `m3/probe-*`.

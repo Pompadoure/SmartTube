@@ -86,7 +86,9 @@ compileSdk 34 / Kotlin 1.8.10 / JDK 17:
    1.11), and Shorts preloading is the main goal. Cost: a toolchain upgrade first (decision 3).
    **Fallback: 1.4.1**, proven to build with today's toolchain, if the toolchain upgrade can't be made stable in
    about two runs (then record it here and in PROGRESS.md).
-2. **minSdk 23** for the `stjohan` flavor and `common` (Media3 needs 23 since 1.9.0). Streamer (Android 14, API 34)
+2. **minSdk 23** for the `stjohan` flavor, `common`, `doubletapplayerview` and the new `media3-sabr` module (Media3
+   needs 23 since 1.9.0). On this branch only `stjohan` is built (CI); the other flavors (`stbeta`/`ststable` minSdk 17,
+   `stfdroid` 21, their targetSdk = compileSdk) are accepted as unbuildable here. Streamer (Android 14, API 34)
    and Mi Box (Android 9, API 28) are both above it. **targetSdk stays 34**: `stjohan` currently uses
    `targetSdkVersion = compileSdkVersion`; it gets pinned to 34 so raising compileSdk doesn't switch on new runtime
    behaviour (edge-to-edge, foreground service rules of API 35/36).
@@ -97,8 +99,13 @@ compileSdk 34 / Kotlin 1.8.10 / JDK 17:
    root `build.gradle` lifted to the new version. The submodules (`MediaServiceCore`, `SharedModules`) stay
    untouched if possible: set `namespace` (from each module's manifest `package`) and the build features from the
    root `build.gradle` (`subprojects { plugins.withId('com.android.library') … }`); otherwise patch files
-   (`patches/MediaServiceCore/`, and a new `patches/SharedModules/` applied by CI the same way). Done = CI green
-   with the old ExoPlayer still in place, then Media3 goes in.
+   (`patches/MediaServiceCore/`, and a new `patches/SharedModules/` applied by CI the same way). AGP 8 rejects a
+   `package=` attribute in source manifests (33 library manifests in SharedModules, MediaServiceCore and the fork
+   have one), so expect those patches anyway: drop `package=`, set `namespace`. The root `build.gradle` forces old
+   versions for every configuration (OkHttp 3.12.13, `androidx.core` 1.9.0, `annotation` 1.1.0, `cronet-api` 105,
+   Kotlin stdlib): lift each force that would downgrade a Media3 dependency (else `NoSuchMethodError` at runtime);
+   the global exclude of `androidx.leanback`/`fragment` stays so `media3-ui-leanback` uses `:leanback-1.0.0`.
+   Done = CI green with the old ExoPlayer still in place, then Media3 goes in.
 4. **Media3 modules:** `media3-exoplayer`, `media3-exoplayer-dash` (DashManifestParser2 path, 22 dash imports),
    `media3-exoplayer-hls` and `media3-exoplayer-smoothstreaming` (one/two app imports each: live streams; drop SS if
    it turns out unused), `media3-datasource-okhttp`, `media3-datasource-cronet` (app's own Cronet engine),
@@ -114,3 +121,9 @@ compileSdk 34 / Kotlin 1.8.10 / JDK 17:
    directory itself stays in the repo until stage 6 (reference for porting), only unreferenced. Because that step
    breaks compilation of every player file at once, stage 2 is done on a work branch `m3/stage2` (CI builds `m3/**`
    without publishing) and merged into `media3` when CI is green.
+7. **Non-Java references** to `com.google.android.exoplayer2` must move too (the compiler won't catch them):
+   `lb_playback_fragment.xml` (AspectRatioFrameLayout → our zoom copy, SubtitleView), `tools:overrideLibrary` in
+   `smarttubetv/src/main/AndroidManifest.xml`, keep rules in `multidex-keep.pro`, `exo_media_button_*` dimens in
+   `common/res/values/dimens.xml`. Check with `grep -r exoplayer2` over res/, manifests and .pro files in 2c.
+8. **`@UnstableApi`:** most Media3 APIs we use are unstable and lint runs with `abortOnError true`: opt in per
+   package (`@OptIn(markerClass = UnstableApi.class)` in `package-info.java`) or via lint config, decided in 2b.
