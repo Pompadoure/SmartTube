@@ -171,7 +171,8 @@ android {
         // Library modules don't know this flavor, so they use their stable variant.
         stjohan {
             applicationId "org.smarttube.johan.media3" // media3 branch: installs next to JoTube
-            targetSdkVersion project.properties.compileSdkVersion
+            minSdkVersion 23 // Media3 1.9+ (PLAN.md Decisions 2)
+            targetSdkVersion 34 // pinned: compileSdk 36 must not switch on API 35/36 runtime behaviour
             matchingFallbacks = ['ststable']
         }
         stfdroid {

@@ -11,6 +11,12 @@ wrapper {
 buildscript {
     apply from: gradle.ext.sharedModulesConstants
 
+    // JoTube M3 toolchain (PLAN.md Decisions 3): Media3 1.11 needs compileSdk 36 -> AGP 8.x, Gradle 8.x, Kotlin 2.x.
+    // The shared constants (submodule) stay untouched; these override them for every module (see m3Toolchain below).
+    ext.m3AgpVersion = '8.13.0'
+    ext.m3KotlinVersion = '2.2.0'
+    ext.m3CompileSdk = 36
+
     repositories {
         google()
         mavenCentral()
@@ -19,8 +25,8 @@ buildscript {
         //jcenter()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:7.4.2'
-        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:' + kotlinVersion
+        classpath 'com.android.tools.build:gradle:' + m3AgpVersion
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:' + m3KotlinVersion
 
         // NOTE: Do not place your application dependencies here; they belong
         // in the individual module build.gradle files
@@ -45,9 +51,9 @@ allprojects {
         // Force Android 4 compatible okHttp version
         resolutionStrategy.force 'com.squareup.okhttp3:okhttp:' + okhttpVersion
         // Downgrade kotlin version for WorkManager
-        resolutionStrategy.force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:' + kotlinVersion
-        resolutionStrategy.force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:' + kotlinVersion
-        resolutionStrategy.force 'org.jetbrains.kotlin:kotlin-stdlib:' + kotlinVersion
+        resolutionStrategy.force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:' + m3KotlinVersion
+        resolutionStrategy.force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:' + m3KotlinVersion
+        resolutionStrategy.force 'org.jetbrains.kotlin:kotlin-stdlib:' + m3KotlinVersion
         resolutionStrategy.force 'org.jetbrains.kotlinx:kotlinx-coroutines-android:' + kotlinxVersion
         resolutionStrategy.force 'androidx.core:core-ktx:' + kotlinCoreXVersion
         resolutionStrategy.force 'androidx.core:core:' + coreXVersion
@@ -66,5 +72,41 @@ allprojects {
         //     // substitute remote dependency with local module
         //     substitute module('androidx.leanback:leanback') using project(':leanback-1.0.0')
         // }
+    }
+}
+
+// JoTube M3 toolchain glue for AGP 8 without touching the submodules (MediaServiceCore, SharedModules):
+// - namespace comes from the module manifest's package attribute (AGP 8 needs it in Gradle),
+// - manifests are fed to AGP as copies without package= (AGP 8 rejects it in source manifests),
+// - compileSdk 36 for every module (targetSdk of the app flavor is pinned separately),
+// - Kotlin bytecode target 1.8 like the Java code (AGP 8/Kotlin 2 fail on mismatched JVM targets).
+subprojects { p ->
+    def m3Glue = {
+        def android = p.extensions.getByName('android')
+        def mainManifest = p.file('src/main/AndroidManifest.xml')
+        if (android.namespace == null && mainManifest.exists()) {
+            def m = (mainManifest.text =~ /package\s*=\s*"([^"]+)"/)
+            if (m.find()) {
+                android.namespace = m.group(1)
+            }
+        }
+        android.sourceSets.configureEach { ss ->
+            def mf = p.file("src/${ss.name}/AndroidManifest.xml")
+            if (mf.exists() && mf.text =~ /\spackage\s*=\s*"[^"]+"/) {
+                def out = new File(p.buildDir, "m3-manifests/${ss.name}/AndroidManifest.xml")
+                out.parentFile.mkdirs()
+                out.text = mf.text.replaceFirst(/\s+package\s*=\s*"[^"]+"/, '')
+                ss.manifest.srcFile out
+            }
+        }
+        p.afterEvaluate {
+            android.compileSdk = rootProject.ext.m3CompileSdk
+            android.buildToolsVersion = '36.0.0'
+        }
+    }
+    p.plugins.withId('com.android.library', m3Glue)
+    p.plugins.withId('com.android.application', m3Glue)
+    p.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile).configureEach {
+        compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
     }
 }
