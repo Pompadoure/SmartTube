@@ -1,0 +1,61 @@
+// JoTube M3: the SABR (YouTube UMP-over-POST streaming) module ported from exoplayer-amzn-2.10.6/library/sabr to
+// AndroidX Media3. See docs/media3/SABR_PORT.md.
+plugins {
+    id 'com.android.library'
+    id 'com.google.protobuf' version '0.9.5'
+}
+
+apply from: gradle.ext.sharedModulesConstants
+
+ext {
+    m3Media3Version = '1.11.1'
+    m3ProtobufVersion = '3.25.5'
+}
+
+android {
+    namespace 'com.liskovsoft.media3.sabr'
+    compileSdk 36
+
+    defaultConfig {
+        minSdk 23
+        // the app's library modules have flavors (stbeta/ststable/stfdroid); this module doesn't
+        missingDimensionStrategy 'default', 'ststable'
+        consumerProguardFiles 'consumer-rules.pro'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    lint {
+        // Media3 APIs used here are @UnstableApi; the module opts in per package (package-info.java)
+        abortOnError false
+    }
+}
+
+dependencies {
+    api "androidx.media3:media3-exoplayer:$m3Media3Version"
+    api "androidx.media3:media3-extractor:$m3Media3Version"
+    api "androidx.media3:media3-datasource:$m3Media3Version"
+    implementation project(':mediaserviceinterfaces')
+    implementation project(':sharedutils')
+    implementation project(':youtubeapi')
+    implementation 'androidx.annotation:annotation:1.9.1'
+    implementation "com.google.protobuf:protobuf-javalite:$m3ProtobufVersion"
+}
+
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:$m3ProtobufVersion"
+    }
+    generateProtoTasks {
+        all().configureEach { task ->
+            task.builtins {
+                java {
+                    option "lite"
+                }
+            }
+        }
+    }
+}
