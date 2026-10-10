@@ -10,7 +10,9 @@ import androidx.media3.common.C;
 import androidx.media3.common.Format;
 import androidx.media3.exoplayer.SeekParameters;
 import androidx.media3.extractor.Extractor;
-import androidx.media3.extractor.TrackOutput;
+import androidx.media3.extractor.text.DefaultSubtitleParserFactory;
+import androidx.media3.extractor.text.SubtitleExtractor;
+import androidx.media3.extractor.text.SubtitleParser;
 import androidx.media3.exoplayer.source.BehindLiveWindowException;
 import androidx.media3.exoplayer.source.chunk.Chunk;
 import androidx.media3.exoplayer.source.chunk.BundledChunkExtractor;
@@ -64,6 +66,7 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
 
         private final DataSource.Factory dataSourceFactory;
         private final int maxSegmentsPerLoad;
+        private final SubtitleParser.Factory subtitleParserFactory = new DefaultSubtitleParserFactory();
 
         public Factory(DataSource.Factory dataSourceFactory) {
             this(dataSourceFactory, 1);
@@ -72,6 +75,25 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
         public Factory(DataSource.Factory dataSourceFactory, int maxSegmentsPerLoad) {
             this.dataSourceFactory = dataSourceFactory;
             this.maxSegmentsPerLoad = maxSegmentsPerLoad;
+        }
+
+        /**
+         * JoTube M3: SABR text tracks are parsed into cues during extraction (like Media3's DASH module),
+         * so their track format is {@code application/x-media3-cues}.
+         */
+        @Override
+        public Format getOutputTextFormat(Format sourceFormat) {
+            if (subtitleParserFactory.supportsFormat(sourceFormat)) {
+                return sourceFormat
+                        .buildUpon()
+                        .setSampleMimeType(MimeTypes.APPLICATION_MEDIA3_CUES)
+                        .setCueReplacementBehavior(subtitleParserFactory.getCueReplacementBehavior(sourceFormat))
+                        .setCodecs(sourceFormat.sampleMimeType
+                                + (sourceFormat.codecs != null ? " " + sourceFormat.codecs : ""))
+                        .setSubsampleOffsetUs(Format.OFFSET_SAMPLE_RELATIVE)
+                        .build();
+            }
+            return sourceFormat;
         }
 
         @Override
@@ -99,7 +121,8 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
                     dataSource,
                     elapsedRealtimeOffsetMs,
                     maxSegmentsPerLoad,
-                    closedCaptionFormats);
+                    closedCaptionFormats,
+                    subtitleParserFactory);
         }
 
     }
@@ -154,7 +177,8 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
             DataSource dataSource,
             long elapsedRealtimeOffsetMs,
             int maxSegmentsPerLoad,
-            List<Format> closedCaptionFormats) {
+            List<Format> closedCaptionFormats,
+            SubtitleParser.Factory subtitleParserFactory) {
         this.manifestLoaderErrorThrower = manifestLoaderErrorThrower;
         this.manifest = manifest;
         this.adaptationSetIndices = adaptationSetIndices;
@@ -190,6 +214,7 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
                             trackType,
                             representation,
                             closedCaptionFormats,
+                            subtitleParserFactory,
                             stream);
         }
         this.sabrStream = stream;
@@ -288,6 +313,8 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
         long nowUnixTimeUs = getNowUnixTimeUs();
         MediaChunk previous = queue.isEmpty() ? null : queue.get(queue.size() - 1);
         MediaChunkIterator[] chunkIterators = new MediaChunkIterator[trackSelection.length()];
+        // No segment index for SABR: no per-track iterators (adaptive selections dereference them).
+        java.util.Arrays.fill(chunkIterators, MediaChunkIterator.EMPTY);
         //for (int i = 0; i < chunkIterators.length; i++) {
         //    RepresentationHolder representationHolder = representationHolders[i];
         //    if (representationHolder.segmentIndex == null) {
@@ -521,6 +548,10 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
             if (chunkExtractor != null) {
                 chunkExtractor.release();
             }
+            @Nullable ChunkExtractor textExtractor = representationHolder.textExtractor;
+            if (textExtractor != null) {
+                textExtractor.release();
+            }
         }
     }
 
@@ -647,6 +678,15 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
                             ? Collections.singletonMap("Cookie", manifest.visitorCookie)
                             : Collections.emptyMap())
                     .build();
+            if (representationHolder.textExtractor != null) {
+                // JoTube M3: the whole subtitle file as one chunk, parsed into cues while extracting.
+                return new ContainerMediaChunk(
+                        dataSource, dataSpec, trackFormat, trackSelectionReason, trackSelectionData,
+                        /* startTimeUs= */ 0, representationHolder.periodDurationUs,
+                        /* clippedStartTimeUs= */ C.TIME_UNSET, /* clippedEndTimeUs= */ C.TIME_UNSET,
+                        /* chunkIndex= */ 0, /* chunkCount= */ 1, /* sampleOffsetUs= */ 0,
+                        representationHolder.textExtractor);
+            }
             return new SingleSampleMediaChunk(
                     dataSource, dataSpec, trackFormat, trackSelectionReason, trackSelectionData,
                     0, representationHolder.periodDurationUs, 0, trackType, trackFormat);
@@ -881,6 +921,8 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
     protected static final class RepresentationHolder {
 
         /* package */ final @Nullable ChunkExtractor extractorWrapper;
+        /** Raw text (subtitle) representations: a SubtitleExtractor, no SABR stream. */
+        /* package */ final @Nullable ChunkExtractor textExtractor;
 
         public final Representation representation;
         //public final @Nullable SabrSegmentIndex segmentIndex;
@@ -893,6 +935,7 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
                 int trackType,
                 Representation representation,
                 List<Format> closedCaptionFormats,
+                SubtitleParser.Factory subtitleParserFactory,
                 SabrStream sabrStream) {
             this(
                     periodDurationUs,
@@ -902,6 +945,7 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
                             representation,
                             closedCaptionFormats,
                             sabrStream),
+                    createTextExtractor(representation, subtitleParserFactory),
                     /* segmentNumShift= */ 0
                     //representation.getIndex()
             );
@@ -911,6 +955,7 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
                 long periodDurationUs,
                 Representation representation,
                 @Nullable ChunkExtractor extractorWrapper,
+                @Nullable ChunkExtractor textExtractor,
                 long segmentNumShift
                 //@Nullable SabrSegmentIndex segmentIndex
         ) {
@@ -918,6 +963,7 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
             this.representation = representation;
             this.segmentNumShift = segmentNumShift;
             this.extractorWrapper = extractorWrapper;
+            this.textExtractor = textExtractor;
             //this.segmentIndex = segmentIndex;
         }
 
@@ -927,7 +973,7 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
                 throws BehindLiveWindowException {
 
             return new RepresentationHolder(
-                    newPeriodDurationUs, newRepresentation, extractorWrapper, segmentNumShift);
+                    newPeriodDurationUs, newRepresentation, extractorWrapper, textExtractor, segmentNumShift);
 
             //SabrSegmentIndex oldIndex = representation.getIndex();
             //SabrSegmentIndex newIndex = newRepresentation.getIndex();
@@ -1058,6 +1104,18 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
         private static boolean needsExtractor(Representation representation) {
             String containerMimeType = representation.format.containerMimeType;
             return containerMimeType != null && !mimeTypeIsRawText(containerMimeType);
+        }
+
+        private static @Nullable ChunkExtractor createTextExtractor(
+                Representation representation, SubtitleParser.Factory subtitleParserFactory) {
+            Format format = representation.format;
+            if (needsExtractor(representation) || !subtitleParserFactory.supportsFormat(format)) {
+                return null;
+            }
+            return new BundledChunkExtractor(
+                    new SubtitleExtractor(subtitleParserFactory.create(format), format),
+                    C.TRACK_TYPE_TEXT,
+                    format);
         }
 
         private static @Nullable ChunkExtractor createExtractorWrapper(

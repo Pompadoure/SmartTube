@@ -106,7 +106,10 @@ final class SabrMediaPeriod
             List<Representation> representations = adaptationSet.representations;
             Format[] formats = new Format[representations.size()];
             for (int j = 0; j < formats.length; j++) {
-                formats[j] = representations.get(j).format;
+                Format format = representations.get(j).format;
+                // Media3: the track's crypto type, and parsed-cue output for text tracks (as DashMediaPeriod)
+                format = format.copyWithCryptoType(drmSessionManager.getCryptoType(format));
+                formats[j] = chunkSourceFactory.getOutputTextFormat(format);
             }
             groups[i] = new TrackGroup(/* id= */ String.valueOf(adaptationSet.id), formats);
             trackGroupInfos[i] = new TrackGroupInfo(adaptationSet.type, new int[] {i});

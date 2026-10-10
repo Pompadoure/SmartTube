@@ -37,6 +37,14 @@ public interface SabrChunkSource extends ChunkSource {
   interface Factory {
 
     /**
+     * Returns the output format of a text track: {@code application/x-media3-cues} when the subtitles are
+     * parsed during extraction (Media3's TextRenderer no longer decodes raw subtitle samples by default).
+     */
+    default Format getOutputTextFormat(Format sourceFormat) {
+      return sourceFormat;
+    }
+
+    /**
      * @param manifestLoaderErrorThrower Throws errors affecting loading of manifests.
      * @param manifest The initial manifest.
      * @param periodIndex The index of the corresponding period in the manifest.

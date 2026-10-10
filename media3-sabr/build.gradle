@@ -29,7 +29,7 @@ android {
     }
 
     lint {
-        // Media3 APIs used here are @UnstableApi; the module opts in per package (package-info.java)
+        // Media3 APIs used here are @UnstableApi; classes using them are annotated @UnstableApi themselves
         abortOnError false
     }
 }
