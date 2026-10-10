@@ -1,0 +1,155 @@
+diff --git a/mediaserviceinterfaces/src/main/java/com/liskovsoft/mediaserviceinterfaces/ContentService.java b/mediaserviceinterfaces/src/main/java/com/liskovsoft/mediaserviceinterfaces/ContentService.java
+index e04de4c..b45fdd4 100644
+--- a/mediaserviceinterfaces/src/main/java/com/liskovsoft/mediaserviceinterfaces/ContentService.java
++++ b/mediaserviceinterfaces/src/main/java/com/liskovsoft/mediaserviceinterfaces/ContentService.java
+@@ -62,6 +62,10 @@ public interface ContentService {
+      * JoTube: the reel params of a Short loaded in the Shorts feed during this run (null if unknown). No network.
+      */
+     String getShortsParams(String videoId);
++    /**
++     * JoTube: the channel avatar of a Short loaded in the Shorts feed during this run (null if unknown). No network.
++     */
++    String getShortsAvatarUrl(String videoId);
+     Observable<List<MediaGroup>> getKidsHomeObserve();
+     Observable<List<MediaGroup>> getSportsObserve();
+     Observable<List<MediaGroup>> getLiveObserve();
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
+index d1362c6..81a55ef 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
+@@ -163,6 +163,12 @@ internal open class BrowseService2 {
+             return getShorts()
+         }
+ 
++        if (!SHORTS_SEEDED_FEEDS) {
++            // JoTube: checked on the device (2026-10-10, j63): the seed request gives no sequence, the seeded feed was
++            // empty and cost one extra round trip before the usual feed
++            return getShorts()
++        }
++
+         if (sShortsSeedFailures.get() >= SHORTS_SEED_MAX_FAILURES) {
+             // Seeded feeds don't work in this run: no extra round trips
+             Log.d(SHORTS_TAG, "Shorts feed: seeded feeds are off in this run, the usual feed")
+@@ -214,6 +220,13 @@ internal open class BrowseService2 {
+         return getShortsSeed(videoId)?.params
+     }
+ 
++    /**
++     * JoTube: the channel avatar of a Short loaded in the Shorts feed during this run (null if unknown). No network.
++     */
++    fun getShortsAvatarUrl(videoId: String?): String? {
++        return getShortsSeed(videoId)?.avatarUrl
++    }
++
+     private fun getShortsWeb(seedVideoId: String? = null, seedParams: String? = null): MediaGroup? {
+         // JoTube: signed in when possible (personalized by the account's history). No subscriptions shelf prepended.
+         return withShortsAuth<MediaGroup>(if (seedVideoId != null) "seeded feed" else "feed", { isEmptyShorts(it) }) { auth ->
+@@ -227,7 +240,7 @@ internal open class BrowseService2 {
+ 
+                 if (seedVideoId == null) {
+                     rememberShortsSeed(firstItem.getVideoId(), firstItem.getContinuationToken(),
+-                        firstItem.replacementEndpoint?.reelWatchEndpoint?.params)
++                        firstItem.replacementEndpoint?.reelWatchEndpoint?.params, firstItem.getChannelThumbnailUrl())
+                     result?.mediaItems?.add(0, ShortsMediaItem(null, firstItem))
+                 } else {
+                     // The seed itself was watched already
+@@ -299,7 +312,9 @@ internal open class BrowseService2 {
+     }
+ 
+     private fun isShortsSignedIn(): Boolean {
+-        return !sShortsAuthBroken.get() && RetrofitOkHttpHelper.authHeaders["Authorization"] != null
++        // JoTube: off. Checked on the device (2026-10-10, j63): signed-in reel requests return nothing, the anonymous
++        // retry cost one extra round trip on every first Shorts load
++        return SHORTS_SIGNED_IN && !sShortsAuthBroken.get() && RetrofitOkHttpHelper.authHeaders["Authorization"] != null
+     }
+ 
+     private fun getShortsTV(): MediaGroup? {
+@@ -437,11 +452,16 @@ internal open class BrowseService2 {
+                         Log.d(SHORTS_TAG, "Shorts feed: no title/channel: %s overlay=%s panels=%s",
+                             reel?.videoId, info.overlay != null, info.engagementPanels?.size)
+                     }
+-                    rememberShortsSeed(reel?.videoId, info.getContinuationToken(), reel?.params)
++                    rememberShortsSeed(reel?.videoId, info.getContinuationToken(), reel?.params, info.getChannelThumbnailUrl())
+                     result.add(ShortsMediaItem(reel, info))
+                 }
+             }
+ 
++            // JoTube: diagnostics, does YouTube give each Short its own sequence (the "more like this" seed)?
++            Log.d(SHORTS_TAG, "Shorts feed: page with %s Shorts, %s with an own sequence, %s with a channel avatar",
++                result.size, loaded.count { (_, info) -> info.getContinuationToken() != null },
++                loaded.count { (_, info) -> info.getChannelThumbnailUrl() != null })
++
+             ShortsMediaGroup(result, it.getContinuationToken(), MediaGroupOptions.create(MediaGroup.TYPE_SHORTS))
+         }
+     }
+@@ -811,13 +831,15 @@ private const val SHORTS_TAG = "BrowseService2"
+ 
+ // JoTube: signed-in reel requests turned out not to work in this run
+ private val sShortsAuthBroken = AtomicBoolean(false)
++private const val SHORTS_SIGNED_IN = false
++private const val SHORTS_SEEDED_FEEDS = false
+ 
+ // JoTube: seeded new feeds that gave nothing in a row (then the usual feed only, no extra round trips)
+ private val sShortsSeedFailures = AtomicInteger(0)
+ private const val SHORTS_SEED_MAX_FAILURES = 2
+ 
+ // JoTube: the own sequence token and the reel params of the Shorts loaded in the feed (videoId -> seed)
+-private class ShortsSeed(val token: String?, val params: String?)
++private class ShortsSeed(val token: String?, val params: String?, val avatarUrl: String?)
+ 
+ private const val SHORTS_SEEDS_MAX = 500
+ 
+@@ -827,13 +849,13 @@ private val sShortsSeeds = object : LinkedHashMap<String, ShortsSeed>(64, 0.75f,
+     }
+ }
+ 
+-private fun rememberShortsSeed(videoId: String?, token: String?, params: String?) {
+-    if (videoId == null || (token == null && params == null)) {
++private fun rememberShortsSeed(videoId: String?, token: String?, params: String?, avatarUrl: String? = null) {
++    if (videoId == null || (token == null && params == null && avatarUrl == null)) {
+         return
+     }
+ 
+     synchronized(sShortsSeeds) {
+-        sShortsSeeds[videoId] = ShortsSeed(token, params)
++        sShortsSeeds[videoId] = ShortsSeed(token, params, avatarUrl)
+     }
+ }
+ 
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/gen/BrowseHelper.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/gen/BrowseHelper.kt
+index b5117a0..56a92ea 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/gen/BrowseHelper.kt
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/gen/BrowseHelper.kt
+@@ -11,6 +11,7 @@ import com.liskovsoft.youtubeapi.common.models.gen.getContinuationToken
+ import com.liskovsoft.youtubeapi.common.models.gen.getFeedbackToken
+ import com.liskovsoft.youtubeapi.common.models.gen.getParams
+ import com.liskovsoft.youtubeapi.common.models.gen.getFeedbackTokens
++import com.liskovsoft.youtubeapi.common.models.gen.getHighResThumbnailUrl
+ import com.liskovsoft.youtubeapi.common.models.gen.getItems
+ import com.liskovsoft.youtubeapi.common.models.gen.getSubtitle
+ import com.liskovsoft.youtubeapi.common.models.gen.getSuggestToken
+@@ -228,6 +229,8 @@ private fun ReelResult.getChannelName(): String? = getPlayerHeader()?.channelTit
+ private fun ReelResult.getUploadDate(): String? = getPlayerHeader()?.timestampText?.getText()
+ internal fun ReelResult.getThumbnails(): ThumbnailItem? = getWatchEndpoint()?.thumbnail
+ internal fun ReelResult.getBrowseId(): String? = getPlayerHeader()?.channelNavigationEndpoint?.getBrowseId()
++// JoTube: the channel avatar of a Short (the side panel shows it before the metadata arrives)
++internal fun ReelResult.getChannelThumbnailUrl(): String? = getPlayerHeader()?.channelThumbnail?.getHighResThumbnailUrl()
+ internal fun ReelResult.getFeedbackTokens(): List<String?>? = overlay?.reelPlayerOverlayRenderer?.menu?.getFeedbackTokens()
+ internal fun ReelResult.getContinuationToken(): String? = sequenceContinuation ?: continuationEndpoint?.continuationCommand?.token
+ 
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/YouTubeContentService.java b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/YouTubeContentService.java
+index cf222d9..1038a15 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/YouTubeContentService.java
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/service/YouTubeContentService.java
+@@ -348,6 +348,11 @@ class YouTubeContentService implements ContentService {
+         return getBrowseService2().getShortsParams(videoId);
+     }
+ 
++    @Override
++    public String getShortsAvatarUrl(String videoId) {
++        return getBrowseService2().getShortsAvatarUrl(videoId);
++    }
++
+     @Override
+     public Observable<List<MediaGroup>> getKidsHomeObserve() {
+         return RxHelper.create(emitter -> {

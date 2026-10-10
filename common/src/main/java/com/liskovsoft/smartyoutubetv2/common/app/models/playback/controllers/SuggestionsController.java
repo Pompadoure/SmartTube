@@ -739,7 +739,7 @@ public class SuggestionsController extends BasePlayerController {
             return;
         }
 
-        smartNext.markPlayed(video.videoId);
+        smartNext.markPlayed(video);
         mSmartNext = smartNext.pick(video, metadata.getNextVideo(), metadata.getSuggestions());
         mSmartNextFor = video.videoId;
     }

@@ -21,6 +21,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.bumptech.glide.Glide;
+import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
 import com.liskovsoft.smartyoutubetv2.tv.R;
 import com.liskovsoft.smartyoutubetv2.tv.ui.playback.actions.ActionHelpers;
@@ -126,7 +127,7 @@ public class ShortsSidePanel {
         mChannelRow.setPadding(dp(8), dp(6), dp(16), dp(6));
         mAvatar = new ImageView(context);
         mAvatar.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        mChannelRow.addView(mAvatar, new LinearLayout.LayoutParams(dp(36), dp(36)));
+        mChannelRow.addView(mAvatar, new LinearLayout.LayoutParams(dp(ShortsTransitionState.AVATAR_SIZE_DP), dp(ShortsTransitionState.AVATAR_SIZE_DP)));
         mAuthor = new TextView(context);
         mAuthor.setTextColor(Color.WHITE);
         mAuthor.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);

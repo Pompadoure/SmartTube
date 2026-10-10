@@ -768,7 +768,9 @@ public final class Video {
         subscriberCount = metadata.getSubscriberCount();
         notificationStates = metadata.getNotificationStates();
         author = metadata.getAuthor();
-        if (metadata.getAuthorImageUrl() != null) {
+        // JoTube: a Short already has the avatar from the Shorts feed (preloaded, shown at once): another URL of the
+        // same image would load it again
+        if (metadata.getAuthorImageUrl() != null && (authorImageUrl == null || !isShorts)) {
             authorImageUrl = metadata.getAuthorImageUrl();
         }
         durationMs = metadata.getDurationMs();

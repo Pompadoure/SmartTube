@@ -1,5 +1,7 @@
 package com.liskovsoft.smartyoutubetv2.common.app.models.playback;
 
+import android.content.Context;
+
 /**
  * Shared state between the video loader (common module) and the playback UI (tv module)
  * used to animate transitions between Shorts.
@@ -8,6 +10,11 @@ public final class ShortsTransitionState {
     public static final int DIRECTION_NONE = 0;
     public static final int DIRECTION_NEXT = 1;
     public static final int DIRECTION_PREVIOUS = -1;
+    /**
+     * Size of the channel avatar in the Shorts side panel. The preload uses the same size, so the panel gets the
+     * avatar from the memory cache.
+     */
+    public static final int AVATAR_SIZE_DP = 36;
 
     private static volatile int sDirection = DIRECTION_NONE;
     private static volatile boolean sIsShortsMode;
@@ -60,6 +67,10 @@ public final class ShortsTransitionState {
 
     public static void setDirection(int direction) {
         sDirection = direction;
+    }
+
+    public static int getAvatarSizePx(Context context) {
+        return Math.round(AVATAR_SIZE_DP * context.getResources().getDisplayMetrics().density);
     }
 
     /**

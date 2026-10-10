@@ -40,8 +40,10 @@ import io.reactivex.disposables.Disposable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class VideoLoaderController extends BasePlayerController {
     private static final String TAG = VideoLoaderController.class.getSimpleName();
@@ -53,6 +55,8 @@ public class VideoLoaderController extends BasePlayerController {
     private static final int FEED_PAGE_MIN_KEEP = 2; // a background page that was seen completely: keep this many
     private static final int FEED_EXTRA_PAGES_MAX = 2; // more pages in a row when a page had (almost) nothing new
     private static final float ENGAGED_PERCENT = 0.75f; // a Short watched this far counts as engaged
+    private static final int PRELOADED_AVATARS_MAX = 50;
+    private final Set<String> mPreloadedAvatars = new LinkedHashSet<>(); // channel avatars loaded in advance
     private final Playlist mPlaylist;
     private Video mPendingVideo;
     private SuggestionsController mSuggestionsController;
@@ -289,6 +293,40 @@ public class VideoLoaderController extends BasePlayerController {
     }
 
     /**
+     * JoTube: the channel avatar of a Short from the Shorts feed is known before its metadata (the feed has it):
+     * set it on the item and load it in advance at the size of the side panel's avatar (memory cache hit there).
+     */
+    private void prepareAvatar(Video video) {
+        if (video == null || !video.isShorts || video.videoId == null || getContext() == null) {
+            return;
+        }
+
+        String url = video.authorImageUrl;
+
+        if (url == null) {
+            url = YouTubeServiceManager.instance().getContentService().getShortsAvatarUrl(video.videoId);
+            video.authorImageUrl = url;
+        }
+
+        if (url == null || mPreloadedAvatars.contains(url)) {
+            return;
+        }
+
+        try {
+            int sizePx = ShortsTransitionState.getAvatarSizePx(getContext());
+            Glide.with(getContext()).load(url).circleCrop().preload(sizePx, sizePx);
+        } catch (IllegalArgumentException e) {
+            return; // Activity destroyed: try again next time
+        }
+
+        mPreloadedAvatars.add(url);
+
+        if (mPreloadedAvatars.size() > PRELOADED_AVATARS_MAX) {
+            mPreloadedAvatars.remove(mPreloadedAvatars.iterator().next());
+        }
+    }
+
+    /**
      * JoTube: the Short the user is leaving: watched most of it?
      */
     private void checkShortEngaged(Video newItem) {
@@ -336,6 +374,7 @@ public class VideoLoaderController extends BasePlayerController {
                 if (history != null) {
                     history.markSeen(item.videoId); // JoTube: not again in the next feeds
                 }
+                prepareAvatar(item); // JoTube: the side panel shows the channel avatar at once (not after the metadata)
                 // JoTube: the swipe back to this Short shows its thumbnail at once (memory cache)
                 try {
                     Glide.with(getContext()).load(ShortsTransitionState.getThumbnailUrl(item.videoId)).preload();
@@ -899,6 +938,8 @@ public class VideoLoaderController extends BasePlayerController {
         for (int i = 0; i < ahead.size(); i++) {
             Video next = ahead.get(i);
             int distance = i + 1;
+
+            prepareAvatar(next); // JoTube: the channel avatar of the next Shorts is in the memory cache in advance
 
             MediaItemFormatInfo cached = mPrefetchedFormats.get(next.videoId);
             Long cachedTimeMs = mPrefetchedTimesMs.get(next.videoId);

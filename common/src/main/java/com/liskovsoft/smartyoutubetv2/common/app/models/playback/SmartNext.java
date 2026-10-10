@@ -35,6 +35,8 @@ public final class SmartNext {
     private static final int MAX_RECENT = 300;
     private static final int MAX_RELATED = 8; // top related videos to choose from
     private static final float AUTOPLAY_CHANCE = 0.5f; // YouTube's own pick, when it is a fresh one
+    private static final float AUTOPLAY_SAME_CHANNEL_CHANCE = 0.25f; // ...when it's from the channel just played
+    private static final int MAX_SAME_CHANNEL_IN_ROW = 2; // then the next one is from another channel
     private static final float WATCHED_PERCENT = 70;
     private static final long SAVE_DELAY_MS = 3_000;
     private static final long SAVE_MAX_DELAY_MS = 30_000;
@@ -46,6 +48,8 @@ public final class SmartNext {
     private final Runnable mSave = this::save;
     private final Context mContext;
     private long mSavePendingSinceMs;
+    private final List<String[]> mRecentChannels = new ArrayList<>(); // {channelId, name} of the last played videos
+    private String mLastPlayedId;
 
     private SmartNext(Context context) {
         mContext = context.getApplicationContext();
@@ -68,9 +72,19 @@ public final class SmartNext {
     /**
      * A regular video started playing.
      */
-    public synchronized void markPlayed(String videoId) {
+    public synchronized void markPlayed(Video video) {
+        String videoId = video != null ? video.videoId : null;
+
         if (TextUtils.isEmpty(videoId)) {
             return;
+        }
+
+        if (!videoId.equals(mLastPlayedId)) { // the same video again (e.g. back from a Short) isn't one more in a row
+            mLastPlayedId = videoId;
+            mRecentChannels.add(new String[] {channelIdOf(video), channelNameOf(video)});
+            while (mRecentChannels.size() > MAX_SAME_CHANNEL_IN_ROW) {
+                mRecentChannels.remove(0);
+            }
         }
 
         mRecent.remove(videoId); // most recent at the end
@@ -120,62 +134,52 @@ public final class SmartNext {
         }
 
         Video autoplayVideo = autoplay != null ? Video.from(autoplay) : null;
-        boolean autoplayFresh = isFresh(current, autoplayVideo);
+        // Variety: after MAX_SAME_CHANNEL_IN_ROW videos of one channel in a row the next one is from another channel
+        boolean channelRunFull = isChannelRunFull(current);
 
-        // The related videos first (the first row), then the other rows when it has too few fresh ones
-        List<Video> related = new ArrayList<>();
+        Video result = null;
+        String reason = "nothing fresh";
 
-        if (suggestions != null) {
-            for (MediaGroup group : suggestions) {
-                if (related.size() >= MAX_RELATED) {
-                    break;
+        for (int pass = 0; pass < 2 && result == null; pass++) {
+            // Second pass: nothing fresh from another channel, so the channel rule is dropped (still fresh videos)
+            boolean otherChannelOnly = channelRunFull && pass == 0;
+            boolean autoplayFresh = isFresh(current, autoplayVideo)
+                    && !(otherChannelOnly && sameChannel(current, autoplayVideo));
+            List<Video> related = collectRelated(current, autoplayVideo, suggestions, otherChannelOnly);
+
+            boolean autoplaySameChannel = sameChannel(current, autoplayVideo);
+            float autoplayChance = autoplaySameChannel ? AUTOPLAY_SAME_CHANNEL_CHANCE : AUTOPLAY_CHANCE;
+
+            if (autoplayFresh && (related.isEmpty() || mRandom.nextFloat() < autoplayChance)) {
+                result = autoplayVideo;
+                reason = "autoplay" + (autoplaySameChannel ? ", same channel" : "");
+            } else if (!related.isEmpty()) {
+                // The higher the better (2n, 2n-2, ..., 2), a video of the same channel counts half
+                int[] weights = new int[related.size()];
+                int total = 0;
+                for (int i = 0; i < related.size(); i++) {
+                    int weight = (related.size() - i) * 2;
+                    weights[i] = sameChannel(current, related.get(i)) ? Math.max(1, weight / 2) : weight;
+                    total += weights[i];
                 }
-
-                if (group == null || group.getMediaItems() == null) {
-                    continue;
+                int ticket = mRandom.nextInt(total);
+                int index = 0;
+                while (index < related.size() - 1 && ticket >= weights[index]) {
+                    ticket -= weights[index];
+                    index++;
                 }
+                result = related.get(index);
+                reason = "related #" + (index + 1) + " of " + related.size()
+                        + (sameChannel(current, result) ? ", same channel" : ", other channel");
+            }
 
-                for (MediaItem item : group.getMediaItems()) {
-                    if (related.size() >= MAX_RELATED) {
-                        break;
-                    }
-
-                    Video video = item != null ? Video.from(item) : null;
-
-                    if (isFresh(current, video) && (autoplayVideo == null || !video.videoId.equals(autoplayVideo.videoId))
-                            && !containsId(related, video.videoId)) {
-                        related.add(video);
-                    }
-                }
+            if (result != null && channelRunFull) {
+                reason += pass == 0 ? ", channel limit" : ", channel limit dropped";
             }
         }
 
-        Video result;
-        String reason;
-
-        if (autoplayFresh && (related.isEmpty() || mRandom.nextFloat() < AUTOPLAY_CHANCE)) {
-            result = autoplayVideo;
-            reason = "autoplay";
-        } else if (!related.isEmpty()) {
-            // The higher the better: weights n, n-1, ..., 1
-            int total = related.size() * (related.size() + 1) / 2;
-            int ticket = mRandom.nextInt(total);
-            int index = 0;
-            for (int weight = related.size(); weight > 0; weight--, index++) {
-                ticket -= weight;
-                if (ticket < 0) {
-                    break;
-                }
-            }
-            result = related.get(Math.min(index, related.size() - 1));
-            reason = "related #" + (index + 1) + " of " + related.size();
-        } else {
-            result = null;
-            reason = "nothing fresh";
-        }
-
-        Log.d(TAG, "Next after %s: %s (%s, autoplay %s %s)", current.videoId, result != null ? result.videoId : null, reason,
-                autoplayVideo != null ? autoplayVideo.videoId : null, autoplayFresh ? "fresh" : "skipped");
+        Log.d(TAG, "Next after %s: %s (%s, autoplay %s)", current.videoId, result != null ? result.videoId : null, reason,
+                autoplayVideo != null ? autoplayVideo.videoId : null);
 
         return result;
     }
@@ -203,6 +207,94 @@ public final class SmartNext {
         BlockedChannelData blocked = BlockedChannelData.instance(mContext);
 
         return blocked == null || blocked.isEmpty() || !blocked.containsChannel(video.channelId, video.getAuthor());
+    }
+
+    /**
+     * The related videos first (the first row), then the other rows when it has too few fresh ones.
+     */
+    private List<Video> collectRelated(Video current, Video autoplayVideo, List<MediaGroup> suggestions, boolean otherChannelOnly) {
+        List<Video> related = new ArrayList<>();
+
+        if (suggestions == null) {
+            return related;
+        }
+
+        for (MediaGroup group : suggestions) {
+            if (related.size() >= MAX_RELATED) {
+                break;
+            }
+
+            if (group == null || group.getMediaItems() == null) {
+                continue;
+            }
+
+            for (MediaItem item : group.getMediaItems()) {
+                if (related.size() >= MAX_RELATED) {
+                    break;
+                }
+
+                Video video = item != null ? Video.from(item) : null;
+
+                if (isFresh(current, video) && (autoplayVideo == null || !video.videoId.equals(autoplayVideo.videoId))
+                        && !containsId(related, video.videoId) && !(otherChannelOnly && sameChannel(current, video))) {
+                    related.add(video);
+                }
+            }
+        }
+
+        return related;
+    }
+
+    private static String channelIdOf(Video video) {
+        return video != null && !TextUtils.isEmpty(video.channelId) ? video.channelId : null;
+    }
+
+    private static String channelNameOf(Video video) {
+        String author = video != null ? video.getAuthor() : null;
+        return TextUtils.isEmpty(author) ? null : author.trim().toLowerCase();
+    }
+
+    /**
+     * Ids when both are known, else the channel names (suggestion cards often have no channel id).
+     */
+    private static boolean sameChannel(String id1, String name1, String id2, String name2) {
+        if (id1 != null && id2 != null) {
+            return id1.equals(id2);
+        }
+
+        return name1 != null && name1.equals(name2);
+    }
+
+    private static boolean sameChannel(Video video1, Video video2) {
+        if (video1 == null || video2 == null) {
+            return false;
+        }
+
+        return sameChannel(channelIdOf(video1), channelNameOf(video1), channelIdOf(video2), channelNameOf(video2));
+    }
+
+    /**
+     * The last MAX_SAME_CHANNEL_IN_ROW played videos (the current one included) are all from its channel.
+     */
+    private synchronized boolean isChannelRunFull(Video current) {
+        if (mRecentChannels.size() < MAX_SAME_CHANNEL_IN_ROW) {
+            return false;
+        }
+
+        String id = channelIdOf(current);
+        String name = channelNameOf(current);
+
+        if (id == null && name == null) {
+            return false;
+        }
+
+        for (String[] channel : mRecentChannels) {
+            if (!sameChannel(id, name, channel[0], channel[1])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static boolean containsId(List<Video> videos, String videoId) {
