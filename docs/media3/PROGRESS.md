@@ -22,7 +22,7 @@ a cut-off (Johan's decision 2026-10-10):
 - API credits: hard cap per claude-task run and a total budget (below). At 12.00 USD spent the runs stop using
   the API and tell Johan; the last 2.00 USD stay untouched.
 
-Run: FINISHED 2026-10-10T18:25Z
+Run: STARTED 2026-10-10T18:18Z
 Doing now: 2c on branch m3/stage2 (from media3), step 1 done (gradle swap + mechanical renames, commits 8cc58c2 and the next one), the build is expected red until all app files are ported. CI now prints every compiler error (javac -Xmaxerrs 2000) as up to 7 'COMPILER ERRORS part N (total T)' annotations, one line each with the javac 'symbol' detail, plus one 'FORCED/CHANGED DEPENDENCIES' notice. Next action: `gh run list -R Pompadoure/SmartTube --branch m3/stage2 -L 1`, read the annotations (gh api repos/Pompadoure/SmartTube/check-runs/<job id>/annotations -q '.[].message'), fix file groups in INVENTORY order: 4 sources (ExoMediaSourceFactory: SabrMediaSource.Factory/DefaultSabrChunkSource.Factory, DashMediaSource, OkHttp/Cronet DataSource.Factory, SabrDefaultLoadErrorHandlingPolicy/DashDefaultLoadErrorHandlingPolicy -> getRetryDelayMsFor(LoadErrorInfo); LiveDashManifestParser vs Media3 DashManifestParser; DashManifestParser2 fork class), 3 renderers, 2 track selection, 1 player construction/controller, 5 errors (TrackErrorFixer -> MediaSourceEventListener), 6 UI/leanback (ControlDispatcher -> ForwardingPlayer), 7 MediaSession (media3-session), 8 Shorts (ShortsQueue/ConcatenatingMediaSource, FastStartLoadControl, PlayedPeriodsPolicy), 9 misc, doubletapplayerview; push after each group. Dependencies: only androidx.annotation is forced down (1.6-1.9 -> 1.1.0, compile-time annotations, low risk); check the full notice for okhttp/core.
 Cut-offs in a row: 0
 
