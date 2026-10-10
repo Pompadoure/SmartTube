@@ -91,6 +91,19 @@ jobs:
             exit 1
           fi
 
+      - name: Unit test summary
+        if: always()
+        run: |
+          # Evidence that the media3-sabr tests really ran: counts from the JUnit XML reports
+          dir=media3-sabr/build/test-results/testReleaseUnitTest
+          if ls "$dir"/*.xml >/dev/null 2>&1; then
+            for f in "$dir"/*.xml; do
+              echo "::notice::$(basename "$f" .xml | sed 's/^TEST-//'): $(grep -o '<testsuite [^>]*' "$f" | grep -oE '(tests|failures|errors|skipped)="[0-9]+"' | tr '\n' ' ')"
+            done
+          else
+            echo "::warning::no media3-sabr unit test reports found"
+          fi
+
       - name: Collect APKs
         run: |
           mkdir -p out
