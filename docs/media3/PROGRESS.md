@@ -14,7 +14,7 @@ The Claude plan's usage can't be read by a run, so the work is cut into pieces t
   it checks what was pushed, notes "cut off" in the log and halves the step size (`Step size` below).
 - Two cut-offs in a row: the run only resumes the unfinished step, nothing new, and tells Johan.
 - Runs are scheduled every 5 hours (the usage window), so each one starts with a fresh window.
-- API credits: hard cap per claude-task run and a total budget (below). At 10.00 USD spent the runs stop using
+- API credits: hard cap per claude-task run and a total budget (below). At 12.00 USD spent the runs stop using
   the API and tell Johan; the last 2.00 USD stay untouched.
 
 Run: FINISHED 2026-10-10 (setup)
