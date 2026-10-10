@@ -23,7 +23,7 @@ a cut-off (Johan's decision 2026-10-10):
   the API and tell Johan; the last 2.00 USD stay untouched.
 
 Run: STARTED 2026-10-10T16:19Z
-Doing now: 2a started. Next action: on branch m3/toolchain bump AGP/Gradle/Kotlin/compileSdk, pin stjohan targetSdk 34, set namespaces from the root build.gradle, patch package= out of submodule manifests; iterate on CI until green, then merge into media3.
+Doing now: 2a on branch m3/toolchain: first attempt pushed (root build.gradle: AGP 8.13.0, Kotlin 2.2.0, compileSdk 36 via afterEvaluate, namespace + package-free manifest copies derived per module, Kotlin jvmTarget 1.8; gradle.properties AGP 7 behaviour flags; Gradle 8.14.3; stjohan minSdk 23/targetSdk 34). Next: read its CI result, fix, repeat until green; then merge m3/toolchain into media3.
 Cut-offs in a row: 0
 
 ## API credits (Claude Console, used only by the claude-task workflow)
