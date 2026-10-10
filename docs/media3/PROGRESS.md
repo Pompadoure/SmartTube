@@ -23,7 +23,7 @@ a cut-off (Johan's decision 2026-10-10):
   the API and tell Johan; the last 2.00 USD stay untouched.
 
 Run: STARTED 2026-10-10T17:35Z
-Doing now: 2b batch 1 done and merged (media3-sabr: protos, parser/*, manifest/*, SabrSegmentIndex, SabrWrappingSegmentIndex compile; CI run 38071813525). Next action: batch 2 on branch m3/sabr (from media3): port SabrChunkSource + DefaultSabrChunkSource, then SabrMediaPeriod and SabrMediaSource from exoplayer-amzn-2.10.6/library/sabr into media3-sabr/src/main/java/com/liskovsoft/media3/sabr, first `python3 docs/media3/tools/m3_rename.py <files>`, then hand-port against Media3 1.11.1 DefaultDashChunkSource/DashMediaPeriod/DashMediaSource (sources: `git clone --depth 1 --branch 1.11.1 --filter=blob:none --sparse https://github.com/androidx/media /tmp/m3src` + `git sparse-checkout set libraries/exoplayer_dash/src/main libraries/exoplayer/src/main/java/androidx/media3/exoplayer/source`). Drop PlayerEmsgHandler/EventSampleStream/event streams (SABR_PORT.md); shouldCancelLoad returns false. CI errors: one annotation "COMPILER ERRORS" with all javac lines (gh api .../check-runs/<job>/annotations).
+Doing now: 2b batch 2 pushed to branch m3/sabr (SabrChunkSource, DefaultSabrChunkSource, SabrMediaPeriod rewritten without emsg/embedded tracks, SabrMediaSource with MediaItem/DRM dispatchers; plain Factory, not MediaSource.Factory). Next action: get CI on m3/sabr green (errors: gh api repos/Pompadoure/SmartTube/check-runs/<job>/annotations), then independent review of the 2b diff (git diff media3..m3/sabr -- media3-sabr), merge into media3, mark 2b done, start 2c.
 Cut-offs in a row: 0
 
 ## API credits (Claude Console, used only by the claude-task workflow)
