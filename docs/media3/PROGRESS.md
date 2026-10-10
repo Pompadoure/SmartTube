@@ -23,7 +23,7 @@ a cut-off (Johan's decision 2026-10-10):
   the API and tell Johan; the last 2.00 USD stay untouched.
 
 Run: STARTED 2026-10-10T17:35Z
-Doing now: 2b batch 2 pushed to branch m3/sabr (SabrChunkSource, DefaultSabrChunkSource, SabrMediaPeriod rewritten without emsg/embedded tracks, SabrMediaSource with MediaItem/DRM dispatchers; plain Factory, not MediaSource.Factory). Next action: get CI on m3/sabr green (errors: gh api repos/Pompadoure/SmartTube/check-runs/<job>/annotations), then independent review of the 2b diff (git diff media3..m3/sabr -- media3-sabr), merge into media3, mark 2b done, start 2c.
+Doing now: 2b on branch m3/sabr: batch 2 compiled green (run 38072627749); review agent: no blockers, SHOULD-FIX done (SABR subtitles now parsed during extraction into media3 cues; the 3 unit tests ported to media3-sabr/src/test and run by CI via :media3-sabr:testReleaseUnitTest), NITs done (EMPTY chunk iterators, crypto type, gradle comment). Next action: get the m3/sabr CI run with tests green (failures appear as one 'UNIT TEST FAILURES' annotation), then merge m3/sabr into media3 (git merge --no-ff), mark 2b done in the run log, start 2c (m3/stage2: swap app deps to Media3 + media3-sabr, port the minimal player path).
 Cut-offs in a row: 0
 
 ## API credits (Claude Console, used only by the claude-task workflow)
