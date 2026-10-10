@@ -6,14 +6,14 @@ name: Build JoTube M3 (media3 branch)
 
 on:
   push:
-    branches: [ "media3" ]
+    branches: [ "media3", "m3/**" ]  # m3/* = short-lived probe/work branches: build only, never published
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: build-media3
+  group: build-media3-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -97,6 +97,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish pre-release "latest-media3"
+        if: github.ref == 'refs/heads/media3'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
