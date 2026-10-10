@@ -1,7 +1,7 @@
 # JoTube M3 progress
 
 Status: ACTIVE
-Next step: stage 1 review (independent agent), then 2a (toolchain upgrade: AGP 8.x, compileSdk 36, Kotlin 2.x; PLAN.md Decisions 3)
+Next step: 2a (toolchain upgrade on branch m3/toolchain: AGP 8.x, compileSdk 36, Kotlin 2.x, namespaces; PLAN.md Decisions 3)
 
 Status values: ACTIVE (the scheduled runs keep going), WAITING_FOR_JOHAN (a question to Johan, runs only check
 for his answer), BLOCKED (a stage can't be made stable; reason below), DONE (stage 6 finished).
@@ -23,7 +23,7 @@ a cut-off (Johan's decision 2026-10-10):
   the API and tell Johan; the last 2.00 USD stay untouched.
 
 Run: STARTED 2026-10-10T16:19Z
-Doing now: 1d done (Decisions in PLAN.md). Next action: independent review agent over the stage 1 docs (INVENTORY, FORK_CHANGES, SABR_PORT, Decisions), fix findings, mark stage 1 done; then 2a.
+Doing now: 2a started. Next action: on branch m3/toolchain bump AGP/Gradle/Kotlin/compileSdk, pin stjohan targetSdk 34, set namespaces from the root build.gradle, patch package= out of submodule manifests; iterate on CI until green, then merge into media3.
 Cut-offs in a row: 0
 
 ## API credits (Claude Console, used only by the claude-task workflow)
@@ -59,3 +59,8 @@ Spent so far: 0.00 USD
   compileSdk 36, Kotlin 2.x, targetSdk pinned to 34), fallback 1.4.1; minSdk 23; no decoder extensions; stage 2 on a
   work branch. CI now also builds `m3/**` branches without publishing. Probe branches stay (runs can't delete
   branches: the proxy blocks it); they are harmless, Johan may delete `m3/probe-*`.
+- 2026-10-10: **Stage 1 done.** Independent review agent: no blockers; 5 SHOULD-FIX folded into the docs (non-Java
+  exoplayer2 references in layouts/manifest/proguard/dimens, root build.gradle version forces that would downgrade
+  Media3 deps, AGP 8 rejects manifest `package=` → submodule patches needed, SABR subtitles need extraction-time
+  parsing or legacy decoding in Media3, minSdk 23 scope incl. doubletapplayerview/media3-sabr), 2 NITs (tunneling
+  code, @UnstableApi opt-in).
