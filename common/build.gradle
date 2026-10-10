@@ -70,10 +70,10 @@ dependencies {
     //////// BEGIN EXOPLAYER /////////
 
     implementation project(':exoplayer-library')
-    implementation 'androidx.media3:media3-exoplayer:1.11.1' // M3 probe
-    implementation 'androidx.media3:media3-exoplayer-dash:1.11.1' // M3 probe
-    implementation 'androidx.media3:media3-datasource-cronet:1.11.1' // M3 probe
-    implementation 'androidx.media3:media3-session:1.11.1' // M3 probe
+    implementation 'androidx.media3:media3-exoplayer:1.4.1' // M3 probe
+    implementation 'androidx.media3:media3-exoplayer-dash:1.4.1' // M3 probe
+    implementation 'androidx.media3:media3-datasource-cronet:1.4.1' // M3 probe
+    implementation 'androidx.media3:media3-session:1.4.1' // M3 probe
     implementation project(':exoplayer-extension-okhttp')
     implementation project(':exoplayer-extension-cronet')
 
