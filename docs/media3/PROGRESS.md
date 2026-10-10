@@ -1,7 +1,7 @@
 # JoTube M3 progress
 
 Status: ACTIVE
-Next step: 2b (`media3-sabr` module compiling on its own, SABR_PORT.md order; add Media3 1.11.1 deps)
+Next step: 2c (on branch `m3/stage2`: swap the app's ExoPlayer modules for Media3 + `:media3-sabr`, port the minimal player path until CI is green, then merge)
 
 Status values: ACTIVE (the scheduled runs keep going), WAITING_FOR_JOHAN (a question to Johan, runs only check
 for his answer), BLOCKED (a stage can't be made stable; reason below), DONE (stage 6 finished).
@@ -23,7 +23,7 @@ a cut-off (Johan's decision 2026-10-10):
   the API and tell Johan; the last 2.00 USD stay untouched.
 
 Run: STARTED 2026-10-10T17:35Z
-Doing now: 2b on branch m3/sabr: batch 2 compiled green (run 38072627749); review agent: no blockers, SHOULD-FIX done (SABR subtitles now parsed during extraction into media3 cues; the 3 unit tests ported to media3-sabr/src/test and run by CI via :media3-sabr:testReleaseUnitTest), NITs done (EMPTY chunk iterators, crypto type, gradle comment). Next action: get the m3/sabr CI run with tests green (failures appear as one 'UNIT TEST FAILURES' annotation), then merge m3/sabr into media3 (git merge --no-ff), mark 2b done in the run log, start 2c (m3/stage2: swap app deps to Media3 + media3-sabr, port the minimal player path).
+Doing now: 2b done and merged (CI run 38074051880 green, 20 media3-sabr unit tests pass). Next action: 2c, create branch m3/stage2 from media3; step 1 = gradle swap (settings.gradle drops the exoplayer-amzn-2.10.6 include; common/smarttubetv/doubletapplayerview depend on Media3 1.11.1 artifacts per PLAN Decisions 4 + project(':media3-sabr')), step 2 = run docs/media3/tools/m3_rename.py over the 36 app files + doubletapplayerview (INVENTORY.md lists them), step 3 = fix compile errors file group by file group (INVENTORY sections 1-9), CI after each group.
 Cut-offs in a row: 0
 
 ## API credits (Claude Console, used only by the claude-task workflow)
@@ -76,3 +76,15 @@ Spent so far: 0.00 USD
   app (`:media3-sabr:assembleRelease`). Rename tool `docs/media3/tools/m3_rename.py`. Hand changes: extractor adapters
   delegate to Media3 extractors (MatroskaExtractor.read is final in Media3), Format.Builder in SabrManifestParser,
   isDrc/lastModified via SabrFormatMetadata helpers, ParsableByteArray.getData(), no InterruptedException. CI green.
+- 2026-10-10 (run 17:35-18:10Z): **2b done** (branch m3/sabr, merged): batch 2 ported SabrChunkSource,
+  DefaultSabrChunkSource (shouldCancelLoad never cancels, Media3 LoadErrorHandlingPolicy track fallback after the CDN
+  fallback, DataSpec.Builder, BundledChunkExtractor), SabrMediaPeriod (rewritten: primary track groups only, no
+  emsg/event/CEA-608 streams; the 2.10.6 code never created them) and SabrMediaSource (MediaItem, DRM dispatchers,
+  plain Factory with createMediaSource(manifest[, mediaItem])). Subtitles decided: parsed during extraction
+  (SubtitleExtractor → application/x-media3-cues, like Media3 DASH); the fork's WebVTT fixes (HTML entities, 10 s cue
+  cap) still to re-check in stage 3 (a wrapping SubtitleParser.Factory). Caption load errors never switch the SABR CDN.
+  The 3 unit tests ported (20 tests) and run in CI with counts as notices. Review agent: no blockers; SHOULD-FIX
+  (subtitles, tests) and NITs (EMPTY chunk iterators, crypto type, gradle comment) fixed. CI green. Notes for stage 4
+  from the review (unchanged 2.10 behaviour): one SabrStream per manifest shared by old/new loaders on re-selection,
+  UMPDecoder turns network IOExceptions into IllegalStateException, SabrExtractorInput.init keeps stale data after a
+  cancelled load.
