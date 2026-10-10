@@ -11,19 +11,16 @@ The Claude plan's usage can't be read by a run, so the work goes as fast as poss
 a cut-off (Johan's decision 2026-10-10):
 - Fast pace: a run keeps working step after step until the work is done, its context gets long, or the usage cap
   stops it. Commit and push after every meaningful change (never more than ~15 minutes uncommitted) and keep
-  `Doing now: 2c on branch m3/stage2. Done this run: CI keeps javac symbol details (awk fix), lint opt-in for
-@UnstableApi (UnsafeOptInUsageError disabled in common/app), group 1 (sources) ported in a27b4c4: ExoMediaSourceFactory,
-DashManifestParser2 (now common/exoplayer/dash), LiveDashManifestParser, Dash/Sabr error policies, FastStartLoadControl,
-ExoPlayerInitializer (ExoPlayer.Builder; uses getBandwidthMeter(context) and player.addListener(VolumeBooster)),
-OkHttp forced to 4.12.0. API task `claude-task/m3-renderers` (budget 1.50) ports versions/renderer/*,
-BlacklistMediaCodecSelector, DebugInfoManager, VolumeBooster: review + merge into m3/stage2 when its commit lands
-(check VolumeBooster is a Player.Listener, else fix ExoPlayerInitializer). Media3 1.11.1 sources for API checks:
-`git clone --depth 1 --branch 1.11.1 --filter=blob:none --sparse https://github.com/androidx/media /home/claude/media3src`
-+ `git sparse-checkout set libraries/exoplayer libraries/exoplayer_dash libraries/common libraries/datasource ...` (works
-through the proxy; raw.githubusercontent and dl.google.com don't). Next action: groups 2 track selection
-(TrackSelectorManager, RestoreTrackSelector, ExoFormatItem, MediaTrack, TrackSelectorUtil), 1 controller
-(ExoPlayerController), 5 errors (TrackErrorFixer -> MediaSourceEventListener), then the rest in INVENTORY order;
-PlaybackFragment.java:587 must use ExoMediaSourceFactory.getBandwidthMeter(context).
+  `Doing now: 2c on branch m3/stage2. Ported this run (all pushed): CI symbol details, lint opt-in, group 1 sources
+(ExoMediaSourceFactory, DashManifestParser2 -> common/exoplayer/dash, error policies, FastStartLoadControl,
+ExoPlayerInitializer), own OkHttp3DataSource (copy of Media3's, OkHttp stays 3.12.13: SharedModules Kotlin fails on
+OkHttp 4), renderer API task merged + review fixes, track selection (RestoreTrackSelector on MappedTrackInfo,
+TrackSelectorManager, ExoFormatItem, MediaTrack, TrackSelectorUtil), TrackErrorFixer, SubtitleManager (Player.Listener),
+ExoPlayerController (Player.Listener), PlaybackFragment (media3-session via ForwardingPlayer; BackboneQueueNavigator
+removed). Next action: read the CI annotations of the latest m3/stage2 run (don't push while a run is in progress:
+cancel-in-progress kills it), fix the remaining compile errors (expected: smarttubetv EmbedPlayerView, ShortsQueue,
+DebugInfoManager, doubletapplayerview, anything javac shows next), until green; then the stage 2 review agent and
+merge into media3. Media3 sources: see the clone command in the run log entry of 2026-10-10 20:15Z.
 Cut-offs in a row: 1
 
 ## API credits (Claude Console, used only by the claude-task workflow)
@@ -33,8 +30,9 @@ Each claude-task run has a hard cap in `.claude-task/BUDGET_USD` (at most 1.50 U
 
 | Date | Task branch | Budget | Cost (USD) | Result |
 |------|-------------|--------|------------|--------|
+| 2026-10-10 | claude-task/m3-renderers | 1.50 | 0.55 | Renderer group ported (8 files), reviewed against Media3 sources, 2 fixes (getMaxInputSize, unsafe audio sync reflection -> no-op), merged into m3/stage2 |
 
-Spent so far: 0.00 USD
+Spent so far: 0.55 USD
 
 ## Run log
 - 2026-10-10: branch `media3` created from master (j66, 997b69a). Package org.smarttube.johan.media3, app
@@ -95,3 +93,8 @@ Spent so far: 0.00 USD
 - 2026-10-10 (run 18:18Z): cut off (STARTED without FINISHED; no new commits after the run-started marker). Run 20:15Z
   continues 2c from `Doing now:`. The 20:15Z run could not re-arm the scheduled task (update_trigger denied by the
   permission classifier); the daily watchdog re-arms the chain.
+- 2026-10-10 (run 20:15Z): Media3 1.11.1 sources are readable through the proxy with
+  `git clone --depth 1 --branch 1.11.1 --filter=blob:none --sparse https://github.com/androidx/media /home/claude/media3src`
+  + `git sparse-checkout set libraries/exoplayer libraries/exoplayer_dash libraries/common libraries/datasource
+  libraries/datasource_okhttp libraries/session libraries/ui libraries/ui_leanback gradle` (raw.githubusercontent, codeload,
+  dl.google.com and maven.google.com are blocked, so no local Android build). All 2c ports were checked against them.
