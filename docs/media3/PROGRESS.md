@@ -22,8 +22,8 @@ a cut-off (Johan's decision 2026-10-10):
 - API credits: hard cap per claude-task run and a total budget (below). At 12.00 USD spent the runs stop using
   the API and tell Johan; the last 2.00 USD stay untouched.
 
-Run: STARTED 2026-10-10T17:35Z
-Doing now: 2c on branch m3/stage2 (from media3). Step 1 pushed (8cc58c2): gradle swap (no exoplayer-amzn include; Media3 1.11.1 artifacts + :media3-sabr in common/smarttubetv/doubletapplayerview; ext.m3Media3Version in root build.gradle), m3_rename.py extended and run over the 40 app files, ZoomAspectRatioFrameLayout in common/.../exoplayer/other (fork zoom), layout/manifest/multidex refs moved, CI step prints forced dependency downgrades as 'DEP' notices. Next action: read the CI run's 'COMPILER ERRORS' annotation and fix file groups in INVENTORY order (4 sources/SabrMediaSource factory, 3 renderers, 2 track selection, 1 player construction/controller, 5 errors, 6 UI/leanback (ControlDispatcher -> ForwardingPlayer), 7 MediaSession (media3-session), 8 Shorts queue/LoadControl, 9 misc, doubletapplayerview); push after each group. Check the DEP notices: forced okhttp 3.12 / androidx.core 1.9 / annotation 1.1 vs Media3's needs (Decision 3: lift forces that downgrade Media3 deps).
+Run: FINISHED 2026-10-10T18:25Z
+Doing now: 2c on branch m3/stage2 (from media3), step 1 done (gradle swap + mechanical renames, commits 8cc58c2 and the next one), the build is expected red until all app files are ported. CI now prints every compiler error (javac -Xmaxerrs 2000) as up to 7 'COMPILER ERRORS part N (total T)' annotations, one line each with the javac 'symbol' detail, plus one 'FORCED/CHANGED DEPENDENCIES' notice. Next action: `gh run list -R Pompadoure/SmartTube --branch m3/stage2 -L 1`, read the annotations (gh api repos/Pompadoure/SmartTube/check-runs/<job id>/annotations -q '.[].message'), fix file groups in INVENTORY order: 4 sources (ExoMediaSourceFactory: SabrMediaSource.Factory/DefaultSabrChunkSource.Factory, DashMediaSource, OkHttp/Cronet DataSource.Factory, SabrDefaultLoadErrorHandlingPolicy/DashDefaultLoadErrorHandlingPolicy -> getRetryDelayMsFor(LoadErrorInfo); LiveDashManifestParser vs Media3 DashManifestParser; DashManifestParser2 fork class), 3 renderers, 2 track selection, 1 player construction/controller, 5 errors (TrackErrorFixer -> MediaSourceEventListener), 6 UI/leanback (ControlDispatcher -> ForwardingPlayer), 7 MediaSession (media3-session), 8 Shorts (ShortsQueue/ConcatenatingMediaSource, FastStartLoadControl, PlayedPeriodsPolicy), 9 misc, doubletapplayerview; push after each group. Dependencies: only androidx.annotation is forced down (1.6-1.9 -> 1.1.0, compile-time annotations, low risk); check the full notice for okhttp/core.
 Cut-offs in a row: 0
 
 ## API credits (Claude Console, used only by the claude-task workflow)
@@ -88,3 +88,7 @@ Spent so far: 0.00 USD
   from the review (unchanged 2.10 behaviour): one SabrStream per manifest shared by old/new loaders on re-selection,
   UMPDecoder turns network IOExceptions into IllegalStateException, SabrExtractorInput.init keeps stale data after a
   cancelled load.
+- 2026-10-10 (same run): 2c started on m3/stage2: gradle swap to Media3 1.11.1 + :media3-sabr, m3_rename.py extended
+  (app classes, dash/hls/ss packages) and run over the 40 app files, ZoomAspectRatioFrameLayout (fork zoom + no
+  vertical stretch) in common, layout/manifest/multidex references moved. First CI: 96+ compile errors (expected),
+  CI error reporting improved. Run ended to hand over with a fresh context.
