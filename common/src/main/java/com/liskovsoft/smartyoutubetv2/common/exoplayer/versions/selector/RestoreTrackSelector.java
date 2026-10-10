@@ -7,7 +7,7 @@ import androidx.media3.exoplayer.ExoPlaybackException;
 import androidx.media3.exoplayer.source.TrackGroupArray;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import androidx.media3.exoplayer.trackselection.ExoTrackSelection.Definition;
-import androidx.media3.exoplayer.trackselection.ExoTrackSelection.Factory;
+import androidx.media3.exoplayer.trackselection.ExoTrackSelection;
 import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.track.MediaTrack;
 
@@ -26,7 +26,7 @@ public class RestoreTrackSelector extends DefaultTrackSelector {
         void updateSubtitleTrackSelection(TrackGroupArray groups, Parameters params, Definition definition);
     }
 
-    public RestoreTrackSelector(Factory trackSelectionFactory) {
+    public RestoreTrackSelector(ExoTrackSelection.Factory trackSelectionFactory) {
         // JoTube M3: no Context, like 2.10 (Parameters.DEFAULT, no viewport/display based defaults)
         super(Parameters.DEFAULT, trackSelectionFactory);
         // Could help with Shield resolution bug?
@@ -37,7 +37,7 @@ public class RestoreTrackSelector extends DefaultTrackSelector {
      * JoTube: re-run track selection (e.g. the playing video of the Shorts playlist changed).
      */
     public void reselect() {
-        invalidate();
+        invalidate(/* parameters= */ null); // M3: null = re-run the selection with the current parameters
     }
 
     public void setOnTrackSelectCallback(TrackSelectorCallback callback) {

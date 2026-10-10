@@ -78,8 +78,9 @@ public class DebugInfoMediaCodecVideoRenderer extends MediaCodecVideoRenderer {
 
     // M3: canKeepCodec(MediaCodec, ...) + KEEP_CODEC_RESULT_* became canReuseCodec(...) + DecoderReuseEvaluation.REUSE_RESULT_*
     @Override
-    protected DecoderReuseEvaluation canReuseCodec(MediaCodecInfo codecInfo, Format oldFormat, Format newFormat) {
-        DecoderReuseEvaluation evaluation = super.canReuseCodec(codecInfo, oldFormat, newFormat);
+    protected DecoderReuseEvaluation canReuseCodec(MediaCodecInfo codecInfo, Format oldFormat, Format newFormat,
+                                                   boolean isAdaptiveFormatChange) {
+        DecoderReuseEvaluation evaluation = super.canReuseCodec(codecInfo, oldFormat, newFormat, isAdaptiveFormatChange);
 
         // JoTube: Shorts of the same kind often differ only in the color info (one has BT.709 set, the other
         // nothing). For SDR video that doesn't need a new decoder.
