@@ -13,7 +13,7 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector.Parameters;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector.SelectionOverride;
 import androidx.media3.exoplayer.trackselection.MappingTrackSelector.MappedTrackInfo;
 import androidx.media3.exoplayer.trackselection.ExoTrackSelection;
-import androidx.media3.exoplayer.trackselection.TrackSelection.Definition;
+import androidx.media3.exoplayer.trackselection.ExoTrackSelection.Definition;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.track.AudioTrack;
@@ -549,11 +549,11 @@ public class TrackSelectorManager implements TrackSelectorCallback {
             SelectionOverride override = params.getSelectionOverride(rendererIndex, rendererTrackGroups);
 
             if (override != null) {
+                // M3: SelectionOverride has no reason/data any more, only the track type
                 definition = new ExoTrackSelection.Definition(
                                 rendererTrackGroups.get(override.groupIndex),
                                 override.tracks,
-                                override.reason,
-                                override.data);
+                                override.type);
             }
         }
 

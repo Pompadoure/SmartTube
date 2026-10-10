@@ -5,6 +5,8 @@ import android.text.TextUtils;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.media3.common.Format;
+import androidx.media3.common.Metadata;
+import com.liskovsoft.media3.sabr.parser.models.SabrFormatMetadata;
 import androidx.media3.common.MimeTypes;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.track.MediaTrack;
@@ -92,7 +94,7 @@ public class ExoFormatItem implements FormatItem {
             if (format.id != null) {
                 formatItem.mId = format.id.hashCode();
                 formatItem.mFormatId = format.id;
-                formatItem.mIsDrc = format.isDrc;
+                formatItem.mIsDrc = SabrFormatMetadata.isDrc(format);
             }
         } else {
             formatItem.mIsDefault = true; // fake auto track
@@ -133,7 +135,7 @@ public class ExoFormatItem implements FormatItem {
                 frameRate = format.frameRate;
                 language = format.language;
                 bitrate = format.bitrate;
-                isDrc = format.isDrc;
+                isDrc = SabrFormatMetadata.isDrc(format);
             }
         }
 
@@ -192,18 +194,15 @@ public class ExoFormatItem implements FormatItem {
         // NOTE: Create fake format. It's used in app internal comparison routine.
         switch (type) {
             case TYPE_VIDEO:
-                mediaTrack.format = Format.createVideoSampleFormat(
-                        id, null, codecs, -1, -1, width, height,
-                        frameRate, null, null);
+                mediaTrack.format = new Format.Builder()
+                        .setId(id).setCodecs(codecs).setWidth(width).setHeight(height).setFrameRate(frameRate)
+                        .build();
                 break;
             case TYPE_AUDIO:
-                mediaTrack.format = Format.createAudioSampleFormat(
-                        id, null, codecs, bitrate, -1,0, 0,
-                        null, null, 0, language, isDrc);
+                mediaTrack.format = createAudioFormat(id, codecs, bitrate, language, isDrc);
                 break;
             case TYPE_SUBTITLE:
-                mediaTrack.format = Format.createTextSampleFormat(
-                        id, null, -1, language);
+                mediaTrack.format = createTextFormat(id, language);
                 break;
         }
 
@@ -307,8 +306,9 @@ public class ExoFormatItem implements FormatItem {
         }
 
         // Fake format. It's used in app internal comparison routine.
-        mediaTrack.format = Format.createVideoSampleFormat(
-                null, null, codec, -1, -1, width, height, fps, null, null);
+        mediaTrack.format = new Format.Builder()
+                .setCodecs(codec).setWidth(width).setHeight(height).setFrameRate(fps)
+                .build();
 
         return formatItem;
     }
@@ -329,8 +329,7 @@ public class ExoFormatItem implements FormatItem {
         }
 
         // Fake format. It's used in app internal comparison routine.
-        mediaTrack.format = Format.createAudioSampleFormat(
-                null, null, codec, -1, -1,0, 0, null, null, 0, null);
+        mediaTrack.format = createAudioFormat(null, codec, -1, null, false);
 
         return formatItem;
     }
@@ -370,9 +369,25 @@ public class ExoFormatItem implements FormatItem {
         formatItem.mLanguage = langCode;
         formatItem.mIsDefault = langCode == null;
 
-        mediaTrack.format = Format.createTextSampleFormat(null, null, -1, langCode);
+        mediaTrack.format = createTextFormat(null, langCode);
 
         return formatItem;
+    }
+
+    // JoTube M3: fake formats for the app's comparisons, built like the 2.10 createXxxSampleFormat factories did
+    // (isDrc travels in SabrFormatMetadata, 2.10 had a fork-only Format field)
+    private static Format createAudioFormat(String id, String codecs, int bitrate, String language, boolean isDrc) {
+        Format.Builder builder = new Format.Builder()
+                .setId(id).setCodecs(codecs).setAverageBitrate(bitrate).setPeakBitrate(bitrate)
+                .setChannelCount(0).setSampleRate(0).setLanguage(language);
+        if (isDrc) {
+            builder.setMetadata(new Metadata(new SabrFormatMetadata(null, null, true, Format.NO_VALUE)));
+        }
+        return builder.build();
+    }
+
+    private static Format createTextFormat(String id, String language) {
+        return new Format.Builder().setId(id).setSelectionFlags(-1).setLanguage(language).build();
     }
 
     @Override
