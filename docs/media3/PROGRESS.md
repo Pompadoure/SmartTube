@@ -7,18 +7,23 @@ Status values: ACTIVE (the scheduled runs keep going), WAITING_FOR_JOHAN (a ques
 for his answer), BLOCKED (a stage can't be made stable; reason below), DONE (stage 6 finished).
 
 ## Usage guard (no unexpected stops)
-The Claude plan's usage can't be read by a run, so the work is cut into pieces that survive a cut-off:
-- Every run first writes `Run: STARTED <time>` below, works on ONE small step, commits and pushes after each
-  meaningful change (never more than ~30 minutes of work uncommitted), then writes `Run: FINISHED <time>`.
-- A run that finds `STARTED` without `FINISHED` knows the previous one was cut off (usually the usage limit):
-  it checks what was pushed, notes "cut off" in the log and halves the step size (`Step size` below).
-- Two cut-offs in a row: the run only resumes the unfinished step, nothing new, and tells Johan.
-- Runs are scheduled every 5 hours (the usage window), so each one starts with a fresh window.
+The Claude plan's usage can't be read by a run, so the work goes as fast as possible but in pieces that survive
+a cut-off (Johan's decision 2026-10-10):
+- Fast pace: a run keeps working step after step until the work is done, its context gets long, or the usage cap
+  stops it. Commit and push after every meaningful change (never more than ~15 minutes uncommitted) and keep
+  `Doing now:` below current with each push (step, what's done in it, exact next action).
+- Every run first writes `Run: STARTED <time>`, at the end `Run: FINISHED <time>`. A run that finds STARTED without
+  FINISHED knows the previous one was cut off: it finishes what `Doing now:` describes first and logs "cut off".
+- Self-restarting runs: a run that pushed real progress and ran 10+ minutes fires the scheduled task again
+  (fire_trigger) so a fresh run continues within the same usage window.
+- A scheduled run starts just after each usage reset (the first run of a window re-arms it to now + 5h05m), and a
+  daily watchdog re-arms the chain if it ever breaks.
+- Repeated cut-offs: tell Johan.
 - API credits: hard cap per claude-task run and a total budget (below). At 12.00 USD spent the runs stop using
   the API and tell Johan; the last 2.00 USD stay untouched.
 
-Run: FINISHED 2026-10-10T13:46Z
-Step size: normal (one sub-step, e.g. "1a")
+Run: STARTED 2026-10-10T16:19Z
+Doing now: 1c (SABR module internals -> Media3). Nothing written yet; next: survey library/sabr imports.
 Cut-offs in a row: 0
 
 ## API credits (Claude Console, used only by the claude-task workflow)
