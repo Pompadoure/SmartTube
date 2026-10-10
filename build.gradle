@@ -99,9 +99,10 @@ subprojects { p ->
                 ss.manifest.srcFile out
             }
         }
-        p.afterEvaluate {
-            android.compileSdk = rootProject.ext.m3CompileSdk
-            android.buildToolsVersion = '36.0.0'
+        // finalizeDsl runs after the module's android {} block and still allows DSL changes
+        p.extensions.getByName('androidComponents').finalizeDsl { ext ->
+            ext.compileSdk = rootProject.ext.m3CompileSdk
+            ext.buildToolsVersion = '36.0.0'
         }
     }
     p.plugins.withId('com.android.library', m3Glue)
