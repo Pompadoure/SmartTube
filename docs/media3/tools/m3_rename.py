@@ -7,6 +7,7 @@ E = 'com.google.android.exoplayer2.'
 # Most specific first.
 MAP = [
     ('source.sabr.', 'com.liskovsoft.media3.sabr.'),
+    ('source.sabr;', 'com.liskovsoft.media3.sabr;'),
     ('FormatHolder', 'androidx.media3.exoplayer.FormatHolder'),
     ('SeekParameters', 'androidx.media3.exoplayer.SeekParameters'),
     ('ExoPlaybackException', 'androidx.media3.exoplayer.ExoPlaybackException'),
