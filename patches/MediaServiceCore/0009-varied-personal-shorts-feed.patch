@@ -24,7 +24,7 @@ index 490fd9c..e04de4c 100644
      Observable<List<MediaGroup>> getSportsObserve();
      Observable<List<MediaGroup>> getLiveObserve();
 diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
-index 5f0f5cd..95f4908 100644
+index 5f0f5cd..d1362c6 100644
 --- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
 +++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
 @@ -6,6 +6,10 @@ import java.util.concurrent.Callable
@@ -94,14 +94,14 @@ index 5f0f5cd..95f4908 100644
 +        Log.d(SHORTS_TAG, "Shorts feed: next page from the sequence of %s", seedVideoId)
  
 -            return result
-+        val result = continueShortsWebAuth(token, "seeded page")
++        val items = continueShortsWebAuth(token, "seeded page")?.mediaItems
 +
-+        if (result == null || result.mediaItems.isNullOrEmpty()) {
++        if (items.isNullOrEmpty()) {
 +            Log.d(SHORTS_TAG, "Shorts feed: the sequence of %s gave nothing", seedVideoId)
 +            return null
          }
 +
-+        return ShortsMediaGroup(result.mediaItems, linearGroup?.nextPageKey, MediaGroupOptions.create(MediaGroup.TYPE_SHORTS))
++        return ShortsMediaGroup(items, linearGroup?.nextPageKey, MediaGroupOptions.create(MediaGroup.TYPE_SHORTS))
 +    }
 +
 +    /**
