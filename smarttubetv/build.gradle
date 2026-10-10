@@ -171,6 +171,7 @@ android {
         // Library modules don't know this flavor, so they use their stable variant.
         stjohan {
             applicationId "org.smarttube.johan.media3" // media3 branch: installs next to JoTube
+            minSdkVersion 23 // M3 probe: Media3 1.9+ needs 23
             targetSdkVersion project.properties.compileSdkVersion
             matchingFallbacks = ['ststable']
         }
