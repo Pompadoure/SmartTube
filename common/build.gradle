@@ -36,6 +36,8 @@ android {
 
     lintOptions {
         abortOnError true
+        // JoTube M3: most Media3 APIs are @UnstableApi; opting in everywhere instead of per class
+        disable 'UnsafeOptInUsageError'
         disable 'MissingTranslation'
         disable 'MissingQuantity'
     }
