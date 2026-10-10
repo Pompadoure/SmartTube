@@ -6,7 +6,6 @@ import android.os.Handler;
 import androidx.annotation.Nullable;
 import androidx.media3.common.C;
 import androidx.media3.common.Format;
-import androidx.media3.common.MimeTypes;
 import androidx.media3.exoplayer.DecoderReuseEvaluation;
 import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter;
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
@@ -51,7 +50,8 @@ public class DebugInfoMediaCodecVideoRenderer extends MediaCodecVideoRenderer {
 
             if ((width > values.width || height > values.height) && isSizeSupported(codecInfo, width, height, format.frameRate)) {
                 int inputSize = Math.max(values.inputSize,
-                        getCodecMaxInputSize(format.sampleMimeType, width, height));
+                        getMaxInputSize(codecInfo, format.buildUpon()
+                                .setWidth(width).setHeight(height).setMaxInputSize(Format.NO_VALUE).build()));
                 Log.d(TAG, "Shorts: codec max size %sx%s (format %sx%s)", width, height, format.width, format.height);
                 values = new CodecMaxValues(width, height, inputSize);
             }
@@ -74,40 +74,6 @@ public class DebugInfoMediaCodecVideoRenderer extends MediaCodecVideoRenderer {
         // Directly (MediaCodecInfo.isVideoSizeAndRateSupportedV21 also accepts the size rotated)
         return videoCapabilities != null &&
                 videoCapabilities.areSizeAndRateSupported(width, height, frameRate > 0 ? frameRate : 30);
-    }
-
-    /**
-     * M3: copy of the (private) estimate used by MediaCodecVideoRenderer; the Amazon/Samsung/Nvidia AVC special cases
-     * are dropped, only the generic max input size is needed here.
-     */
-    private static int getCodecMaxInputSize(@Nullable String sampleMimeType, int width, int height) {
-        if (sampleMimeType == null || width == Format.NO_VALUE || height == Format.NO_VALUE) {
-            return Format.NO_VALUE;
-        }
-
-        int maxPixels;
-        int minCompressionRatio;
-
-        switch (sampleMimeType) {
-            case MimeTypes.VIDEO_H263:
-            case MimeTypes.VIDEO_MP4V:
-            case MimeTypes.VIDEO_AVC:
-            case MimeTypes.VIDEO_VP8:
-            case MimeTypes.VIDEO_H265:
-                maxPixels = width * height;
-                minCompressionRatio = 2;
-                break;
-            case MimeTypes.VIDEO_VP9:
-            case MimeTypes.VIDEO_AV1:
-                maxPixels = width * height;
-                minCompressionRatio = 4;
-                break;
-            default:
-                // Leave the default max input size.
-                return Format.NO_VALUE;
-        }
-
-        return (maxPixels * 3 / 2) / minCompressionRatio;
     }
 
     // M3: canKeepCodec(MediaCodec, ...) + KEEP_CODEC_RESULT_* became canReuseCodec(...) + DecoderReuseEvaluation.REUSE_RESULT_*

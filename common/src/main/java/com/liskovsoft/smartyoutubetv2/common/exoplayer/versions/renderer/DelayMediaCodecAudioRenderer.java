@@ -8,7 +8,6 @@ import androidx.media3.exoplayer.audio.AudioSink;
 import androidx.media3.exoplayer.audio.MediaCodecAudioRenderer;
 import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter;
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
-import com.liskovsoft.sharedutils.helpers.Helpers;
 
 public class DelayMediaCodecAudioRenderer extends MediaCodecAudioRenderer {
     private static final String TAG = DelayMediaCodecAudioRenderer.class.getSimpleName();
@@ -42,26 +41,13 @@ public class DelayMediaCodecAudioRenderer extends MediaCodecAudioRenderer {
     /**
      * Disable the use of AudioTrack.getTimestamp and force ExoPlayer to go through the legacy path of using
      * AudioTrack.getPlaybackHeadPosition instead, which might help if the first one drifts but the second one doesn't.<br/>
-     * M3: was done in processOutputBuffer(). That hook has a long, version dependent signature, so the fix is applied
-     * from getPositionUs() (called by the player all the time) instead. Same fields are patched via reflection.
+     * M3: the 2.10 fix patched private fields (DefaultAudioSink.audioTrackPositionTracker -> audioTimestampPoller:
+     * audioTimestamp = null, state = 3) via reflection. In Media3 1.11.1 DefaultAudioSink has no such field and
+     * AudioTimestampPoller.audioTimestamp is a final wrapper that must not be null (NPE), so the fix is a no-op for now.
+     * TODO stage 3: re-check whether the fix is still needed with Media3 and find a safe hook.
      */
     private void applyAudioSyncFix() {
-        if (!mIsAudioSyncFixEnabled || !mIsAudioSyncFixChanged) {
-            return;
-        }
-
-        Object audioSink = Helpers.getField(this, "audioSink");
-        if (audioSink != null) {
-            Object audioTrackPositionTracker = Helpers.getField(audioSink, "audioTrackPositionTracker");
-            if (audioTrackPositionTracker != null) {
-                Object audioTimestampPoller = Helpers.getField(audioTrackPositionTracker, "audioTimestampPoller");
-                if (audioTimestampPoller != null) {
-                    Helpers.setField(audioTimestampPoller, "audioTimestamp", null);
-                    Helpers.setField(audioTimestampPoller, "state", 3);
-                    mIsAudioSyncFixChanged = false;
-                }
-            }
-        }
+        mIsAudioSyncFixChanged = false;
     }
 
     public void enableAudioSyncFix(boolean enable) {
