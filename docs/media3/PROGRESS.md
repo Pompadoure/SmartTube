@@ -23,7 +23,7 @@ a cut-off (Johan's decision 2026-10-10):
   the API and tell Johan; the last 2.00 USD stay untouched.
 
 Run: STARTED 2026-10-10T16:19Z
-Doing now: 1d started. Next action: find the latest stable Media3 version (release notes), check its API against the (?) marks in INVENTORY.md, FORK_CHANGES.md and SABR_PORT.md, write "Decisions" in PLAN.md.
+Doing now: 1d. Latest stable Media3 = 1.11.1 (2026-09-11; 1.9.0 raised minSdk to 23). CI now also builds m3/** branches (no publish). Probe branch m3/probe-toolchain (Media3 1.11.1 in common, minSdk 23, M3Probe.java) pushed to see if AGP 7.4.2/compileSdk 34/Kotlin 1.8.10 can take Media3. Next: read its CI result, then write Decisions in PLAN.md; delete the probe branch after.
 Cut-offs in a row: 0
 
 ## API credits (Claude Console, used only by the claude-task workflow)
