@@ -1,6 +1,5 @@
 package com.liskovsoft.smartyoutubetv2.common.exoplayer.versions.selector;
 
-import androidx.annotation.Nullable;
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
 import androidx.media3.exoplayer.mediacodec.MediaCodecUtil;
@@ -50,7 +49,6 @@ public class BlacklistMediaCodecSelector implements MediaCodecSelector {
     //    return filteredCodecInfos;
     //}
 
-    // Exo 2.10 and up
     @Override
     public List<MediaCodecInfo> getDecoderInfos(String mimeType, boolean requiresSecureDecoder, boolean requiresTunnelingDecoder) throws MediaCodecUtil.DecoderQueryException {
 
@@ -75,10 +73,5 @@ public class BlacklistMediaCodecSelector implements MediaCodecSelector {
         return filteredCodecInfos;
     }
 
-    // Exo 2.10
-    @Nullable
-    @Override
-    public MediaCodecInfo getPassthroughDecoderInfo() throws MediaCodecUtil.DecoderQueryException {
-        return MediaCodecUtil.getPassthroughDecoderInfo();
-    }
+    // M3: getPassthroughDecoderInfo() is gone from MediaCodecSelector (passthrough is handled by the audio sink).
 }

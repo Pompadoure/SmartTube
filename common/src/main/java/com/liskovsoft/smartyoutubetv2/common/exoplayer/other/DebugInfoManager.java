@@ -15,18 +15,13 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.util.Pair;
 import androidx.media3.common.C;
-import androidx.media3.exoplayer.ExoPlaybackException;
 import androidx.media3.common.Format;
-import androidx.media3.common.PlaybackParameters;
 import androidx.media3.common.Player;
 import androidx.media3.exoplayer.ExoPlayer;
-import androidx.media3.common.Timeline;
 import androidx.media3.exoplayer.DecoderCounters;
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
-import androidx.media3.exoplayer.source.TrackGroupArray;
 import androidx.media3.exoplayer.dash.manifest.DashManifest;
 import com.liskovsoft.media3.sabr.manifest.SabrManifest;
-import androidx.media3.exoplayer.trackselection.TrackSelectionArray;
 import com.liskovsoft.sharedutils.cronet.CronetManager;
 import com.liskovsoft.sharedutils.helpers.AppInfoHelpers;
 import com.liskovsoft.sharedutils.helpers.DeviceHelpers;
@@ -57,7 +52,7 @@ import java.util.Locale;
  * A helper class for periodically updating a {@link TextView} with debug information obtained from
  * a {@link ExoPlayer}.
  */
-public final class DebugInfoManager implements Runnable, Player.EventListener {
+public final class DebugInfoManager implements Runnable, Player.Listener {
     private static final String TAG = DebugInfoManager.class.getSimpleName();
     private static final int REFRESH_INTERVAL_MS = 1000;
     private static final String NOT_AVAILABLE = "none";
@@ -144,47 +139,7 @@ public final class DebugInfoManager implements Runnable, Player.EventListener {
         mUhdHelper = null;
     }
 
-    // Player.EventListener implementation.
-
-    @Override
-    public void onLoadingChanged(boolean isLoading) {
-        // NOP
-    }
-
-    @Override
-    public void onPlayerStateChanged(boolean playWhenReady, int playbackState) {
-        // NOP
-    }
-
-    @Override
-    public void onRepeatModeChanged(int repeatMode) {
-        // NOP
-    }
-
-    @Override
-    public void onPositionDiscontinuity(int reason) {
-        // NOP
-    }
-
-    @Override
-    public void onPlaybackParametersChanged(PlaybackParameters playbackParameters) {
-        // NOP
-    }
-
-    @Override
-    public void onTimelineChanged(Timeline timeline, Object manifest, int reason) {
-        // Do nothing.
-    }
-
-    @Override
-    public void onPlayerError(ExoPlaybackException error) {
-        // Do nothing.
-    }
-
-    @Override
-    public void onTracksChanged(TrackGroupArray tracks, TrackSelectionArray selections) {
-        // NOP
-    }
+    // M3: Player.Listener callbacks are all default methods; the old NOP overrides are dropped.
 
     // Runnable implementation.
 
@@ -365,7 +320,7 @@ public final class DebugInfoManager implements Runnable, Player.EventListener {
     }
 
     private void appendPlayerWindowIndex() {
-        appendRow("Window index", mPlayer.getCurrentWindowIndex());
+        appendRow("Window index", mPlayer.getCurrentMediaItemIndex());
     }
 
     private void appendVersion() {
