@@ -1,7 +1,7 @@
 # JoTube M3 progress
 
 Status: ACTIVE
-Next step: 1b (fork changes in exoplayer-amzn-2.10.6 and their Media3 counterparts, see PLAN.md)
+Next step: 1c (SABR module internals and their Media3 counterparts, see PLAN.md)
 
 Status values: ACTIVE (the scheduled runs keep going), WAITING_FOR_JOHAN (a question to Johan, runs only check
 for his answer), BLOCKED (a stage can't be made stable; reason below), DONE (stage 6 finished).
@@ -17,7 +17,7 @@ The Claude plan's usage can't be read by a run, so the work is cut into pieces t
 - API credits: hard cap per claude-task run and a total budget (below). At 12.00 USD spent the runs stop using
   the API and tell Johan; the last 2.00 USD stay untouched.
 
-Run: STARTED 2026-10-10T13:44Z
+Run: FINISHED 2026-10-10T13:46Z
 Step size: normal (one sub-step, e.g. "1a")
 Cut-offs in a row: 0
 
@@ -39,3 +39,8 @@ Spent so far: 0.00 USD
   Media3 counterparts; unsure mappings marked (?) for 1d). Found: doubletapplayerview also depends on the fork; no app
   use of the ffmpeg/vp9/opus/flac extensions; MediaSessionConnector and ControlDispatcher have no direct Media3
   counterpart. Docs only, no CI build needed.
+- 2026-10-10: 1b done: `docs/media3/FORK_CHANGES.md`. Diffed the fork against the real base
+  (amzn/exoplayer-amazon-port, branch amazon/r2.10.6): 40 files, ~2.1k lines. The Shorts preload changes
+  (ExoPlayerImplInternal, MediaPeriodQueue, PlayedPeriodsPolicy) are replaced by DefaultPreloadManager; to port:
+  DashManifestParser2, zoom AspectRatioFrameLayout, HDR10+ ColorInfo fix, SABR Format fields (isDrc,
+  lastModified); headers in DataSpec are built into Media3; Amazon quirks and offline changes dropped. Docs only.
