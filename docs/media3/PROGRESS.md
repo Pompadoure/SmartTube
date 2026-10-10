@@ -23,7 +23,7 @@ a cut-off (Johan's decision 2026-10-10):
   the API and tell Johan; the last 2.00 USD stay untouched.
 
 Run: STARTED 2026-10-10T16:19Z
-Doing now: 2a done and merged. Next action for 2b: create module `media3-sabr` (settings.gradle include, build.gradle with protobuf plugin, Media3 1.11.1 deps, minSdk 23, @UnstableApi opt-in), copy protos + parser/* first and get them compiling on a branch m3/sabr.
+Doing now: 2b on branch m3/sabr (CI builds it, `:media3-sabr:assembleRelease` is in the CI command there). Batch 1 ported (protos, parser/*, manifest/*, SabrSegmentIndex, SabrWrappingSegmentIndex; rename tool docs/media3/tools/m3_rename.py; adapters now delegate since Media3 MatroskaExtractor.read is final; Format.Builder; isDrc/lastModified in SabrFormatMetadata) and being fixed on CI. Next: batch 2 = SabrChunkSource + DefaultSabrChunkSource, SabrMediaPeriod, SabrMediaSource without PlayerEmsgHandler/EventSampleStream, using Media3 1.11.1 DASH sources as the reference (get them: `git clone --depth 1 --branch 1.11.1 --filter=blob:none --sparse https://github.com/androidx/media` + sparse-checkout libraries/exoplayer_dash/src/main etc.; works through the proxy, Maven does not).
 Cut-offs in a row: 0
 
 ## API credits (Claude Console, used only by the claude-task workflow)
