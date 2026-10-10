@@ -22,6 +22,7 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.data.VideoGroup;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.BasePlayerController;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsHistory;
+import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsMetadataCache;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.manager.PlayerConstants;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.manager.PlayerUI;
 import com.liskovsoft.smartyoutubetv2.common.app.presenters.AppDialogPresenter;
@@ -63,6 +64,8 @@ public class VideoLoaderController extends BasePlayerController {
     private ErrorFixerController mErrorFixerController;
     private Disposable mFormatInfoAction;
     private Disposable mPrefetchAction;
+    private Disposable mMetadataPrefetchAction; // JoTube: the metadata of the next Short
+    private String mMetadataPrefetchedId;
     private String mPrefetchingVideoId; // video of the running prefetch request
     private String mWaitingForPrefetchId; // the user opened the video that is being prefetched right now
     // Format info of upcoming Shorts, fetched in the background while the current one plays
@@ -156,6 +159,8 @@ public class VideoLoaderController extends BasePlayerController {
         disposePrefetch();
         mPrefetchedFormats.clear();
         mPrefetchedTimesMs.clear();
+        RxHelper.disposeActions(mMetadataPrefetchAction);
+        mMetadataPrefetchedId = null;
     }
 
     @Override
@@ -324,6 +329,40 @@ public class VideoLoaderController extends BasePlayerController {
         if (mPreloadedAvatars.size() > PRELOADED_AVATARS_MAX) {
             mPreloadedAvatars.remove(mPreloadedAvatars.iterator().next());
         }
+    }
+
+    /**
+     * JoTube: the metadata of the next Short while the current one plays (one request that the next Short then
+     * doesn't make itself): its channel avatar is preloaded and the side panel shows it at once.
+     */
+    private void prefetchMetadata(Video next) {
+        if (next == null || next.videoId == null || !next.isShorts || next.isLive || next.getPlaylistId() != null ||
+                next.playlistParams != null || next.videoId.equals(mMetadataPrefetchedId) ||
+                RxHelper.isAnyActionRunning(mMetadataPrefetchAction) || ShortsMetadataCache.contains(next.videoId)) {
+            return;
+        }
+
+        String videoId = next.videoId;
+        mMetadataPrefetchedId = videoId;
+
+        mMetadataPrefetchAction = YouTubeServiceManager.instance().getMediaItemService()
+                .getMetadataObserve(videoId, null, -1, null)
+                .subscribe(metadata -> {
+                    ShortsMetadataCache.put(videoId, metadata);
+
+                    String avatarUrl = metadata != null ? metadata.getAuthorImageUrl() : null;
+
+                    if (avatarUrl != null && next.authorImageUrl == null) {
+                        next.authorImageUrl = avatarUrl;
+                    }
+
+                    prepareAvatar(next);
+
+                    Video now = getVideo();
+                    if (now != null && videoId.equals(now.videoId) && getPlayer() != null) {
+                        getPlayer().setVideo(now); // already on it: the panel gets the avatar now
+                    }
+                }, error -> Log.e(TAG, "Shorts: metadata prefetch failed for %s: %s", videoId, error.getMessage()));
     }
 
     /**
@@ -934,6 +973,8 @@ public class VideoLoaderController extends BasePlayerController {
         if (ahead.size() < PREFETCH_LOOKAHEAD) {
             continueShortsFeedIfNeeded(current);
         }
+
+        prefetchMetadata(ahead.isEmpty() ? null : ahead.get(0));
 
         for (int i = 0; i < ahead.size(); i++) {
             Video next = ahead.get(i);

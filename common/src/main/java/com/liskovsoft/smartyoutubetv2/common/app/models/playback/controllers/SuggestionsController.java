@@ -20,6 +20,7 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.data.Playlist;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.VideoGroup;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.BasePlayerController;
+import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsMetadataCache;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.SmartNext;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.manager.PlayerConstants;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.OptionItem;
@@ -33,6 +34,7 @@ import com.liskovsoft.smartyoutubetv2.common.prefs.GeneralData;
 import com.liskovsoft.smartyoutubetv2.common.utils.Utils;
 import com.liskovsoft.youtubeapi.service.YouTubeServiceManager;
 import io.reactivex.Observable;
+import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.Disposable;
 
 import java.util.ArrayList;
@@ -258,7 +260,16 @@ public class SuggestionsController extends BasePlayerController {
 
         // NOTE: Load suggestions from mediaItem isn't robust. Because playlistId may be initialized from RemoteControlManager.
         // Video might be loaded from Channels section (has playlistParams)
-        observable = mMediaItemService.getMetadataObserve(video.videoId, video.getPlaylistId(), video.playlistIndex, video.playlistParams);
+        // JoTube: the metadata of a Short may have been loaded already while the previous one played
+        MediaItemMetadata prefetched = video.isShorts && video.getPlaylistId() == null && video.playlistParams == null ?
+                ShortsMetadataCache.take(video.videoId) : null;
+
+        if (prefetched != null) {
+            Log.d(TAG, "Shorts: prefetched metadata of %s", video.videoId);
+            observable = Observable.just(prefetched).observeOn(AndroidSchedulers.mainThread());
+        } else {
+            observable = mMediaItemService.getMetadataObserve(video.videoId, video.getPlaylistId(), video.playlistIndex, video.playlistParams);
+        }
 
         Disposable metadataAction = observable
                 .subscribe(
