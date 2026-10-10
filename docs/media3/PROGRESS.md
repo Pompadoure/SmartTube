@@ -17,7 +17,7 @@ The Claude plan's usage can't be read by a run, so the work is cut into pieces t
 - API credits: hard cap per claude-task run and a total budget (below). At 12.00 USD spent the runs stop using
   the API and tell Johan; the last 2.00 USD stay untouched.
 
-Run: FINISHED 2026-10-10 (setup)
+Run: STARTED 2026-10-10T13:37Z
 Step size: normal (one sub-step, e.g. "1a")
 Cut-offs in a row: 0
 
