@@ -157,12 +157,13 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         }
     };
     // JoTube: no first frame will come (error, audio only): don't let the thumbnail cover the screen
-    private final Player.EventListener mTransitionStateListener = new Player.EventListener() {
+    private final Player.Listener mTransitionStateListener = new Player.Listener() {
         @Override
-        public void onPlayerError(androidx.media3.exoplayer.ExoPlaybackException error) {
+        public void onPlayerError(androidx.media3.common.PlaybackException error) {
             mShortsTransition.hide(false);
         }
 
+        @SuppressWarnings("deprecation") // M3: still called by ExoPlayer
         @Override
         public void onPlayerStateChanged(boolean playWhenReady, int playbackState) {
             if (playbackState == Player.STATE_READY && mPlayer != null && mPlayer.getVideoFormat() == null) {
