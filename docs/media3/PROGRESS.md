@@ -1,7 +1,7 @@
 # JoTube M3 progress
 
 Status: ACTIVE
-Next step: 1d (decisions: Media3 version, minSdk, extensions, old modules out of the build; see PLAN.md)
+Next step: stage 1 review (independent agent), then 2a (toolchain upgrade: AGP 8.x, compileSdk 36, Kotlin 2.x; PLAN.md Decisions 3)
 
 Status values: ACTIVE (the scheduled runs keep going), WAITING_FOR_JOHAN (a question to Johan, runs only check
 for his answer), BLOCKED (a stage can't be made stable; reason below), DONE (stage 6 finished).
@@ -23,7 +23,7 @@ a cut-off (Johan's decision 2026-10-10):
   the API and tell Johan; the last 2.00 USD stay untouched.
 
 Run: STARTED 2026-10-10T16:19Z
-Doing now: 1d. Latest stable Media3 = 1.11.1 (2026-09-11; 1.9.0 raised minSdk to 23). CI now also builds m3/** branches (no publish). Probe branch m3/probe-toolchain (Media3 1.11.1 in common, minSdk 23, M3Probe.java) pushed to see if AGP 7.4.2/compileSdk 34/Kotlin 1.8.10 can take Media3. Next: read its CI result, then write Decisions in PLAN.md; delete the probe branch after.
+Doing now: 1d done (Decisions in PLAN.md). Next action: independent review agent over the stage 1 docs (INVENTORY, FORK_CHANGES, SABR_PORT, Decisions), fix findings, mark stage 1 done; then 2a.
 Cut-offs in a row: 0
 
 ## API credits (Claude Console, used only by the claude-task workflow)
@@ -54,3 +54,7 @@ Spent so far: 0.00 USD
   BundledChunkExtractor. Hand work: ChunkSource/MediaPeriod/MediaSource signatures (LoadingInfo, ExoTrackSelection,
   DRM dispatchers, MediaItem), error policy. Proposals: drop the live-only emsg/event code (~470 lines), carry
   isDrc/lastModified in SabrFormatMetadata, shouldCancelLoad must never cancel a SABR POST. Docs only.
+- 2026-10-10: 1d done: Decisions in PLAN.md. CI probes on m3/probe-* branches: Media3 1.11.1 needs compileSdk 36,
+  1.5.1 needs 35, 1.4.1 builds with today's AGP 7.4.2/compileSdk 34. Chosen: 1.11.1 after a toolchain upgrade (AGP 8.x,
+  compileSdk 36, Kotlin 2.x, targetSdk pinned to 34), fallback 1.4.1; minSdk 23; no decoder extensions; stage 2 on a
+  work branch. CI now also builds `m3/**` branches without publishing. Probe branches deleted.
