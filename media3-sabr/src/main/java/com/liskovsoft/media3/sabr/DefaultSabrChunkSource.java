@@ -488,7 +488,10 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
         if (!cancelable) {
             return false;
         }
-        if (!(chunk instanceof SingleSampleMediaChunk) && isEndpointConnectionFailure(chunk, e)) {
+        // JoTube M3: only SABR POSTs (sources with a SabrStream) may switch the SABR CDN. Caption GETs are
+        // ContainerMediaChunks now too (cues parsed during extraction), so the old SingleSampleMediaChunk
+        // check no longer tells them apart.
+        if (sabrStream != null && isEndpointConnectionFailure(chunk, e)) {
             if (manifest.maybeUseNextCdn(chunk.dataSpec.uri.toString())) {
                 Log.w(TAG, "Retrying SABR request on an alternate media network");
                 return true;
