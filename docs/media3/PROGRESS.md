@@ -1,7 +1,7 @@
 # JoTube M3 progress
 
 Status: ACTIVE
-Next step: 2a (toolchain upgrade on branch m3/toolchain: AGP 8.x, compileSdk 36, Kotlin 2.x, namespaces; PLAN.md Decisions 3)
+Next step: 2b (`media3-sabr` module compiling on its own, SABR_PORT.md order; add Media3 1.11.1 deps)
 
 Status values: ACTIVE (the scheduled runs keep going), WAITING_FOR_JOHAN (a question to Johan, runs only check
 for his answer), BLOCKED (a stage can't be made stable; reason below), DONE (stage 6 finished).
@@ -23,7 +23,7 @@ a cut-off (Johan's decision 2026-10-10):
   the API and tell Johan; the last 2.00 USD stay untouched.
 
 Run: STARTED 2026-10-10T16:19Z
-Doing now: 2a on branch m3/toolchain: first attempt pushed (root build.gradle: AGP 8.13.0, Kotlin 2.2.0, compileSdk 36 via afterEvaluate, namespace + package-free manifest copies derived per module, Kotlin jvmTarget 1.8; gradle.properties AGP 7 behaviour flags; Gradle 8.14.3; stjohan minSdk 23/targetSdk 34). Next: read its CI result, fix, repeat until green; then merge m3/toolchain into media3.
+Doing now: 2a done and merged. Next action for 2b: create module `media3-sabr` (settings.gradle include, build.gradle with protobuf plugin, Media3 1.11.1 deps, minSdk 23, @UnstableApi opt-in), copy protos + parser/* first and get them compiling on a branch m3/sabr.
 Cut-offs in a row: 0
 
 ## API credits (Claude Console, used only by the claude-task workflow)
@@ -64,3 +64,10 @@ Spent so far: 0.00 USD
   Media3 deps, AGP 8 rejects manifest `package=` → submodule patches needed, SABR subtitles need extraction-time
   parsing or legacy decoding in Media3, minSdk 23 scope incl. doubletapplayerview/media3-sabr), 2 NITs (tunneling
   code, @UnstableApi opt-in).
+- 2026-10-10: 2a done (branch m3/toolchain, merged): AGP 8.13.0, Gradle 8.14.3, Kotlin 2.2.0, compileSdk 36 for all
+  modules, stjohan minSdk 23 / targetSdk 34. Submodules untouched: the root build.gradle derives each module's
+  namespace from its manifest and feeds AGP package-free manifest copies (in .gradle/m3-manifests), sets compileSdk in
+  finalizeDsl, buildConfig on, Kotlin jvmTarget 1.8; gradle.properties keeps transitive R + final res ids; filepicker-lib
+  archiveClassifier. CI green (runs 38069345493, 38070025122); CI now prints the APK's package/SDK levels as notices
+  (seen: org.smarttube.johan.media3, targetSdk 34, compileSdk 36). Review agent: no blockers; fixed the SHOULD-FIX
+  (manifest copies were under build/, lost on `clean`) and NITs.
