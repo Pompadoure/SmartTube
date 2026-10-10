@@ -18,6 +18,8 @@ android {
 
     defaultConfig {
         minSdk 23
+        // the app's library modules have flavors (stbeta/ststable/stfdroid); this module doesn't
+        missingDimensionStrategy 'default', 'ststable'
         consumerProguardFiles 'consumer-rules.pro'
     }
 
