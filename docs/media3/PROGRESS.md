@@ -11,19 +11,19 @@ The Claude plan's usage can't be read by a run, so the work goes as fast as poss
 a cut-off (Johan's decision 2026-10-10):
 - Fast pace: a run keeps working step after step until the work is done, its context gets long, or the usage cap
   stops it. Commit and push after every meaningful change (never more than ~15 minutes uncommitted) and keep
-  `Doing now:` below current with each push (step, what's done in it, exact next action).
-- Every run first writes `Run: STARTED <time>`, at the end `Run: FINISHED <time>`. A run that finds STARTED without
-  FINISHED knows the previous one was cut off: it finishes what `Doing now:` describes first and logs "cut off".
-- Self-restarting runs: a run that pushed real progress and ran 10+ minutes fires the scheduled task again
-  (fire_trigger) so a fresh run continues within the same usage window.
-- A scheduled run starts just after each usage reset (the first run of a window re-arms it to now + 5h05m), and a
-  daily watchdog re-arms the chain if it ever breaks.
-- Repeated cut-offs: tell Johan.
-- API credits: hard cap per claude-task run and a total budget (below). At 12.00 USD spent the runs stop using
-  the API and tell Johan; the last 2.00 USD stay untouched.
-
-Run: STARTED 2026-10-10T20:15Z
-Doing now: 2c on branch m3/stage2 (from media3), step 1 done (gradle swap + mechanical renames, commits 8cc58c2 and the next one), the build is expected red until all app files are ported. CI now prints every compiler error (javac -Xmaxerrs 2000) as up to 7 'COMPILER ERRORS part N (total T)' annotations, one line each with the javac 'symbol' detail, plus one 'FORCED/CHANGED DEPENDENCIES' notice. Next action: `gh run list -R Pompadoure/SmartTube --branch m3/stage2 -L 1`, read the annotations (gh api repos/Pompadoure/SmartTube/check-runs/<job id>/annotations -q '.[].message'), fix file groups in INVENTORY order: 4 sources (ExoMediaSourceFactory: SabrMediaSource.Factory/DefaultSabrChunkSource.Factory, DashMediaSource, OkHttp/Cronet DataSource.Factory, SabrDefaultLoadErrorHandlingPolicy/DashDefaultLoadErrorHandlingPolicy -> getRetryDelayMsFor(LoadErrorInfo); LiveDashManifestParser vs Media3 DashManifestParser; DashManifestParser2 fork class), 3 renderers, 2 track selection, 1 player construction/controller, 5 errors (TrackErrorFixer -> MediaSourceEventListener), 6 UI/leanback (ControlDispatcher -> ForwardingPlayer), 7 MediaSession (media3-session), 8 Shorts (ShortsQueue/ConcatenatingMediaSource, FastStartLoadControl, PlayedPeriodsPolicy), 9 misc, doubletapplayerview; push after each group. Dependencies: only androidx.annotation is forced down (1.6-1.9 -> 1.1.0, compile-time annotations, low risk); check the full notice for okhttp/core.
+  `Doing now: 2c on branch m3/stage2. Done this run: CI keeps javac symbol details (awk fix), lint opt-in for
+@UnstableApi (UnsafeOptInUsageError disabled in common/app), group 1 (sources) ported in a27b4c4: ExoMediaSourceFactory,
+DashManifestParser2 (now common/exoplayer/dash), LiveDashManifestParser, Dash/Sabr error policies, FastStartLoadControl,
+ExoPlayerInitializer (ExoPlayer.Builder; uses getBandwidthMeter(context) and player.addListener(VolumeBooster)),
+OkHttp forced to 4.12.0. API task `claude-task/m3-renderers` (budget 1.50) ports versions/renderer/*,
+BlacklistMediaCodecSelector, DebugInfoManager, VolumeBooster: review + merge into m3/stage2 when its commit lands
+(check VolumeBooster is a Player.Listener, else fix ExoPlayerInitializer). Media3 1.11.1 sources for API checks:
+`git clone --depth 1 --branch 1.11.1 --filter=blob:none --sparse https://github.com/androidx/media /home/claude/media3src`
++ `git sparse-checkout set libraries/exoplayer libraries/exoplayer_dash libraries/common libraries/datasource ...` (works
+through the proxy; raw.githubusercontent and dl.google.com don't). Next action: groups 2 track selection
+(TrackSelectorManager, RestoreTrackSelector, ExoFormatItem, MediaTrack, TrackSelectorUtil), 1 controller
+(ExoPlayerController), 5 errors (TrackErrorFixer -> MediaSourceEventListener), then the rest in INVENTORY order;
+PlaybackFragment.java:587 must use ExoMediaSourceFactory.getBandwidthMeter(context).
 Cut-offs in a row: 1
 
 ## API credits (Claude Console, used only by the claude-task workflow)
