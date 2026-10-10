@@ -1,10 +1,12 @@
 package com.liskovsoft.smartyoutubetv2.common.exoplayer.other;
 
+import androidx.annotation.Nullable;
+import androidx.media3.common.Timeline;
 import androidx.media3.exoplayer.LoadControl;
-import com.google.android.exoplayer2.PlayedPeriodsPolicy;
-import androidx.media3.exoplayer.Renderer;
+import androidx.media3.exoplayer.analytics.PlayerId;
+import androidx.media3.exoplayer.source.MediaSource.MediaPeriodId;
 import androidx.media3.exoplayer.source.TrackGroupArray;
-import androidx.media3.exoplayer.trackselection.TrackSelectionArray;
+import androidx.media3.exoplayer.trackselection.ExoTrackSelection;
 import androidx.media3.exoplayer.upstream.Allocator;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
 
@@ -16,7 +18,7 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitio
  * Regular (non-live) videos keep at least {@link #VOD_MIN_BUFFER_US} buffered, whatever the buffer setting
  * (a 5 s buffer can't absorb a short network dip with high bitrate formats). Live streams keep the original behavior.
  */
-public class FastStartLoadControl implements LoadControl, PlayedPeriodsPolicy {
+public class FastStartLoadControl implements LoadControl {
     private static final long SHORTS_START_BUFFER_US = 500_000; // 0.5 s
     // Ahead of the playback position, across the current and the queued Shorts
     private static final long SHORTS_MIN_BUFFER_US = 10_000_000; // always (like prioritizeTimeOverSizeThresholds)
@@ -28,6 +30,7 @@ public class FastStartLoadControl implements LoadControl, PlayedPeriodsPolicy {
     private final LoadControl mDelegate;
     private final int mShortsMaxBufferBytes;
     private final int mMaxBufferBytes;
+    @Nullable private PlayerId mPlayerId;
 
     /**
      * @param maxBufferBytes the app's memory limit for the player buffer on this device
@@ -39,86 +42,98 @@ public class FastStartLoadControl implements LoadControl, PlayedPeriodsPolicy {
     }
 
     @Override
-    public boolean shouldStartPlayback(long bufferedDurationUs, float playbackSpeed, boolean rebuffering) {
+    public boolean shouldStartPlayback(Parameters parameters) {
+        boolean rebuffering = parameters.rebuffering;
+        long bufferedDurationUs = parameters.bufferedDurationUs;
+
         if (!rebuffering && ShortsTransitionState.isShortsMode()) {
-            return bufferedDurationUs >= SHORTS_START_BUFFER_US || mDelegate.shouldStartPlayback(bufferedDurationUs, playbackSpeed, false);
+            return bufferedDurationUs >= SHORTS_START_BUFFER_US || mDelegate.shouldStartPlayback(parameters);
         }
 
         if (!rebuffering && !ShortsTransitionState.isLive()) {
             // Regular video: start after 1 s instead of 2.5 s (the adaptive start quality keeps the first chunk small)
-            return bufferedDurationUs >= VOD_START_BUFFER_US || mDelegate.shouldStartPlayback(bufferedDurationUs, playbackSpeed, false);
+            return bufferedDurationUs >= VOD_START_BUFFER_US || mDelegate.shouldStartPlayback(parameters);
         }
 
-        return mDelegate.shouldStartPlayback(bufferedDurationUs, playbackSpeed, rebuffering);
+        return mDelegate.shouldStartPlayback(parameters);
     }
 
     // BEGIN JoTube: played Shorts stay in the player (with their data), so going back is instant
+    // M3: not called by Media3 (the fork's PlayedPeriodsPolicy hook); stage 4 decides how this maps to Media3
 
-    @Override
     public boolean shouldRetainPlayedPeriods() {
         // Not when the buffer memory is already used up (then the played one is released as usual)
-        return ShortsTransitionState.isShortsMode() && getAllocator().getTotalBytesAllocated() < mShortsMaxBufferBytes;
+        return ShortsTransitionState.isShortsMode() && mPlayerId != null &&
+                getAllocator(mPlayerId).getTotalBytesAllocated() < mShortsMaxBufferBytes;
     }
 
-    @Override
     public boolean shouldPreloadQueuedPeriods() {
         return ShortsTransitionState.isShortsMode();
     }
 
-    @Override
     public long getCurrentBackBufferDurationUs() {
-        return ShortsTransitionState.isShortsMode() ? SHORTS_BACK_BUFFER_US : mDelegate.getBackBufferDurationUs();
+        return ShortsTransitionState.isShortsMode() ? SHORTS_BACK_BUFFER_US :
+                (mPlayerId != null ? mDelegate.getBackBufferDurationUs(mPlayerId) : 0);
     }
 
     // END JoTube
 
     @Override
-    public void onPrepared() {
-        mDelegate.onPrepared();
+    public void onPrepared(PlayerId playerId) {
+        mPlayerId = playerId;
+        mDelegate.onPrepared(playerId);
     }
 
     @Override
-    public void onTracksSelected(Renderer[] renderers, TrackGroupArray trackGroups, TrackSelectionArray trackSelections) {
-        mDelegate.onTracksSelected(renderers, trackGroups, trackSelections);
+    public void onTracksSelected(Parameters parameters, TrackGroupArray trackGroups, @Nullable ExoTrackSelection[] trackSelections) {
+        mDelegate.onTracksSelected(parameters, trackGroups, trackSelections);
     }
 
     @Override
-    public void onStopped() {
-        mDelegate.onStopped();
+    public void onStopped(PlayerId playerId) {
+        mDelegate.onStopped(playerId);
     }
 
     @Override
-    public void onReleased() {
-        mDelegate.onReleased();
+    public void onReleased(PlayerId playerId) {
+        mDelegate.onReleased(playerId);
     }
 
     @Override
-    public Allocator getAllocator() {
-        return mDelegate.getAllocator();
+    public Allocator getAllocator(PlayerId playerId) {
+        return mDelegate.getAllocator(playerId);
     }
 
     @Override
-    public long getBackBufferDurationUs() {
-        return mDelegate.getBackBufferDurationUs();
+    public long getBackBufferDurationUs(PlayerId playerId) {
+        return mDelegate.getBackBufferDurationUs(playerId);
     }
 
     @Override
-    public boolean retainBackBufferFromKeyframe() {
-        return mDelegate.retainBackBufferFromKeyframe();
+    public boolean retainBackBufferFromKeyframe(PlayerId playerId) {
+        return mDelegate.retainBackBufferFromKeyframe(playerId);
     }
 
     @Override
-    public boolean shouldContinueLoading(long bufferedDurationUs, float playbackSpeed) {
+    public boolean shouldContinuePreloading(PlayerId playerId, Timeline timeline, MediaPeriodId mediaPeriodId, long bufferedDurationUs) {
+        return mDelegate.shouldContinuePreloading(playerId, timeline, mediaPeriodId, bufferedDurationUs);
+    }
+
+    @Override
+    public boolean shouldContinueLoading(Parameters parameters) {
+        long bufferedDurationUs = parameters.bufferedDurationUs;
+        Allocator allocator = getAllocator(parameters.playerId);
+
         if (ShortsTransitionState.isShortsMode()) {
             return bufferedDurationUs < SHORTS_MIN_BUFFER_US || (bufferedDurationUs < SHORTS_MAX_BUFFER_US &&
-                    getAllocator().getTotalBytesAllocated() < mShortsMaxBufferBytes);
+                    allocator.getTotalBytesAllocated() < mShortsMaxBufferBytes);
         }
 
         if (!ShortsTransitionState.isLive() && bufferedDurationUs < VOD_MIN_BUFFER_US &&
-                getAllocator().getTotalBytesAllocated() < mMaxBufferBytes) {
+                allocator.getTotalBytesAllocated() < mMaxBufferBytes) {
             return true;
         }
 
-        return mDelegate.shouldContinueLoading(bufferedDurationUs, playbackSpeed);
+        return mDelegate.shouldContinueLoading(parameters);
     }
 }

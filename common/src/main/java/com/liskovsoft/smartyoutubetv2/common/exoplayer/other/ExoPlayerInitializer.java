@@ -2,31 +2,17 @@ package com.liskovsoft.smartyoutubetv2.common.exoplayer.other;
 
 import android.content.Context;
 import android.os.Build;
-import android.os.Handler;
-import androidx.annotation.Nullable;
 import androidx.media3.common.C;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.ExoMediaSourceFactory;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
-import androidx.media3.exoplayer.ExoPlayerFactory;
 import androidx.media3.exoplayer.SeekParameters;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.common.AudioAttributes;
-import androidx.media3.exoplayer.drm.DefaultDrmSessionManager;
-import androidx.media3.exoplayer.drm.DrmSessionManager;
-import androidx.media3.exoplayer.drm.ExoMediaDrm.KeyRequest;
-import androidx.media3.exoplayer.drm.ExoMediaDrm.ProvisionRequest;
-import androidx.media3.exoplayer.drm.FrameworkMediaCrypto;
-import androidx.media3.exoplayer.drm.MediaDrmCallback;
-import androidx.media3.exoplayer.drm.UnsupportedDrmException;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
-import androidx.media3.exoplayer.upstream.BandwidthMeter;
-import androidx.media3.datasource.TransferListener;
 import com.liskovsoft.sharedutils.helpers.DeviceHelpers;
 import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerData;
 import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerTweaksData;
-
-import java.util.UUID;
 
 public class ExoPlayerInitializer {
     private final int mMaxBufferBytes;
@@ -57,7 +43,12 @@ public class ExoPlayerInitializer {
 
         // Old initializer
         // SmartTube J: faster first frame for Shorts
-        ExoPlayer player = ExoPlayerFactory.newSimpleInstance(context, renderersFactory, trackSelector, new FastStartLoadControl(loadControl, mMaxBufferBytes), null, ExoMediaSourceFactory.getBandwidthMeter());
+        // JoTube M3: ExoPlayer.Builder replaces ExoPlayerFactory.newSimpleInstance (no DRM manager, as before: null)
+        ExoPlayer player = new ExoPlayer.Builder(context, renderersFactory)
+                .setTrackSelector(trackSelector)
+                .setLoadControl(new FastStartLoadControl(loadControl, mMaxBufferBytes))
+                .setBandwidthMeter(ExoMediaSourceFactory.getBandwidthMeter(context))
+                .build();
 
         // New initializer
         //ExoPlayer player = ExoPlayerFactory.newSimpleInstance(
@@ -88,7 +79,7 @@ public class ExoPlayerInitializer {
         if (sAudioAttributes == null) {
             sAudioAttributes = new AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
-                    .setContentType(C.CONTENT_TYPE_MOVIE)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
                     .build();
         }
 
@@ -147,7 +138,7 @@ public class ExoPlayerInitializer {
         // Decrease buffer size?
         //baseBuilder.setAllocator(new DefaultAllocator(true, 16 * 1024));
 
-        return baseBuilder.createDefaultLoadControl();
+        return baseBuilder.build();
     }
 
     private void setupVolumeBoost(ExoPlayer player) {
@@ -156,7 +147,7 @@ public class ExoPlayerInitializer {
         float volume = mPlayerTweaksData.isPlayerAutoVolumeEnabled() ? mPlayerData.getPlayerVolume() * 2.0f : mPlayerData.getPlayerVolume();
         if (volume > 1f && Build.VERSION.SDK_INT >= 19) {
             mVolumeBooster = new VolumeBooster(true, volume, player);
-            player.addAudioListener(mVolumeBooster);
+            player.addListener(mVolumeBooster); // M3: VolumeBooster is a Player.Listener (onAudioSessionIdChanged)
         }
         mVolumeBoost = Math.max(volume, 1f);
     }
@@ -198,53 +189,12 @@ public class ExoPlayerInitializer {
         }
 
         if (mPlayer != null && mVolumeBooster != null) {
-            mPlayer.removeAudioListener(mVolumeBooster);
+            mPlayer.removeListener(mVolumeBooster);
         }
 
         mVolumeBooster = null;
         mPlayer = null;
     }
 
-    private DrmSessionManager<FrameworkMediaCrypto> createDrmManager() {
-        try {
-            return DefaultDrmSessionManager.newWidevineInstance(new MediaDrmCallback() {
-                @Override
-                public byte[] executeProvisionRequest(UUID uuid, ProvisionRequest request) {
-                    return new byte[0];
-                }
-
-                @Override
-                public byte[] executeKeyRequest(UUID uuid, KeyRequest request) {
-                    return new byte[0];
-                }
-            }, null);
-        } catch (UnsupportedDrmException e) {
-            e.printStackTrace();
-        }
-
-        return null;
-    }
-
-    private static final class DummyBandwidthMeter implements BandwidthMeter {
-        @Override
-        public long getBitrateEstimate() {
-            return 0;
-        }
-
-        @Nullable
-        @Override
-        public TransferListener getTransferListener() {
-            return null;
-        }
-
-        @Override
-        public void addEventListener(Handler eventHandler, EventListener eventListener) {
-            // Do nothing.
-        }
-
-        @Override
-        public void removeEventListener(EventListener eventListener) {
-            // Do nothing.
-        }
-    }
+    // JoTube M3: the unused createDrmManager() and DummyBandwidthMeter (2.10 only) were removed.
 }
