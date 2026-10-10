@@ -28,8 +28,12 @@ android {
         targetCompatibility JavaVersion.VERSION_1_8
     }
 
+    testOptions {
+        unitTests.includeAndroidResources = true
+    }
+
     lint {
-        // Media3 APIs used here are @UnstableApi; the module opts in per package (package-info.java)
+        // Media3 APIs used here are @UnstableApi; classes using them are annotated @UnstableApi themselves
         abortOnError false
     }
 }
@@ -43,6 +47,12 @@ dependencies {
     implementation project(':youtubeapi')
     implementation 'androidx.annotation:annotation:1.9.1'
     implementation "com.google.protobuf:protobuf-javalite:$m3ProtobufVersion"
+
+    // Unit tests ported from library/sabr (Robolectric), run by CI (:media3-sabr:testReleaseUnitTest)
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'androidx.test.ext:junit:1.2.1'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+    testImplementation 'org.mockito:mockito-core:5.14.2'
 }
 
 protobuf {
