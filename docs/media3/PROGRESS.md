@@ -22,8 +22,8 @@ a cut-off (Johan's decision 2026-10-10):
 - API credits: hard cap per claude-task run and a total budget (below). At 12.00 USD spent the runs stop using
   the API and tell Johan; the last 2.00 USD stay untouched.
 
-Run: STARTED 2026-10-10T16:19Z
-Doing now: 2b on branch m3/sabr (CI builds it, `:media3-sabr:assembleRelease` is in the CI command there). Batch 1 ported (protos, parser/*, manifest/*, SabrSegmentIndex, SabrWrappingSegmentIndex; rename tool docs/media3/tools/m3_rename.py; adapters now delegate since Media3 MatroskaExtractor.read is final; Format.Builder; isDrc/lastModified in SabrFormatMetadata) and being fixed on CI. Next: batch 2 = SabrChunkSource + DefaultSabrChunkSource, SabrMediaPeriod, SabrMediaSource without PlayerEmsgHandler/EventSampleStream, using Media3 1.11.1 DASH sources as the reference (get them: `git clone --depth 1 --branch 1.11.1 --filter=blob:none --sparse https://github.com/androidx/media` + sparse-checkout libraries/exoplayer_dash/src/main etc.; works through the proxy, Maven does not).
+Run: FINISHED 2026-10-10T17:40Z
+Doing now: 2b batch 1 done and merged (media3-sabr: protos, parser/*, manifest/*, SabrSegmentIndex, SabrWrappingSegmentIndex compile; CI run 38071813525). Next action: batch 2 on branch m3/sabr (from media3): port SabrChunkSource + DefaultSabrChunkSource, then SabrMediaPeriod and SabrMediaSource from exoplayer-amzn-2.10.6/library/sabr into media3-sabr/src/main/java/com/liskovsoft/media3/sabr, first `python3 docs/media3/tools/m3_rename.py <files>`, then hand-port against Media3 1.11.1 DefaultDashChunkSource/DashMediaPeriod/DashMediaSource (sources: `git clone --depth 1 --branch 1.11.1 --filter=blob:none --sparse https://github.com/androidx/media /tmp/m3src` + `git sparse-checkout set libraries/exoplayer_dash/src/main libraries/exoplayer/src/main/java/androidx/media3/exoplayer/source`). Drop PlayerEmsgHandler/EventSampleStream/event streams (SABR_PORT.md); shouldCancelLoad returns false. CI errors: one annotation "COMPILER ERRORS" with all javac lines (gh api .../check-runs/<job>/annotations).
 Cut-offs in a row: 0
 
 ## API credits (Claude Console, used only by the claude-task workflow)
@@ -71,3 +71,8 @@ Spent so far: 0.00 USD
   archiveClassifier. CI green (runs 38069345493, 38070025122); CI now prints the APK's package/SDK levels as notices
   (seen: org.smarttube.johan.media3, targetSdk 34, compileSdk 36). Review agent: no blockers; fixed the SHOULD-FIX
   (manifest copies were under build/, lost on `clean`) and NITs.
+- 2026-10-10 (run 16:19-17:40Z): 1c, 1d, stage 1 review, 2a done; 2b batch 1 done: new module `media3-sabr`
+  (package com.liskovsoft.media3.sabr, Media3 1.11.1, protobuf-javalite 3.25.5, minSdk 23), built by CI next to the
+  app (`:media3-sabr:assembleRelease`). Rename tool `docs/media3/tools/m3_rename.py`. Hand changes: extractor adapters
+  delegate to Media3 extractors (MatroskaExtractor.read is final in Media3), Format.Builder in SabrManifestParser,
+  isDrc/lastModified via SabrFormatMetadata helpers, ParsableByteArray.getData(), no InterruptedException. CI green.
