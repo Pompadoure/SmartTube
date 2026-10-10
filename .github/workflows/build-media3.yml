@@ -75,9 +75,9 @@ jobs:
           # Show every requested -> resolved change of the app's runtime classpath for the libraries Media3 uses.
           chmod +x gradlew
           ./gradlew -q :smarttubetv:dependencies --configuration stjohanReleaseRuntimeClasspath > deps.txt 2>&1 || true
-          grep -oE "(androidx\.(core|annotation|media|recyclerview|collection|lifecycle)[a-z.-]*|com\.squareup\.okhttp3|org\.chromium\.net|com\.google\.guava)[^ ]*:[^ ]+ -> [0-9][^ ]*" deps.txt | sort -u | head -40 | while IFS= read -r line; do
-            echo "::notice::DEP ${line}"
-          done
+          # GitHub keeps only 10 notices per step: all lines go into one notice
+          deps=$(grep -oE "(androidx\.(core|annotation|media|recyclerview|collection|lifecycle)[a-z.-]*|com\.squareup\.okhttp3|org\.chromium\.net|com\.google\.guava)[^ ]*:[^ ]+ -> [0-9][^ ]*" deps.txt | sort -u | head -60)
+          echo "::notice::FORCED/CHANGED DEPENDENCIES%0A$(echo "$deps" | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
 
       - name: Build
         run: |
@@ -85,20 +85,32 @@ jobs:
           set -o pipefail
           # :media3-sabr is built (and its unit tests run) explicitly too
           if ! ./gradlew assembleStjohanRelease :media3-sabr:assembleRelease :media3-sabr:testReleaseUnitTest 2>&1 | tee build.log; then
-            # Compiler errors as annotations (readable without the raw log). GitHub keeps only 10 error
-            # annotations per step, so all compiler errors go into one annotation, one compact line each.
-            errs=$(grep -E "^/.*\.(java|kt):[0-9]+: error: |^e: " build.log | sed -E 's#^.*/(media3-sabr|common|smarttubetv|doubletapplayerview)/src/(main|test)/java/##' | sort -u | head -200)
-            if [ -n "$errs" ]; then
-              echo "::error::COMPILER ERRORS ($(echo "$errs" | wc -l))%0A$(echo "$errs" | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
+            # One compact line per error: short path, message and javac's "symbol:" detail. Split over up to
+            # 7 annotations of ~3.5k chars (GitHub truncates long annotation messages, keeps 10 per step).
+            awk '
+              /^\/.*\.(java|kt):[0-9]+: error: / { if (cur != "") print cur; cur = $0; next }
+              /^e: / { if (cur != "") print cur; cur = $0; next }
+              cur != "" && /^ +symbol: / { sub(/^ +symbol: +/, ""); cur = cur " [" $0 "]"; next }
+              cur != "" && /^ +location: / { next }
+              { if (cur != "") { print cur; cur = "" } }
+              END { if (cur != "") print cur }
+            ' build.log | sed -E 's#^.*/(media3-sabr|common|smarttubetv|doubletapplayerview)/src/(main|test)/java/##; s#^com/liskovsoft/smartyoutubetv2/##; s#: error: #: #' | sort -u > errs.txt
+            if [ -s errs.txt ]; then
+              total=$(wc -l < errs.txt)
+              split -C 3500 -d errs.txt errpart.
+              n=0
+              for f in errpart.*; do
+                n=$((n+1)); [ $n -gt 7 ] && break
+                echo "::error::COMPILER ERRORS part $n (total $total)%0A$(sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g' "$f")"
+              done
             fi
             # Failed unit tests (test name + first line of the failure), one annotation
             fails=$(grep -E "Test > .* FAILED$" -A1 build.log | grep -v "^--$" | head -60)
             if [ -n "$fails" ]; then
               echo "::error::UNIT TEST FAILURES%0A$(echo "$fails" | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
             fi
-            grep -E "What went wrong" -A3 build.log | head -8 | while IFS= read -r line; do
-              echo "::error::${line}"
-            done
+            wrong=$(grep -E "What went wrong" -A3 build.log | head -8)
+            echo "::error::WHAT WENT WRONG%0A$(echo "$wrong" | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
             exit 1
           fi
 

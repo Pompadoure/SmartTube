@@ -24,7 +24,7 @@ import androidx.media3.common.Timeline;
 import androidx.media3.exoplayer.DecoderCounters;
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
 import androidx.media3.exoplayer.source.TrackGroupArray;
-import androidx.media3.exoplayer.source.dash.manifest.DashManifest;
+import androidx.media3.exoplayer.dash.manifest.DashManifest;
 import com.liskovsoft.media3.sabr.manifest.SabrManifest;
 import androidx.media3.exoplayer.trackselection.TrackSelectionArray;
 import com.liskovsoft.sharedutils.cronet.CronetManager;

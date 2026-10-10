@@ -84,6 +84,10 @@ allprojects {
 // - compileSdk 36 for every module (targetSdk of the app flavor is pinned separately),
 // - Kotlin bytecode target 1.8 like the Java code (AGP 8/Kotlin 2 fail on mismatched JVM targets).
 subprojects { p ->
+    // JoTube M3 (stage 2c): show all compiler errors, not only the first 100 per module
+    p.tasks.withType(JavaCompile).configureEach {
+        options.compilerArgs += ['-Xmaxerrs', '2000']
+    }
     def m3Glue = {
         def android = p.extensions.getByName('android')
         def mainManifest = p.file('src/main/AndroidManifest.xml')
