@@ -11,7 +11,9 @@ import androidx.media3.exoplayer.ExoPlaybackException;
 import androidx.media3.common.Format;
 import androidx.media3.common.PlaybackParameters;
 import androidx.media3.common.Player;
-import androidx.media3.common.PlayerMessage;
+import androidx.media3.common.PlaybackException;
+import androidx.media3.common.Tracks;
+import androidx.media3.exoplayer.PlayerMessage;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.common.Timeline;
 import androidx.media3.exoplayer.source.MediaSource;
@@ -20,6 +22,7 @@ import androidx.media3.exoplayer.source.TrackGroupArray;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import androidx.media3.exoplayer.trackselection.ExoTrackSelection;
 import androidx.media3.exoplayer.trackselection.TrackSelectionArray;
+import androidx.media3.exoplayer.trackselection.TrackSelection;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.sharedutils.mylogger.Log;
@@ -45,7 +48,7 @@ import java.io.InputStream;
 import java.lang.ref.WeakReference;
 import java.util.List;
 
-public class ExoPlayerController implements Player.EventListener {
+public class ExoPlayerController implements Player.Listener {
     private static final String TAG = ExoPlayerController.class.getSimpleName();
     private final Context mContext;
     private final ExoMediaSourceFactory mMediaSourceFactory;
@@ -313,7 +316,7 @@ public class ExoPlayerController implements Player.EventListener {
         mItemEndIndex = index;
         mItemEndMessage = mPlayer.createMessage((messageType, payload) -> onItemEnding(index))
                 .setPosition(index, durationMs - ITEM_END_MARGIN_MS)
-                .setHandler(mHandler)
+                .setLooper(mHandler.getLooper())
                 .setDeleteAfterDelivery(false)
                 .send();
     }
@@ -535,19 +538,15 @@ public class ExoPlayerController implements Player.EventListener {
 
         // JoTube: tunneled playback is off for every video (the setting is ignored). In tunnel mode each start
         // waited ~0.5 s for the A/V sync on the Streamer, and the video frame can't be captured for transitions.
+        // M3: Media3 switches tunneling with Parameters.setTunnelingEnabled (no audio session id any more).
         if (TUNNELING_ALLOWED && mContext != null && trackSelector != null && PlayerTweaksData.instance(mContext).isTunneledPlaybackEnabled()) {
-            // Enable tunneling if supported by the current media and device configuration.
-            if (VERSION.SDK_INT >= 21) {
-                mTunnelingSessionId = C.generateAudioSessionIdV21(mContext);
-                mTunnelingTrackSelector = trackSelector;
-                trackSelector.setParameters(trackSelector.buildUponParameters().setTunnelingAudioSessionId(mTunnelingSessionId));
-            }
+            mTunnelingTrackSelector = trackSelector;
+            trackSelector.setParameters(trackSelector.buildUponParameters().setTunnelingEnabled(true));
         }
     }
 
     private static final boolean TUNNELING_ALLOWED = false;
     private DefaultTrackSelector mTunnelingTrackSelector; // tunneling is enabled in the settings
-    private int mTunnelingSessionId = C.AUDIO_SESSION_ID_UNSET;
 
     /**
      * JoTube: no tunneled playback for Shorts. In tunnel mode every Short switch re-creates the audio track and
@@ -560,10 +559,10 @@ public class ExoPlayerController implements Player.EventListener {
             return;
         }
 
-        int sessionId = ShortsTransitionState.isShortsMode() ? C.AUDIO_SESSION_ID_UNSET : mTunnelingSessionId;
+        boolean tunneling = !ShortsTransitionState.isShortsMode();
 
-        if (trackSelector.getParameters().tunnelingAudioSessionId != sessionId) {
-            trackSelector.setParameters(trackSelector.buildUponParameters().setTunnelingAudioSessionId(sessionId));
+        if (trackSelector.getParameters().tunnelingEnabled != tunneling) {
+            trackSelector.setParameters(trackSelector.buildUponParameters().setTunnelingEnabled(tunneling));
         }
     }
     
@@ -613,8 +612,13 @@ public class ExoPlayerController implements Player.EventListener {
         return ExoFormatItem.from(mTrackSelectorManager.getSelectedTrack(rendererIndex));
     }
 
+    @SuppressWarnings("deprecation")
     @Override
-    public void onTracksChanged(TrackGroupArray trackGroups, TrackSelectionArray trackSelections) {
+    public void onTracksChanged(Tracks tracks) {
+        // M3: the 2.10 callback got the renderer track groups and selections; ExoPlayer still exposes both
+        // (deprecated getters), which keeps the per-renderer logic below unchanged.
+        TrackGroupArray trackGroups = mPlayer != null ? mPlayer.getCurrentTrackGroups() : TrackGroupArray.EMPTY;
+        TrackSelectionArray trackSelections = mPlayer != null ? mPlayer.getCurrentTrackSelections() : new TrackSelectionArray();
         Log.d(TAG, "onTracksChanged: start: groups length: " + trackGroups.length);
 
         if (trackGroups.length == 0) {
@@ -629,7 +633,7 @@ public class ExoPlayerController implements Player.EventListener {
 
         notifyOnVideoLoad();
 
-        for (ExoTrackSelection selection : trackSelections.getAll()) {
+        for (TrackSelection selection : trackSelections.getAll()) {
             if (selection != null) {
                 // EXO: 2.12.1
                 //Format format = selection.getSelectedFormat();
@@ -667,7 +671,7 @@ public class ExoPlayerController implements Player.EventListener {
     }
 
     @Override
-    public void onTimelineChanged(Timeline timeline, Object manifest, int reason) {
+    public void onTimelineChanged(Timeline timeline, int reason) {
         // Shorts queue: the duration of the current item becomes known
         if (ShortsQueue.getActive() != null) {
             scheduleItemEnd();
@@ -675,16 +679,29 @@ public class ExoPlayerController implements Player.EventListener {
     }
 
     @Override
-    public void onPlayerError(ExoPlaybackException error) {
-        Log.e(TAG, "onPlayerError: " + error);
+    public void onPlayerError(PlaybackException playbackError) {
+        Log.e(TAG, "onPlayerError: " + playbackError);
 
         // NOTE: Player is released at this point. So, there is no sense to restore the playback here.
 
-        Throwable nested = error.getCause() != null ? error.getCause() : error;
+        Throwable nested = playbackError.getCause() != null ? playbackError.getCause() : playbackError;
 
-        mEventListener.onEngineError(error.type, error.rendererIndex, nested);
+        // M3: ExoPlayer reports ExoPlaybackException; an OutOfMemoryError is TYPE_UNEXPECTED now (2.10 had its own type)
+        int type = ExoPlaybackException.TYPE_UNEXPECTED;
+        int rendererIndex = C.INDEX_UNSET;
+        if (playbackError instanceof ExoPlaybackException) {
+            ExoPlaybackException error = (ExoPlaybackException) playbackError;
+            type = error.type;
+            rendererIndex = error.rendererIndex;
+        }
+        if (nested instanceof OutOfMemoryError) {
+            type = PlayerEventListener.ERROR_TYPE_OUT_OF_MEMORY;
+        }
+
+        mEventListener.onEngineError(type, rendererIndex, nested);
     }
 
+    @SuppressWarnings("deprecation") // M3: still called by ExoPlayer (one callback for both values, like 2.10)
     @Override
     public void onPlayerStateChanged(boolean playWhenReady, int playbackState) {
         if (BuildConfig.DEBUG) {
@@ -718,11 +735,18 @@ public class ExoPlayerController implements Player.EventListener {
     }
 
     @Override
-    public void onPositionDiscontinuity(int reason) {
+    public void onPositionDiscontinuity(Player.PositionInfo oldPosition, Player.PositionInfo newPosition, int reason) {
         Log.e(TAG, "onPositionDiscontinuity");
 
+        // M3: onSeekProcessed is gone; the seek discontinuity is the closest event (reported when the seek starts)
+        if (reason == Player.DISCONTINUITY_REASON_SEEK) {
+            mEventListener.onSeekEnd();
+            return;
+        }
+
         // Fix video loop on 480p with legacy codes enabled
-        if (reason == Player.DISCONTINUITY_REASON_PERIOD_TRANSITION) {
+        // M3: DISCONTINUITY_REASON_PERIOD_TRANSITION became DISCONTINUITY_REASON_AUTO_TRANSITION
+        if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION) {
             if (handleQueueAutoAdvance()) {
                 return;
             }
@@ -730,11 +754,6 @@ public class ExoPlayerController implements Player.EventListener {
             mPlayer.stop();
             mEventListener.onPlayEnd();
         }
-    }
-
-    @Override
-    public void onSeekProcessed() {
-        mEventListener.onSeekEnd();
     }
 
     public float getSpeed() {
@@ -800,7 +819,8 @@ public class ExoPlayerController implements Player.EventListener {
         cancelItemEnd();
 
         if (containsMedia()) {
-            mPlayer.stop(true);
+            mPlayer.stop(); // M3: stop(true) = stop() + clearMediaItems()
+            mPlayer.clearMediaItems();
         }
     }
     
@@ -820,7 +840,7 @@ public class ExoPlayerController implements Player.EventListener {
         }
 
         if (mVolumeBooster != null) {
-            mPlayer.removeAudioListener(mVolumeBooster);
+            mPlayer.removeListener(mVolumeBooster);
             mVolumeBooster = null;
         }
 
@@ -828,7 +848,7 @@ public class ExoPlayerController implements Player.EventListener {
         // also, other 2.0 tracks in 5.1 group is already too loud. so cancel them too.
         if (volume > 1f && !contains51Audio() && Build.VERSION.SDK_INT >= 19) {
             mVolumeBooster = new VolumeBooster(true, volume, null);
-            mPlayer.addAudioListener(mVolumeBooster);
+            mPlayer.addListener(mVolumeBooster);
         }
     }
     
@@ -853,7 +873,8 @@ public class ExoPlayerController implements Player.EventListener {
 
         try {
             mPlayer.removeListener(this);
-            mPlayer.stop(true); // Cause input lags due to high cpu load?
+            mPlayer.stop(); // Cause input lags due to high cpu load?
+            mPlayer.clearMediaItems();
             mPlayer.clearVideoSurface();
             mPlayer.release();
         } catch (ArrayIndexOutOfBoundsException e) { // thrown on stop()
