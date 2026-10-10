@@ -5,12 +5,12 @@ import android.content.Context;
 import android.media.MediaCodec;
 import android.os.Handler;
 import androidx.annotation.Nullable;
-import com.google.android.exoplayer2.Format;
-import com.google.android.exoplayer2.drm.DrmSessionManager;
-import com.google.android.exoplayer2.drm.FrameworkMediaCrypto;
-import com.google.android.exoplayer2.mediacodec.MediaCodecInfo;
-import com.google.android.exoplayer2.mediacodec.MediaCodecSelector;
-import com.google.android.exoplayer2.video.VideoRendererEventListener;
+import androidx.media3.common.Format;
+import androidx.media3.exoplayer.drm.DrmSessionManager;
+import androidx.media3.exoplayer.drm.FrameworkMediaCrypto;
+import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
+import androidx.media3.exoplayer.video.VideoRendererEventListener;
 import com.liskovsoft.sharedutils.mylogger.Log;
 
 public class TweaksMediaCodecVideoRenderer extends DebugInfoMediaCodecVideoRenderer {

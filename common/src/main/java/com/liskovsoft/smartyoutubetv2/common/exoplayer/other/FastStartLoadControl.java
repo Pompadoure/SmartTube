@@ -1,11 +1,11 @@
 package com.liskovsoft.smartyoutubetv2.common.exoplayer.other;
 
-import com.google.android.exoplayer2.LoadControl;
+import androidx.media3.exoplayer.LoadControl;
 import com.google.android.exoplayer2.PlayedPeriodsPolicy;
-import com.google.android.exoplayer2.Renderer;
-import com.google.android.exoplayer2.source.TrackGroupArray;
-import com.google.android.exoplayer2.trackselection.TrackSelectionArray;
-import com.google.android.exoplayer2.upstream.Allocator;
+import androidx.media3.exoplayer.Renderer;
+import androidx.media3.exoplayer.source.TrackGroupArray;
+import androidx.media3.exoplayer.trackselection.TrackSelectionArray;
+import androidx.media3.exoplayer.upstream.Allocator;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
 
 /**

@@ -2,12 +2,12 @@ package com.liskovsoft.smartyoutubetv2.common.exoplayer.versions.selector;
 
 import android.util.Pair;
 import androidx.annotation.Nullable;
-import com.google.android.exoplayer2.ExoPlaybackException;
-import com.google.android.exoplayer2.RendererCapabilities;
-import com.google.android.exoplayer2.source.TrackGroupArray;
-import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
-import com.google.android.exoplayer2.trackselection.TrackSelection.Definition;
-import com.google.android.exoplayer2.trackselection.TrackSelection.Factory;
+import androidx.media3.exoplayer.ExoPlaybackException;
+import androidx.media3.exoplayer.RendererCapabilities;
+import androidx.media3.exoplayer.source.TrackGroupArray;
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
+import androidx.media3.exoplayer.trackselection.TrackSelection.Definition;
+import androidx.media3.exoplayer.trackselection.TrackSelection.Factory;
 import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.TrackSelectorManager;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.track.MediaTrack;
@@ -47,7 +47,7 @@ public class RestoreTrackSelector extends DefaultTrackSelector {
     // Exo 2.9
     //@Nullable
     //@Override
-    //protected TrackSelection selectVideoTrack(TrackGroupArray groups, int[][] formatSupports, int mixedMimeTypeAdaptationSupports,
+    //protected ExoTrackSelection selectVideoTrack(TrackGroupArray groups, int[][] formatSupports, int mixedMimeTypeAdaptationSupports,
     //                                          Parameters params, @Nullable Factory adaptiveTrackSelectionFactory) throws ExoPlaybackException {
     //    if (mCallback != null) {
     //        Pair<Definition, MediaTrack> resultPair = mCallback.onSelectVideoTrack(groups, params);
@@ -60,7 +60,7 @@ public class RestoreTrackSelector extends DefaultTrackSelector {
     //
     //    Log.d(TAG, "selectVideoTrack: choose default video processing");
     //
-    //    TrackSelection trackSelection = super.selectVideoTrack(groups, formatSupports, mixedMimeTypeAdaptationSupports, params, adaptiveTrackSelectionFactory);
+    //    ExoTrackSelection trackSelection = super.selectVideoTrack(groups, formatSupports, mixedMimeTypeAdaptationSupports, params, adaptiveTrackSelectionFactory);
     //
     //    // Don't invoke if track already has been selected by the app
     //    if (mCallback != null && trackSelection != null && !params.hasSelectionOverride(TrackSelectorManager.RENDERER_INDEX_VIDEO, groups)) {
@@ -73,7 +73,7 @@ public class RestoreTrackSelector extends DefaultTrackSelector {
     // Exo 2.9
     //@Nullable
     //@Override
-    //protected Pair<TrackSelection, AudioTrackScore> selectAudioTrack(TrackGroupArray groups, int[][] formatSupports,
+    //protected Pair<ExoTrackSelection, AudioTrackScore> selectAudioTrack(TrackGroupArray groups, int[][] formatSupports,
     //                                                                 int mixedMimeTypeAdaptationSupports, Parameters params,
     //                                                                 @Nullable Factory adaptiveTrackSelectionFactory) throws ExoPlaybackException {
     //    if (mCallback != null) {
@@ -86,7 +86,7 @@ public class RestoreTrackSelector extends DefaultTrackSelector {
     //
     //    Log.d(TAG, "selectAudioTrack: choose default audio processing");
     //
-    //    Pair<TrackSelection, AudioTrackScore> selectionPair =
+    //    Pair<ExoTrackSelection, AudioTrackScore> selectionPair =
     //            super.selectAudioTrack(groups, formatSupports, mixedMimeTypeAdaptationSupports, params, adaptiveTrackSelectionFactory);
     //
     //    // Don't invoke if track already has been selected by the app
@@ -100,7 +100,7 @@ public class RestoreTrackSelector extends DefaultTrackSelector {
     // Exo 2.9
     //@Nullable
     //@Override
-    //protected Pair<TrackSelection, Integer> selectTextTrack(TrackGroupArray groups, int[][] formatSupport, Parameters params) throws ExoPlaybackException {
+    //protected Pair<ExoTrackSelection, Integer> selectTextTrack(TrackGroupArray groups, int[][] formatSupport, Parameters params) throws ExoPlaybackException {
     //    if (mCallback != null) {
     //        Pair<Definition, MediaTrack> resultPair = mCallback.onSelectSubtitleTrack(groups, params);
     //        if (resultPair != null) {
@@ -111,7 +111,7 @@ public class RestoreTrackSelector extends DefaultTrackSelector {
     //
     //    Log.d(TAG, "selectTextTrack: choose default text processing");
     //
-    //    Pair<TrackSelection, Integer> selectionPair = super.selectTextTrack(groups, formatSupport, params);
+    //    Pair<ExoTrackSelection, Integer> selectionPair = super.selectTextTrack(groups, formatSupport, params);
     //
     //    // Don't invoke if track already has been selected by the app
     //    if (mCallback != null && selectionPair != null && !params.hasSelectionOverride(TrackSelectorManager.RENDERER_INDEX_SUBTITLE, groups)) {

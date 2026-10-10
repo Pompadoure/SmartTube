@@ -68,11 +68,22 @@ jobs:
             echo "keyPassword=$KEY_PASSWORD"
           } > keystore.properties
 
+      - name: Dependency versions (forced downgrades)
+        continue-on-error: true
+        run: |
+          # JoTube M3: the root build.gradle forces old versions (okhttp, androidx.core, annotation, cronet-api).
+          # Show every requested -> resolved change of the app's runtime classpath for the libraries Media3 uses.
+          chmod +x gradlew
+          ./gradlew -q :smarttubetv:dependencies --configuration stjohanReleaseRuntimeClasspath > deps.txt 2>&1 || true
+          grep -oE "(androidx\.(core|annotation|media|recyclerview|collection|lifecycle)[a-z.-]*|com\.squareup\.okhttp3|org\.chromium\.net|com\.google\.guava)[^ ]*:[^ ]+ -> [0-9][^ ]*" deps.txt | sort -u | head -40 | while IFS= read -r line; do
+            echo "::notice::DEP ${line}"
+          done
+
       - name: Build
         run: |
           chmod +x gradlew
           set -o pipefail
-          # :media3-sabr is built on its own too while the app doesn't depend on it yet (stage 2b)
+          # :media3-sabr is built (and its unit tests run) explicitly too
           if ! ./gradlew assembleStjohanRelease :media3-sabr:assembleRelease :media3-sabr:testReleaseUnitTest 2>&1 | tee build.log; then
             # Compiler errors as annotations (readable without the raw log). GitHub keeps only 10 error
             # annotations per step, so all compiler errors go into one annotation, one compact line each.

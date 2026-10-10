@@ -1,10 +1,10 @@
 package com.liskovsoft.smartyoutubetv2.common.exoplayer.versions.selector.backport;
 
 import androidx.annotation.Nullable;
-import com.google.android.exoplayer2.C;
-import com.google.android.exoplayer2.source.TrackGroup;
-import com.google.android.exoplayer2.trackselection.FixedTrackSelection;
-import com.google.android.exoplayer2.trackselection.TrackSelection;
+import androidx.media3.common.C;
+import androidx.media3.common.TrackGroup;
+import androidx.media3.exoplayer.trackselection.FixedTrackSelection;
+import androidx.media3.exoplayer.trackselection.ExoTrackSelection;
 
 // Backport from Exo 2.10 to 2.9
 /** Contains of a subset of selected tracks belonging to a {@link TrackGroup}. */
@@ -41,13 +41,13 @@ public final class Definition {
     }
 
     // Exo 2.10
-    //public static Definition from(TrackSelection selection) {
+    //public static Definition from(ExoTrackSelection selection) {
     //    return new Definition(selection.getTrackGroup(), selection.getSelectedIndex());
     //}
 
     // Exo 2.10
     //@SuppressWarnings("deprecation")
-    //public TrackSelection toSelection() {
+    //public ExoTrackSelection toSelection() {
     //    return new FixedTrackSelection.Factory().createTrackSelection(group, null, tracks);
     //}
 }

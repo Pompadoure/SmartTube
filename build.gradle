@@ -16,6 +16,8 @@ buildscript {
     ext.m3AgpVersion = '8.13.0'
     ext.m3KotlinVersion = '2.2.0'
     ext.m3CompileSdk = 36
+    // Media3 version for every module (PLAN.md Decisions 1)
+    ext.m3Media3Version = '1.11.1'
 
     repositories {
         google()

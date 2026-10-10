@@ -6,8 +6,8 @@ import android.os.Build.VERSION;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 
-import com.google.android.exoplayer2.SimpleExoPlayer;
-import com.google.android.exoplayer2.audio.AudioListener;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.audio.AudioListener;
 import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.smartyoutubetv2.common.misc.TickleManager;
 import com.liskovsoft.smartyoutubetv2.common.misc.TickleManager.TickleListener;
@@ -17,14 +17,14 @@ public class VolumeBooster implements AudioListener, TickleListener {
     private static final int DRIFT_FIX_INTERVAL_MINUTES = 5;
     private boolean mIsEnabled;
     private final float mVolume;
-    private final SimpleExoPlayer mPlayer;
+    private final ExoPlayer mPlayer;
     private LoudnessEnhancer mBooster;
     private boolean mIsSupported;
     private int mCurrentSessionId = -1;
     private int mGainMb;
     private int mTickleCount;
 
-    public VolumeBooster(boolean enabled, float volume, @Nullable SimpleExoPlayer player) {
+    public VolumeBooster(boolean enabled, float volume, @Nullable ExoPlayer player) {
         mIsEnabled = enabled;
         mVolume = volume;
         mPlayer = player;

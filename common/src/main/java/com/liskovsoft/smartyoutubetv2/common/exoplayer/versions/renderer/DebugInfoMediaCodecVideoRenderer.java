@@ -6,15 +6,15 @@ import android.os.Build.VERSION;
 import android.os.Handler;
 import android.view.Surface;
 import androidx.annotation.Nullable;
-import com.google.android.exoplayer2.C;
-import com.google.android.exoplayer2.ExoPlaybackException;
-import com.google.android.exoplayer2.Format;
-import com.google.android.exoplayer2.drm.DrmSessionManager;
-import com.google.android.exoplayer2.drm.FrameworkMediaCrypto;
-import com.google.android.exoplayer2.mediacodec.MediaCodecInfo;
-import com.google.android.exoplayer2.mediacodec.MediaCodecSelector;
-import com.google.android.exoplayer2.video.MediaCodecVideoRenderer;
-import com.google.android.exoplayer2.video.VideoRendererEventListener;
+import androidx.media3.common.C;
+import androidx.media3.exoplayer.ExoPlaybackException;
+import androidx.media3.common.Format;
+import androidx.media3.exoplayer.drm.DrmSessionManager;
+import androidx.media3.exoplayer.drm.FrameworkMediaCrypto;
+import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
+import androidx.media3.exoplayer.video.MediaCodecVideoRenderer;
+import androidx.media3.exoplayer.video.VideoRendererEventListener;
 import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.versions.ExoUtils;
@@ -119,7 +119,7 @@ public class DebugInfoMediaCodecVideoRenderer extends MediaCodecVideoRenderer {
         return result;
     }
 
-    private static boolean isSdr(@Nullable com.google.android.exoplayer2.video.ColorInfo colorInfo) {
+    private static boolean isSdr(@Nullable androidx.media3.common.ColorInfo colorInfo) {
         return colorInfo == null || (colorInfo.colorTransfer != C.COLOR_TRANSFER_ST2084 &&
                 colorInfo.colorTransfer != C.COLOR_TRANSFER_HLG);
     }

@@ -6,20 +6,20 @@ import android.os.Build.VERSION;
 import android.os.Handler;
 import android.os.Looper;
 
-import com.google.android.exoplayer2.C;
-import com.google.android.exoplayer2.ExoPlaybackException;
-import com.google.android.exoplayer2.Format;
-import com.google.android.exoplayer2.PlaybackParameters;
-import com.google.android.exoplayer2.Player;
-import com.google.android.exoplayer2.PlayerMessage;
-import com.google.android.exoplayer2.SimpleExoPlayer;
-import com.google.android.exoplayer2.Timeline;
-import com.google.android.exoplayer2.source.MediaSource;
-import com.google.android.exoplayer2.source.MergingMediaSource;
-import com.google.android.exoplayer2.source.TrackGroupArray;
-import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
-import com.google.android.exoplayer2.trackselection.TrackSelection;
-import com.google.android.exoplayer2.trackselection.TrackSelectionArray;
+import androidx.media3.common.C;
+import androidx.media3.exoplayer.ExoPlaybackException;
+import androidx.media3.common.Format;
+import androidx.media3.common.PlaybackParameters;
+import androidx.media3.common.Player;
+import androidx.media3.common.PlayerMessage;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.common.Timeline;
+import androidx.media3.exoplayer.source.MediaSource;
+import androidx.media3.exoplayer.source.MergingMediaSource;
+import androidx.media3.exoplayer.source.TrackGroupArray;
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
+import androidx.media3.exoplayer.trackselection.ExoTrackSelection;
+import androidx.media3.exoplayer.trackselection.TrackSelectionArray;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.sharedutils.mylogger.Log;
@@ -55,7 +55,7 @@ public class ExoPlayerController implements Player.EventListener {
     private boolean mOnSourceChanged;
     private WeakReference<Video> mVideo;
     private final PlayerEventListener mEventListener;
-    private SimpleExoPlayer mPlayer;
+    private ExoPlayer mPlayer;
     private PlayerView mPlayerView;
     private VolumeBooster mVolumeBooster;
     private boolean mIsEnded;
@@ -514,7 +514,7 @@ public class ExoPlayerController implements Player.EventListener {
         //mEventListener = null;
     }
     
-    public void setPlayer(SimpleExoPlayer player) {
+    public void setPlayer(ExoPlayer player) {
         mPlayer = player;
         player.addListener(this);
         sCurrent = new WeakReference<>(this);
@@ -629,7 +629,7 @@ public class ExoPlayerController implements Player.EventListener {
 
         notifyOnVideoLoad();
 
-        for (TrackSelection selection : trackSelections.getAll()) {
+        for (ExoTrackSelection selection : trackSelections.getAll()) {
             if (selection != null) {
                 // EXO: 2.12.1
                 //Format format = selection.getSelectedFormat();

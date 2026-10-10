@@ -38,15 +38,15 @@ import com.github.vkay94.dtpv.youtube.YouTubeOverlay;
 import com.github.vkay94.dtpv.youtube.YouTubeOverlay.PerformListener;
 import com.google.android.exoplayer2.ControlDispatcher;
 import com.google.android.exoplayer2.DefaultControlDispatcher;
-import com.google.android.exoplayer2.DefaultRenderersFactory;
-import com.google.android.exoplayer2.Player;
-import com.google.android.exoplayer2.SimpleExoPlayer;
-import com.google.android.exoplayer2.ext.leanback.LeanbackPlayerAdapter;
+import androidx.media3.exoplayer.DefaultRenderersFactory;
+import androidx.media3.common.Player;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.ui.leanback.LeanbackPlayerAdapter;
 import com.google.android.exoplayer2.ext.mediasession.MediaSessionConnector;
-import com.google.android.exoplayer2.trackselection.AdaptiveTrackSelection;
-import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
-import com.google.android.exoplayer2.util.Util;
-import com.google.android.exoplayer2.video.VideoListener;
+import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection;
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
+import androidx.media3.common.util.Util;
+import androidx.media3.exoplayer.video.VideoListener;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.sharedutils.mylogger.Log;
@@ -109,7 +109,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     private static final int UPDATE_DELAY_MS = 100;
     private static final int SUGGESTIONS_START_INDEX = 1;
     private VideoPlayerGlue mPlayerGlue;
-    private SimpleExoPlayer mPlayer;
+    private ExoPlayer mPlayer;
     private PlaybackPresenter mPlaybackPresenter;
     private ArrayObjectAdapter mRowsAdapter;
     private ListRowPresenter mRowPresenter;
@@ -163,7 +163,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     // JoTube: no first frame will come (error, audio only): don't let the thumbnail cover the screen
     private final Player.EventListener mTransitionStateListener = new Player.EventListener() {
         @Override
-        public void onPlayerError(com.google.android.exoplayer2.ExoPlaybackException error) {
+        public void onPlayerError(androidx.media3.exoplayer.ExoPlaybackException error) {
             mShortsTransition.hide(false);
         }
 

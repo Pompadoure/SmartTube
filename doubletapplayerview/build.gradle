@@ -42,6 +42,7 @@ dependencies {
     implementation 'androidx.core:core-ktx:' + kotlinCoreXVersion
     implementation 'androidx.constraintlayout:constraintlayout:' + constraintLayoutXVersion
 
-    implementation project(':exoplayer-library-core')
-    implementation project(':exoplayer-library-ui')
+    // JoTube M3: AndroidX Media3
+    implementation "androidx.media3:media3-exoplayer:$m3Media3Version"
+    implementation "androidx.media3:media3-ui:$m3Media3Version"
 }
