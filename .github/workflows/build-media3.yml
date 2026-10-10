@@ -92,7 +92,8 @@ jobs:
               /^e: / { if (cur != "") print cur; cur = $0; next }
               cur != "" && /^ +symbol: / { sub(/^ +symbol: +/, ""); cur = cur " [" $0 "]"; next }
               cur != "" && /^ +location: / { next }
-              { if (cur != "") { print cur; cur = "" } }
+              # javac prints the source line and a caret between the error and its symbol: keep waiting
+              /^> Task |^FAILURE|^[0-9]+ errors?$|^[0-9]+ warnings?$|^BUILD / { if (cur != "") { print cur; cur = "" } }
               END { if (cur != "") print cur }
             ' build.log | sed -E 's#^.*/(media3-sabr|common|smarttubetv|doubletapplayerview)/src/(main|test)/java/##; s#^com/liskovsoft/smartyoutubetv2/##; s#: error: #: #' | sort -u > errs.txt
             if [ -s errs.txt ]; then
