@@ -22,9 +22,9 @@ a cut-off (Johan's decision 2026-10-10):
 - API credits: hard cap per claude-task run and a total budget (below). At 12.00 USD spent the runs stop using
   the API and tell Johan; the last 2.00 USD stay untouched.
 
-Run: STARTED 2026-10-10T18:18Z
+Run: STARTED 2026-10-10T20:15Z
 Doing now: 2c on branch m3/stage2 (from media3), step 1 done (gradle swap + mechanical renames, commits 8cc58c2 and the next one), the build is expected red until all app files are ported. CI now prints every compiler error (javac -Xmaxerrs 2000) as up to 7 'COMPILER ERRORS part N (total T)' annotations, one line each with the javac 'symbol' detail, plus one 'FORCED/CHANGED DEPENDENCIES' notice. Next action: `gh run list -R Pompadoure/SmartTube --branch m3/stage2 -L 1`, read the annotations (gh api repos/Pompadoure/SmartTube/check-runs/<job id>/annotations -q '.[].message'), fix file groups in INVENTORY order: 4 sources (ExoMediaSourceFactory: SabrMediaSource.Factory/DefaultSabrChunkSource.Factory, DashMediaSource, OkHttp/Cronet DataSource.Factory, SabrDefaultLoadErrorHandlingPolicy/DashDefaultLoadErrorHandlingPolicy -> getRetryDelayMsFor(LoadErrorInfo); LiveDashManifestParser vs Media3 DashManifestParser; DashManifestParser2 fork class), 3 renderers, 2 track selection, 1 player construction/controller, 5 errors (TrackErrorFixer -> MediaSourceEventListener), 6 UI/leanback (ControlDispatcher -> ForwardingPlayer), 7 MediaSession (media3-session), 8 Shorts (ShortsQueue/ConcatenatingMediaSource, FastStartLoadControl, PlayedPeriodsPolicy), 9 misc, doubletapplayerview; push after each group. Dependencies: only androidx.annotation is forced down (1.6-1.9 -> 1.1.0, compile-time annotations, low risk); check the full notice for okhttp/core.
-Cut-offs in a row: 0
+Cut-offs in a row: 1
 
 ## API credits (Claude Console, used only by the claude-task workflow)
 Johan had 14.00 USD left on 2026-10-10. Budget for this project: 12.00 USD in total (2.00 USD stays as a reserve).
@@ -92,3 +92,6 @@ Spent so far: 0.00 USD
   (app classes, dash/hls/ss packages) and run over the 40 app files, ZoomAspectRatioFrameLayout (fork zoom + no
   vertical stretch) in common, layout/manifest/multidex references moved. First CI: 96+ compile errors (expected),
   CI error reporting improved. Run ended to hand over with a fresh context.
+- 2026-10-10 (run 18:18Z): cut off (STARTED without FINISHED; no new commits after the run-started marker). Run 20:15Z
+  continues 2c from `Doing now:`. The 20:15Z run could not re-arm the scheduled task (update_trigger denied by the
+  permission classifier); the daily watchdog re-arms the chain.
