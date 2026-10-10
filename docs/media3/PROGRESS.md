@@ -1,7 +1,7 @@
 # JoTube M3 progress
 
 Status: ACTIVE
-Next step: 1c (SABR module internals and their Media3 counterparts, see PLAN.md)
+Next step: 1d (decisions: Media3 version, minSdk, extensions, old modules out of the build; see PLAN.md)
 
 Status values: ACTIVE (the scheduled runs keep going), WAITING_FOR_JOHAN (a question to Johan, runs only check
 for his answer), BLOCKED (a stage can't be made stable; reason below), DONE (stage 6 finished).
@@ -23,7 +23,7 @@ a cut-off (Johan's decision 2026-10-10):
   the API and tell Johan; the last 2.00 USD stay untouched.
 
 Run: STARTED 2026-10-10T16:19Z
-Doing now: 1c (SABR module internals -> Media3). Nothing written yet; next: survey library/sabr imports.
+Doing now: 1d started. Next action: find the latest stable Media3 version (release notes), check its API against the (?) marks in INVENTORY.md, FORK_CHANGES.md and SABR_PORT.md, write "Decisions" in PLAN.md.
 Cut-offs in a row: 0
 
 ## API credits (Claude Console, used only by the claude-task workflow)
@@ -49,3 +49,8 @@ Spent so far: 0.00 USD
   (ExoPlayerImplInternal, MediaPeriodQueue, PlayedPeriodsPolicy) are replaced by DefaultPreloadManager; to port:
   DashManifestParser2, zoom AspectRatioFrameLayout, HDR10+ ColorInfo fix, SABR Format fields (isDrc,
   lastModified); headers in DataSpec are built into Media3; Amazon quirks and offline changes dropped. Docs only.
+- 2026-10-10: 1c done: `docs/media3/SABR_PORT.md`. The SABR module is a DASH-module copy with UMP-over-POST; the
+  extractor-adapter pattern (SabrExtractorInput inside FragmentedMp4/Matroska extractors) ports 1:1 to Media3's
+  BundledChunkExtractor. Hand work: ChunkSource/MediaPeriod/MediaSource signatures (LoadingInfo, ExoTrackSelection,
+  DRM dispatchers, MediaItem), error policy. Proposals: drop the live-only emsg/event code (~470 lines), carry
+  isDrc/lastModified in SabrFormatMetadata, shouldCancelLoad must never cancel a SABR POST. Docs only.
