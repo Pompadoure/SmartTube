@@ -72,9 +72,10 @@ jobs:
         run: |
           chmod +x gradlew
           set -o pipefail
-          if ! ./gradlew assembleStjohanRelease 2>&1 | tee build.log; then
+          # :media3-sabr is built on its own too while the app doesn't depend on it yet (stage 2b)
+          if ! ./gradlew assembleStjohanRelease :media3-sabr:assembleRelease 2>&1 | tee build.log; then
             # Compiler errors as annotations (readable without the raw log)
-            grep -E "error:|\.java:[0-9]+: |^e: |What went wrong" -A2 build.log | head -40 | while IFS= read -r line; do
+            grep -E "error:|\.java:[0-9]+: |^e: |What went wrong" -A2 build.log | head -150 | while IFS= read -r line; do
               echo "::error::${line}"
             done
             exit 1
