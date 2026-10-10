@@ -90,7 +90,7 @@ jobs:
           sha256sum out/*.apk | tee out/SHA256SUMS.txt
           # Evidence in the run summary: package, versions and SDK levels of the built APK
           aapt2="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)aapt2"
-          "$aapt2" dump badging out/JoTubeM3_arm64-v8a.apk | grep -E "^(package|sdkVersion|targetSdkVersion|application-label):" | while IFS= read -r line; do
+          "$aapt2" dump badging out/JoTubeM3_arm64-v8a.apk | grep -E "^(package|minSdkVersion|sdkVersion|targetSdkVersion|application-label):" | while IFS= read -r line; do
             echo "::notice::APK ${line}"
           done
 
