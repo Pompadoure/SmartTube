@@ -9,14 +9,21 @@ for his answer), BLOCKED (a stage can't be made stable; reason below), DONE (sta
 ## Usage guard (no unexpected stops)
 The Claude plan's usage can't be read by a run, so the work goes as fast as possible but in pieces that survive
 a cut-off (Johan's decision 2026-10-10):
+- The scheduled task fires every hour. Only one run at a time: a run first checks (without cloning) the last `Run:`
+  line and the latest commit on `media3` and every `m3/*` branch; STARTED < 25 min ago or a commit < 20 min ago means
+  another run is working, so it stops at once.
 - Fast pace: a run keeps working step after step until the work is done, its context gets long, or the usage cap
   stops it. Commit and push after every meaningful change (never more than ~15 minutes uncommitted) and keep
-  `Doing now: 2c on branch m3/stage2: CI GREEN (APK builds, 20 SABR unit tests pass) at "PlaybackFragment transition
-listener as Player.Listener". Next action: independent stage 2 review agent over `git diff origin/media3...origin/m3/stage2`
-(verify against Media3 sources), fix BLOCKER/SHOULD-FIX on m3/stage2, CI green, merge m3/stage2 into media3, mark 2c and
-stage 2 done; then stage 3 (track selection behaviour, subtitles incl. fork WebVTT fixes, MediaSession metadata refresh,
-LeanbackPlayerAdapter no-surface fix, audio sync fix, seek-end event timing, Cronet API 105 vs Media3 check).
-Cut-offs in a row: 1
+  `Doing now:` current with each push, so a cut-off loses almost nothing.
+- A run that finds `Run: STARTED` without FINISHED finishes what `Doing now:` describes first and logs "cut off".
+- API tasks (claude-task workflow) run in parallel with the plan's usage, at most one at a time; queue the next one
+  before a run ends.
+
+Doing now: 2c on m3/stage2 (CI green at 4f8d2cf). API review (claude-task/m3-stage2-review) found no BLOCKER, 3
+SHOULD-FIX; claude-task/m3-stage2-fixes has fixes 1+2. Next action: verify those fixes against Media3 sources, merge into
+m3/stage2, fix SHOULD-FIX 3 (MediaSession metadata refresh) or defer it to stage 3, CI green, merge m3/stage2 into media3.
+
+Run: STARTED 2026-10-12T09:25Z
 
 ## API credits (Claude Console, used only by the claude-task workflow)
 Johan had 14.00 USD left on 2026-10-10. Budget for this project: 12.00 USD in total (2.00 USD stays as a reserve).
@@ -27,7 +34,10 @@ Each claude-task run has a hard cap in `.claude-task/BUDGET_USD` (at most 1.50 U
 |------|-------------|--------|------------|--------|
 | 2026-10-10 | claude-task/m3-renderers | 1.50 | 0.55 | Renderer group ported (8 files), reviewed against Media3 sources, 2 fixes (getMaxInputSize, unsafe audio sync reflection -> no-op), merged into m3/stage2 |
 
-Spent so far: 0.55 USD
+| 2026-10-12 | claude-task/m3-stage2-review | 1.50 | 1.03 | Independent review of 2c: no BLOCKER, 3 SHOULD-FIX (connect error message, Shorts back buffer, MediaSession metadata), 6 NIT |
+| 2026-10-12 | claude-task/m3-stage2-fixes | 1.20 | 0.18 | SHOULD-FIX 1+2 implemented (not built) |
+
+Spent so far: 1.76 USD
 
 ## Run log
 - 2026-10-10: branch `media3` created from master (j66, 997b69a). Package org.smarttube.johan.media3, app
