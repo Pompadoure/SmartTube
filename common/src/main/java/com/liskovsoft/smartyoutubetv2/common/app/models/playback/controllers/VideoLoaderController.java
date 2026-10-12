@@ -870,7 +870,8 @@ public class VideoLoaderController extends BasePlayerController {
 
         // JoTube: a Short opened from another list (e.g. the Shorts shelf on Home, a channel): when that list ends,
         // carry on with the Shorts feed (like the official app) instead of stopping at "Please wait..."
-        if (result.size() < PREFETCH_LOOKAHEAD && !current.belongsToShorts()) {
+        // (not for a channel: its Shorts play in the order of the channel, nothing random is added)
+        if (result.size() < PREFETCH_LOOKAHEAD && !current.belongsToShorts() && !current.belongsToChannelShorts()) {
             appendFallbackShorts(current, group, result);
         }
 
@@ -1042,10 +1043,51 @@ public class VideoLoaderController extends BasePlayerController {
      * follows), so scrolling never runs out. One request per page, in the background.
      */
     private void continueShortsFeedIfNeeded(Video current) {
+        if (current != null && current.belongsToChannelShorts()) {
+            continueChannelShorts(current.getGroup());
+            return;
+        }
+
         // Only the Shorts feed (other sections mix in regular videos, so there'd always be "too few" Shorts ahead)
         VideoGroup group = current != null && current.belongsToShorts() ? current.getGroup() : null;
 
         continueShortsFeed(group, 0);
+    }
+
+    /**
+     * JoTube: the Shorts of a channel are scrolled in the order of the channel's list: near the end of the loaded part
+     * its next page is appended in the same order (no history filter, no shuffling, no seeds).
+     */
+    private void continueChannelShorts(VideoGroup group) {
+        if (group == null || group.isEmpty() || group.getMediaGroup() == null || group.getNextPageKey() == null ||
+                RxHelper.isAnyActionRunning(mFeedContinueAction)) {
+            return;
+        }
+
+        Object page = group.getMediaGroup();
+
+        if (page == mContinuedFeedPage) {
+            return; // already continued from this page (or it had nothing more)
+        }
+
+        mContinuedFeedPage = page;
+
+        Log.d(TAG, "Channel Shorts: loading the next page of %s", group.getTitle());
+
+        mFeedContinueAction = YouTubeServiceManager.instance().getContentService().continueGroupObserve(group.getMediaGroup())
+                .subscribe(nextPage -> {
+                    if (nextPage != null && nextPage.getMediaItems() != null && !nextPage.getMediaItems().isEmpty()) {
+                        int sizeBefore = group.getSize();
+                        VideoGroup.from(group, nextPage); // appends in order
+
+                        if (group.getSize() > sizeBefore) {
+                            Utils.post(mPrefetchNext);
+                        }
+                    }
+                }, error -> {
+                    Log.e(TAG, "Channel Shorts: continuation failed: %s", error.getMessage());
+                    mContinuedFeedPage = null; // try again later
+                });
     }
 
     /**
