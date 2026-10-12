@@ -16,6 +16,8 @@
 
 package com.liskovsoft.smartyoutubetv2.tv.presenter;
 
+import android.graphics.Color;
+import android.graphics.Typeface;
 import androidx.leanback.widget.AbstractDetailsDescriptionPresenter;
 
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
@@ -30,6 +32,14 @@ public class DetailsDescriptionPresenter extends AbstractDetailsDescriptionPrese
             viewHolder.getTitle().setText(video.getTitle());
             viewHolder.getSubtitle().setText(video.getAuthor());
             viewHolder.getBody().setText(video.getSecondTitle());
+
+            // JoTube M3: modern look - strong title, the channel and the details softer
+            viewHolder.getTitle().setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            viewHolder.getTitle().setTextColor(Color.WHITE);
+            viewHolder.getSubtitle().setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+            viewHolder.getSubtitle().setTextColor(Color.parseColor("#E6FFFFFF"));
+            viewHolder.getBody().setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+            viewHolder.getBody().setTextColor(Color.parseColor("#B3FFFFFF"));
         }
     }
 }
