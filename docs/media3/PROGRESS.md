@@ -14,9 +14,11 @@ a cut-off (Johan's decision 2026-10-10):
   another run is working, so it stops at once.
 - Fast pace: a run keeps working step after step until the work is done, its context gets long, or the usage cap
   stops it. Commit and push after every meaningful change (never more than ~15 minutes uncommitted) and keep
-  `Doing now: 3a on m3/stage3: CI step "API check of forced downgrades" (docs/media3/tools/api_check.py) pushed, waiting
-for its result (run 38230568651). Next action: read the notice; fix the cronet-api/androidx.core force if Media3 calls
-missing members. API task claude-task/m3-subtitles (3b) running since 09:33Z: review and merge into m3/stage3.
+  `Doing now: stage 3 on m3/stage3. 3a: CI API check (run 38231280649): 186 Media3 references into the forced
+cronet-api 105 / androidx.core 1.9.0 / annotation 1.1.0, none missing; waiting for per-package counts (7ef5bb1) as
+evidence that the cronet references were checked. 3d: JoLeanbackPlayerAdapter (copy with the no-surface fix) in 7ef5bb1;
+3e: DASH/SABR retry delay = Media3 default. Next action: CI of 7ef5bb1 green; then review the 3b API task
+(claude-task/m3-subtitles) and merge it into m3/stage3; then 3c (track selection).
 
 ## Stage 3 steps
 - 3a. Cronet: the root build.gradle forces `cronet-api` 105 (for cronet-okhttp); check what media3-datasource-cronet
