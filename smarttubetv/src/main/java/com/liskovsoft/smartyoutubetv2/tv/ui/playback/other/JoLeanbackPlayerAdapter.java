@@ -52,6 +52,7 @@ public final class JoLeanbackPlayerAdapter extends PlayerAdapter implements Runn
   @Nullable private ErrorMessageProvider<? super PlaybackException> errorMessageProvider;
   @Nullable private SurfaceHolderGlueHost surfaceHolderGlueHost;
   private boolean hasSurface;
+  private boolean progressUpdatingEnabled; // MOD
   private boolean lastNotifiedPreparedState;
 
   /**
@@ -111,6 +112,7 @@ public final class JoLeanbackPlayerAdapter extends PlayerAdapter implements Runn
 
   @Override
   public void setProgressUpdatingEnabled(boolean enable) {
+    progressUpdatingEnabled = enable; // MOD
     handler.removeCallbacks(this);
     if (enable) {
       handler.post(this);
@@ -191,6 +193,10 @@ public final class JoLeanbackPlayerAdapter extends PlayerAdapter implements Runn
   void setVideoSurface(@Nullable Surface surface) {
     hasSurface = surface != null;
     player.setVideoSurface(surface);
+    if (hasSurface && progressUpdatingEnabled) { // MOD: run() stopped while there was no surface, restart it
+      handler.removeCallbacks(this);
+      handler.post(this);
+    }
     maybeNotifyPreparedStateChanged(getCallback());
   }
 

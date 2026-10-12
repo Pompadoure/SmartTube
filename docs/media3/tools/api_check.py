@@ -7,6 +7,8 @@ Usage (CI, after the build filled the Gradle cache):
 
 For every class of the consumers that references a provider package, every method/field reference into the
 providers' classes is looked up (in the class and its superclasses/interfaces inside the providers).
+Known gap: a call through a consumer subclass to a member it inherits from a provider class has the consumer
+class as owner and isn't checked.
 Prints one line per missing member: "MISSING <consumer class> -> <owner>.<name><descriptor>".
 Needs javap (JDK) on PATH. Exit code 0 always (it's a report).
 """
@@ -58,8 +60,12 @@ def provider_members(jars):
     """class -> (super/interfaces, set of 'name:descriptor')"""
     members = {}
     for jar in jars:
-        classes = class_names(jar)
-        text = javap(jar, classes, ['-p', '-s'])
+        parse_members(javap(jar, class_names(jar), ['-p', '-s']), members)
+    return members
+
+
+def parse_members(text, members):
+    if True:
         cur = None
         last_name = None
         for line in text.splitlines():
@@ -88,13 +94,20 @@ def provider_members(jars):
                 else:
                     mf = re.search(r'([\w$]+);$', s)
                     last_name = mf.group(1) if mf else None
-    return members
 
 
 def has_member(members, owner, key, seen=None):
     seen = seen or set()
+    if owner not in members and owner.startswith('java/'):
+        # JDK super types (javap prints every one except java.lang.Object): load their members once
+        r = subprocess.run(['javap', '-p', '-s', owner.replace('/', '.')], capture_output=True, text=True)
+        parse_members(r.stdout, members)
+        if owner not in members:
+            members[owner] = ([], set())
+        if owner != 'java/lang/Object' and 'java/lang/Object' not in members[owner][0]:
+            members[owner][0].append('java/lang/Object')
     if owner in seen or owner not in members:
-        return owner not in members and owner.startswith('java/')
+        return False
     seen.add(owner)
     supers, mem = members[owner]
     if key in mem:
@@ -111,23 +124,23 @@ def main():
     pjars = [j for c in providers for j in artifact_jars(cache, c, tmp)]
     members = provider_members(pjars)
     packages = sorted({c.rsplit('/', 1)[0] for c in members})
+    # Roots of the provider libraries: a class in a package the forced version doesn't have at all is MISSING too
+    roots = sorted({'/'.join(p.split('/')[:3 if p.split('/')[0] in ('org', 'com') else 2]) for p in packages})
     print('providers: %d classes, %d packages; jars: %s' % (len(members), len(packages), ', '.join(os.path.basename(j) for j in pjars)))
     missing = set()
     checked = 0
     per_package = {}
     for coord in consumers:
         for jar in artifact_jars(cache, coord, tmp):
-            text = javap(jar, class_names(jar), ['-c', '-p'])
-            cls = None
+            # The constant pool (-v) holds every member reference, also the ones only used by method handles
+            # (Class::method -> invokedynamic), which "javap -c" doesn't show
+            text = javap(jar, class_names(jar), ['-v', '-p'])
             for line in text.splitlines():
-                if not line.startswith(' ') and ('class ' in line or 'interface ' in line) and line.rstrip().endswith('{'):
-                    cls = line.strip()
-                    continue
-                m = re.search(r'// (Method|InterfaceMethod|Field) ([\w/$]+)\.("?[\w$<>]+"?):(\S+)', line)
+                m = re.search(r'= (Methodref|InterfaceMethodref|Fieldref)\s+#\d+\.#\d+\s+// ([\w/$]+)\.("?[\w$<>]+"?):(\S+)', line)
                 if not m:
                     continue
                 owner, name, desc = m.group(2), m.group(3), m.group(4)
-                if not any(owner.startswith(p + '/') and owner.count('/') == p.count('/') + 1 for p in packages):
+                if not any(owner.startswith(r + '/') for r in roots):
                     continue
                 checked += 1
                 pkg = owner.rsplit('/', 1)[0]

@@ -171,7 +171,9 @@ public class ExoMediaSourceFactory {
                                 .createMediaSource(mediaItem);
                 break;
             case C.CONTENT_TYPE_HLS:
-                source = new HlsMediaSource.Factory(getMediaDataSourceFactory()).createMediaSource(mediaItem);
+                source = new HlsMediaSource.Factory(getMediaDataSourceFactory())
+                        .setSubtitleParserFactory(new JoSubtitleParserFactory()) // JoTube: the fork's WebVTT fixes
+                        .createMediaSource(mediaItem);
                 break;
             case C.CONTENT_TYPE_OTHER:
                 source = new ProgressiveMediaSource.Factory(getMediaDataSourceFactory(), new DefaultExtractorsFactory())
