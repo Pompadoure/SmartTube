@@ -671,7 +671,15 @@ public final class Video {
     }
 
     public boolean belongsToShortsGroup() {
-        return isShorts && (belongsToShorts() || belongsToHome());
+        return isShorts && (belongsToShorts() || belongsToHome() || belongsToChannelShorts());
+    }
+
+    /**
+     * JoTube: a Short opened from a channel page. It is scrolled up/down like the Shorts feed, but in the order of the
+     * channel's list (nothing random is mixed in).
+     */
+    public boolean belongsToChannelShorts() {
+        return isShorts && (belongsToChannelUploads() || belongsToChannel());
     }
 
     public boolean belongsToSearch() {
