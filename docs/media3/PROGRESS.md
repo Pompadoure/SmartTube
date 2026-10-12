@@ -1,7 +1,7 @@
 # JoTube M3 progress
 
 Status: WAITING_FOR_JOHAN
-Next step (LOG ARRIVED 2026-10-12 17:31Z, see 'BUG-1 EVIDENCE' at the end; fix it. Old text: WAITING_FOR_JOHAN: install the new latest-media3 build, play a regular video once, say so in a commit/note; then the run reads logcat via HA, grep JoTubeSabr and fixes BUG-1): BUG-1 (audio restarts at video start, see "Bug reports from device tests" below). Johan installed JoTube[beta] (org.smarttube.johan.media3, armeabi-v7a build) on the Streamer 2026-10-12 16:00 and is testing; fix bugs he reports, then set DONE again.
+Next step (BUG-1 FIX PUSHED 2026-10-12 18:3xZ, CI green: waiting for Johan's device test; see BUG-1 ROOT CAUSE at the end. Older text: LOG ARRIVED 2026-10-12 17:31Z, see 'BUG-1 EVIDENCE' at the end; fix it. Old text: WAITING_FOR_JOHAN: install the new latest-media3 build, play a regular video once, say so in a commit/note; then the run reads logcat via HA, grep JoTubeSabr and fixes BUG-1): BUG-1 (audio restarts at video start, see "Bug reports from device tests" below). Johan installed JoTube[beta] (org.smarttube.johan.media3, armeabi-v7a build) on the Streamer 2026-10-12 16:00 and is testing; fix bugs he reports, then set DONE again.
 
 Status values: ACTIVE (the scheduled runs keep going), WAITING_FOR_JOHAN (a question to Johan, runs only check
 for his answer), BLOCKED (a stage can't be made stable; reason below), DONE (stage 6 finished).
@@ -232,5 +232,5 @@ startMs=-1 -> loadPosition 0). Not a codec problem. No video appears for >9 s on
 sample queues; the first media chunk (seek to 0) then delivered segment 0 again -> audio sink discontinuity (expected 9993500, got 0)
 at ~10 s of playback. ExoPlayer 2.10.6 loaded the init chunk with a null track output provider (samples dropped). Fix: DefaultSabrChunkSource
 wraps the extractor of the InitializationChunk (InitOnlyChunkExtractor, init(null,..)). First frame was +1824 ms in that log.
-Awaiting CI + device check by Johan (play a regular video >15 s).
-
+CI green (run 38290753636). Waiting for Johan: install latest-media3, play a regular video >15 s; then the run reads logcat via HA (grep 'Audio sink|JoTubeSabr') and sets DONE if clean.
+Run: FINISHED 2026-10-12T18:30Z (BUG-1 root cause found and fixed, CI green)
