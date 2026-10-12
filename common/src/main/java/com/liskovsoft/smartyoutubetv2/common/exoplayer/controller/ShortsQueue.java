@@ -16,13 +16,15 @@ import java.util.List;
  * manager; the player plays one Short at a time (a source taken from the manager), so there is no playlist and no
  * timeline to keep in sync. Switching to a queued Short = playing its (preloaded) source.
  *
- * The entry list is the single source of truth and is kept in feed order. Entries are never removed during a session.
+ * The entry list is the single source of truth and is kept in feed order. Entries are never removed from the list during
+ * a session (indices stay valid); Shorts more than KEEP_BEHIND behind the current one are only taken out of the manager.
  * The manager ranks a Short by a stable key (order preserving, with gaps for insertions).
  *
  * Only accessed from the main thread.
  */
 public final class ShortsQueue {
     private static final int MAX_SIZE = 50;
+    private static final int KEEP_BEHIND = 2;
     private static final int KEY_GAP = 1 << 16;
     // Stream urls are valid for ~6 h, the poToken ~12 h. Stay well below.
     public static final long FORMAT_INFO_MAX_AGE_MS = 60 * 60 * 1000;
@@ -35,6 +37,7 @@ public final class ShortsQueue {
         final MediaItem mediaItem;
         final int key;
         volatile boolean failed; // the preload failed (403, expired poToken...): swipe to it with a normal fetch
+        boolean removed; // taken out of the preload manager (far behind the current Short): swipe to it with a normal fetch
 
         Entry(MediaItemFormatInfo formatInfo, MediaSource source, int key) {
             this.videoId = formatInfo.getVideoId();
@@ -77,7 +80,8 @@ public final class ShortsQueue {
      */
     @Nullable
     MediaSource getMediaSource(int index) {
-        return index >= 0 && index < mEntries.size() && !mReleased ? mPreloadManager.getMediaSource(mEntries.get(index).mediaItem) : null;
+        return index >= 0 && index < mEntries.size() && !mReleased && !mEntries.get(index).removed ?
+                mPreloadManager.getMediaSource(mEntries.get(index).mediaItem) : null;
     }
 
     int indexOf(String videoId) {
@@ -119,8 +123,21 @@ public final class ShortsQueue {
 
         if (!mReleased && index >= 0 && index < mEntries.size()) {
             publish();
+            removeFarBehind(index);
             mPreloadManager.setCurrentPlayingIndex(mEntries.get(index).key);
             mPreloadManager.invalidate(); // preload around the new position
+        }
+    }
+
+    // Bounds the memory of a long session: a played Short far behind isn't swiped back to
+    private void removeFarBehind(int current) {
+        for (int i = 0; i < current - KEEP_BEHIND; i++) {
+            Entry entry = mEntries.get(i);
+
+            if (!entry.removed) {
+                entry.removed = true;
+                mPreloadManager.remove(entry.mediaItem);
+            }
         }
     }
 
@@ -133,7 +150,7 @@ public final class ShortsQueue {
      */
     boolean isActual(int index) {
         Entry entry = index >= 0 && index < mEntries.size() ? mEntries.get(index) : null;
-        return entry != null && !entry.failed && entry.formatInfo.isCacheActual() &&
+        return entry != null && !entry.failed && !entry.removed && entry.formatInfo.isCacheActual() &&
                 System.currentTimeMillis() - entry.addedTimeMs < FORMAT_INFO_MAX_AGE_MS;
     }
 
