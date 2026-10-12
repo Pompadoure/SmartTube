@@ -139,7 +139,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         public void onRenderedFirstFrame() {
             // JoTube: only the frame of the video the overlay waits for (not a late one of the previous Short)
             Video video = getVideo();
-            if (mPlayer != null && video != null && !ShortsQueue.isPlayerOn(video.videoId, mPlayer.getCurrentWindowIndex())) {
+            if (mPlayer != null && video != null && !ShortsQueue.isPlayerOn(video.videoId, mPlayer.getCurrentMediaItem())) {
                 return;
             }
             // A frame of the previous video, delivered after the new one was requested (no new source yet)
@@ -594,6 +594,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         mPlayer.addListener(mTransitionStateListener);
 
         mExoPlayerController.setPlayer(mPlayer);
+        mExoPlayerController.setPreloadManager(mPlayerInitializer.getPreloadManager(), mPlayerInitializer.getPreloadControl());
     }
 
     private void createPlayerGlue() {

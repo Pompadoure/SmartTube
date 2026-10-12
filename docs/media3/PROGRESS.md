@@ -16,7 +16,7 @@ a cut-off (Johan's decision 2026-10-10):
   stops it. Commit and push after every meaningful change (never more than ~15 minutes uncommitted) and keep
   `Doing now:` with each push.
 
-Doing now: 4b pushed on m3/stage4 (player built via DefaultPreloadManager.Builder in ExoPlayerInitializer, preload selector = second RestoreTrackSelector sharing the TrackSelectorManager callback, ShortsPreloadControl). Waiting for CI; next action: 4c (ShortsQueue feeds the preload manager).
+Doing now: 4b+4c+4d pushed on m3/stage4 (ShortsQueue = ranked entries feeding DefaultPreloadManager with stable gap keys; ShortsPreloadControl next=6 s, +2=3 s, previous=3 s; switchToQueued = setMediaSource(preloaded source); no timeline sync/retry/auto-advance; item end message on window 0; dash sources get mediaId=videoId). Not compiled yet. Next action: CI result, fix compile errors; then 4e (TrackSelectorManager sync with preloaded selections), 4f.
 
 Run: FINISHED 2026-10-12T10:25Z
 Run: STARTED 2026-10-12T10:34Z (manual start by Johan)

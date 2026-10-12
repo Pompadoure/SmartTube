@@ -21,6 +21,7 @@ import androidx.media3.common.Timeline;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.exoplayer.source.MergingMediaSource;
 import androidx.media3.exoplayer.source.TrackGroupArray;
+import androidx.media3.exoplayer.source.preload.DefaultPreloadManager;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.versions.selector.RestoreTrackSelector;
 import androidx.media3.exoplayer.trackselection.ExoTrackSelection;
@@ -70,17 +71,13 @@ public class ExoPlayerController implements Player.Listener {
     private static WeakReference<ExoPlayerController> sCurrent;
     // BEGIN SmartTube J: Shorts queue
     private static final int SWITCH_NOT_QUEUED = 0;
-    private static final int SWITCH_NOT_READY = 1;
     private static final int SWITCH_DONE = 2;
-    private static final int SWITCH_RETRY_MS = 50;
-    private static final int SWITCH_MAX_RETRIES = 20; // ~1 s
     private static final long ITEM_END_MARGIN_MS = 300;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
-    private final Runnable mRetrySwitch = this::retryPendingSwitch;
-    private MediaItemFormatInfo mPendingSwitch;
-    private int mPendingSwitchRetries;
     private PlayerMessage mItemEndMessage;
     private int mItemEndIndex = -1;
+    private DefaultPreloadManager mPreloadManager; // JoTube M3: preloads the queued Shorts
+    private ShortsPreloadControl mPreloadControl;
     // END SmartTube J
 
     public ExoPlayerController(Context context, PlayerEventListener eventListener) {
@@ -128,17 +125,26 @@ public class ExoPlayerController implements Player.Listener {
     // BEGIN SmartTube J: Shorts preloading
 
     /**
-     * Shorts are opened inside a player playlist, so the next ones can be appended and preloaded.
+     * JoTube M3: the preload manager the player was built with (null: no Shorts preloading, e.g. the embed player).
+     */
+    public void setPreloadManager(DefaultPreloadManager preloadManager, ShortsPreloadControl preloadControl) {
+        mPreloadManager = preloadManager;
+        mPreloadControl = preloadControl;
+    }
+
+    /**
+     * Shorts are opened as the first item of a queue, so the next ones can be added and preloaded.
      */
     private void openShortsAware(MediaItemFormatInfo formatInfo, MediaSource mediaSource) {
+        ShortsQueue.setActive(null); // releases the previous queue (and what it preloaded) before the new one is built
         ShortsQueue queue = null;
 
-        if (ShortsTransitionState.isShortsMode() && formatInfo != null && formatInfo.getVideoId() != null) {
-            queue = new ShortsQueue(formatInfo, mediaSource);
-            mediaSource = queue.getPlaylist();
+        if (ShortsTransitionState.isShortsMode() && formatInfo != null && formatInfo.getVideoId() != null && mPreloadManager != null) {
+            queue = new ShortsQueue(mPreloadManager, mPreloadControl, formatInfo, mediaSource);
+            mediaSource = queue.getMediaSource(0);
         }
 
-        openMediaSource(mediaSource); // resets the previous queue
+        openMediaSource(mediaSource);
         ShortsQueue.setActive(queue);
         scheduleItemEnd();
     }
@@ -147,54 +153,11 @@ public class ExoPlayerController implements Player.Listener {
      * @return true if the video is played (or about to be played) from the queue
      */
     private boolean openQueued(MediaItemFormatInfo formatInfo) {
-        cancelPendingSwitch();
-
-        int result = switchToQueued(formatInfo);
-
-        if (result == SWITCH_NOT_READY) {
-            // E.g. a Short has just been appended and the player's timeline isn't updated yet.
-            // Wait a moment instead of throwing away the queue with everything preloaded in it.
-            mPendingSwitch = formatInfo;
-            mPendingSwitchRetries = 0;
-            mHandler.postDelayed(mRetrySwitch, SWITCH_RETRY_MS);
-            return true;
-        }
-
-        return result == SWITCH_DONE;
-    }
-
-    private void retryPendingSwitch() {
-        MediaItemFormatInfo formatInfo = mPendingSwitch;
-
-        if (formatInfo == null || mPlayer == null) {
-            mPendingSwitch = null;
-            return;
-        }
-
-        int result = switchToQueued(formatInfo);
-
-        if (result == SWITCH_NOT_READY && ++mPendingSwitchRetries < SWITCH_MAX_RETRIES) {
-            mHandler.postDelayed(mRetrySwitch, SWITCH_RETRY_MS);
-            return;
-        }
-
-        mPendingSwitch = null;
-
-        if (result != SWITCH_DONE) {
-            Log.d(TAG, "Shorts: queue still out of sync, opening %s from scratch", formatInfo.getVideoId());
-            MediaSource mediaSource = formatInfo.containsDashFormats() ?
-                    mMediaSourceFactory.fromDashFormatInfo(formatInfo) : mMediaSourceFactory.fromSabrFormatInfo(formatInfo);
-            openShortsAware(formatInfo, mediaSource);
-        }
-    }
-
-    private void cancelPendingSwitch() {
-        mHandler.removeCallbacks(mRetrySwitch);
-        mPendingSwitch = null;
+        return switchToQueued(formatInfo) == SWITCH_DONE;
     }
 
     /**
-     * The video is already in the player (preloaded next or the previous one): just jump to it.
+     * The video is already queued (preloaded next or the previous one): play its source.
      */
     private int switchToQueued(MediaItemFormatInfo formatInfo) {
         ShortsQueue queue = ShortsQueue.getActive();
@@ -209,16 +172,13 @@ public class ExoPlayerController implements Player.Listener {
             return SWITCH_NOT_QUEUED;
         }
 
-        // The player's timeline is updated asynchronously: switch only when it's in sync with the queue
-        if (mPlayer.getCurrentTimeline().getWindowCount() != queue.size() ||
-                mPlayer.getCurrentWindowIndex() != queue.getCurrentIndex()) {
-            Log.d(TAG, "Shorts: not in sync yet for %s (index %s, current %s, size %s, timeline %s, window %s)",
-                    formatInfo.getVideoId(), index, queue.getCurrentIndex(), queue.size(),
-                    mPlayer.getCurrentTimeline().getWindowCount(), mPlayer.getCurrentWindowIndex());
-            return SWITCH_NOT_READY;
+        MediaSource source = queue.getMediaSource(index);
+
+        if (source == null) {
+            return SWITCH_NOT_QUEUED;
         }
 
-        Log.d(TAG, "Shorts: switching to preloaded item %s (index %s)", formatInfo.getVideoId(), index);
+        Log.d(TAG, "Shorts: switching to queued item %s (index %s)", formatInfo.getVideoId(), index);
 
         setQualityInfo("");
         // The track selection cache is synced with the new item in onTracksChanged (no invalidate here:
@@ -229,17 +189,15 @@ public class ExoPlayerController implements Player.Listener {
         queue.setCurrentIndex(index);
         sSourceGeneration++;
         cancelItemEnd();
-        // Default position = where the background buffering started (keeps the preloaded data)
-        mPlayer.seekToDefaultPosition(index);
+        mPlayer.setMediaSource(source);
+        mPlayer.prepare();
         mPlayer.setPlayWhenReady(true);
-        scheduleItemEnd();
 
         return SWITCH_DONE;
     }
 
     /**
-     * Append the next Short to the player playlist. ExoPlayer starts buffering it in the background
-     * as soon as the current one is fully buffered.
+     * Add the next Short to the queue. The preload manager starts loading it in the background.
      */
     public static boolean enqueueShort(MediaItemFormatInfo formatInfo) {
         return enqueueShort(formatInfo, 1);
@@ -278,16 +236,18 @@ public class ExoPlayerController implements Player.Listener {
             return false;
         }
 
-        queue.insertAt(distance, formatInfo, mediaSource);
+        if (!queue.insertAt(distance, formatInfo, mediaSource)) {
+            return false;
+        }
+
         Log.d(TAG, "Shorts: preloading %s (+%s)", formatInfo.getVideoId(), distance);
 
         return true;
     }
 
     /**
-     * Fires shortly before the current Short ends, i.e. before ExoPlayer moves into the next (preloaded)
-     * playlist item by itself. The app decides what's next, exactly like at the end of a regular video
-     * (loop, next, pause...). Not removed after delivery, so it fires again after a loop.
+     * Fires shortly before the current Short ends. The app decides what's next, exactly like at the end of a regular
+     * video (loop, next, pause...). Not removed after delivery, so it fires again after a loop.
      */
     private void scheduleItemEnd() {
         ShortsQueue queue = ShortsQueue.getActive();
@@ -307,11 +267,12 @@ public class ExoPlayerController implements Player.Listener {
 
         Timeline timeline = mPlayer.getCurrentTimeline();
 
-        if (index >= timeline.getWindowCount()) {
+        if (timeline.isEmpty()) {
             return; // scheduled on the next timeline change
         }
 
-        long durationMs = timeline.getWindow(index, new Timeline.Window()).getDurationMs();
+        // JoTube M3: the player plays one Short at a time: it is always window 0
+        long durationMs = timeline.getWindow(0, new Timeline.Window()).getDurationMs();
 
         if (durationMs == C.TIME_UNSET || durationMs <= ITEM_END_MARGIN_MS * 2) {
             return; // duration isn't known yet: scheduled on the next timeline change
@@ -319,7 +280,7 @@ public class ExoPlayerController implements Player.Listener {
 
         mItemEndIndex = index;
         mItemEndMessage = mPlayer.createMessage((messageType, payload) -> onItemEnding(index))
-                .setPosition(index, durationMs - ITEM_END_MARGIN_MS)
+                .setPosition(0, durationMs - ITEM_END_MARGIN_MS)
                 .setLooper(mHandler.getLooper())
                 .setDeleteAfterDelivery(false)
                 .send();
@@ -338,7 +299,8 @@ public class ExoPlayerController implements Player.Listener {
         ShortsQueue queue = ShortsQueue.getActive();
 
         if (queue == null || mPlayer == null || queue.getCurrentIndex() != index ||
-                mPlayer.getCurrentWindowIndex() != index || !mPlayer.getPlayWhenReady() || isLoadingOtherVideo(queue)) {
+                !ShortsQueue.isPlayerOn(queue.getVideoId(index), mPlayer.getCurrentMediaItem()) ||
+                !mPlayer.getPlayWhenReady() || isLoadingOtherVideo(queue)) {
             return;
         }
 
@@ -353,43 +315,7 @@ public class ExoPlayerController implements Player.Listener {
      */
     private boolean isLoadingOtherVideo(ShortsQueue queue) {
         Video video = getVideo();
-        return mPendingSwitch != null || (video != null && !Helpers.equals(video.videoId, queue.getCurrentVideoId()));
-    }
-
-    /**
-     * Fallback: the player moved into the next Short by itself (the end wasn't handled in time).
-     * Go back to the end of the finished Short and let the app decide (loop, next, pause...).
-     */
-    private boolean handleQueueAutoAdvance() {
-        ShortsQueue queue = ShortsQueue.getActive();
-
-        if (queue == null || mPlayer == null) {
-            return false;
-        }
-
-        int finished = queue.getCurrentIndex();
-        Timeline timeline = mPlayer.getCurrentTimeline();
-
-        if (mPlayer.getCurrentWindowIndex() == finished || finished >= timeline.getWindowCount()) {
-            return false;
-        }
-
-        if (isLoadingOtherVideo(queue)) {
-            // The app is already switching to another video: just keep the queue in sync with the player
-            queue.setCurrentIndex(mPlayer.getCurrentWindowIndex());
-            cancelItemEnd();
-            scheduleItemEnd();
-            return true;
-        }
-
-        long durationMs = timeline.getWindow(finished, new Timeline.Window()).getDurationMs();
-
-        // Paused, so the player doesn't move on by itself
-        mPlayer.setPlayWhenReady(false);
-        mPlayer.seekTo(finished, durationMs != C.TIME_UNSET ? durationMs : 0);
-        mEventListener.onPlayEnd();
-
-        return true;
+        return video != null && !Helpers.equals(video.videoId, queue.getCurrentVideoId());
     }
 
     // END SmartTube J
@@ -511,7 +437,6 @@ public class ExoPlayerController implements Player.Listener {
     
     public void release() {
         ShortsQueue.setActive(null);
-        cancelPendingSwitch();
         cancelItemEnd();
         mTrackSelectorManager.release();
         mMediaSourceFactory.release();
@@ -789,10 +714,6 @@ public class ExoPlayerController implements Player.Listener {
         // Fix video loop on 480p with legacy codes enabled
         // M3: DISCONTINUITY_REASON_PERIOD_TRANSITION became DISCONTINUITY_REASON_AUTO_TRANSITION
         if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION) {
-            if (handleQueueAutoAdvance()) {
-                return;
-            }
-
             mPlayer.stop();
             mEventListener.onPlayEnd();
         }
@@ -857,7 +778,6 @@ public class ExoPlayerController implements Player.Listener {
      */
     public void resetPlayerState() {
         ShortsQueue.setActive(null);
-        cancelPendingSwitch();
         cancelItemEnd();
 
         if (containsMedia()) {
