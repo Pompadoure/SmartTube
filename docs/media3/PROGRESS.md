@@ -21,6 +21,7 @@ Doing now: **Stage 4 done** (m3/stage4 merged into media3, CI green run 38239575
 Run: FINISHED 2026-10-12T10:25Z
 Run: STARTED 2026-10-12T10:34Z (manual start by Johan)
 Run: FINISHED 2026-10-12T11:25Z
+Run: STARTED 2026-10-12T11:43Z (manual start by Johan, after a skipped fire)
 
 ## Stage 4 steps (design from 4a, 2026-10-12)
 Findings: today `ShortsQueue` keeps all Shorts as items of one `ConcatenatingMediaSource` and switching is a seek in the
