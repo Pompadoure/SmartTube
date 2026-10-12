@@ -405,6 +405,8 @@ public class VideoLoaderController extends BasePlayerController {
             ShortsTransitionState.setShortsMode(item.isShorts && !item.isLive);
             ShortsTransitionState.setLive(item.isLive);
             if (item.isShorts) {
+                // JoTube M3: Shorts switch time (request -> first frame), same log as the regular start
+                JoTubeTiming.click("shorts " + item.videoId);
                 VideoGroup feed = item.getGroup();
                 if (feed != null) {
                     mShortsFeedGroup = feed;
@@ -512,6 +514,7 @@ public class VideoLoaderController extends BasePlayerController {
         mFormatInfoAction = mediaItemManager.getFormatInfoObserveForeground(video.videoId)
                 .subscribe(this::processFormatInfo,
                            error -> {
+                               JoTubeTiming.cancel(); // a failed start must not leak into the next measurement
                                // JoTube: the player may be gone when the async error arrives
                                PlaybackView player = getPlayer();
                                if (player != null) {

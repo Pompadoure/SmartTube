@@ -14,7 +14,7 @@ a cut-off (Johan's decision 2026-10-10):
   another run is working, so it stops at once.
 - Fast pace: a run keeps working step after step until the work is done, its context gets long, or the usage cap
   stops it. Commit and push after every meaningful change (never more than ~15 minutes uncommitted) and keep
-  `Doing now:` with each push.
+  `Doing now: **Stage 5 in progress.** 5a (audit of the checklist, 3 read-only agents) done and its fixes merged (CI green, run 38245826448): AFR strategy OFF, live speed control 1x, BEHIND_LIVE_WINDOW = seek to default + prepare, codec IllegalStateException back to TYPE_UNEXPECTED, setPositionMs while duration unknown, preload errors mark a queued Short stale, JoTubeTiming for Shorts switches. Checked, no action: SABR end clamp (duration-500ms) is the same as 2.10. Next action (5b): open items, in this order: (1) resume position via setMediaSource(source, startMs) instead of seek after tracks (VideoStateController.restorePosition / ExoPlayerController.openMediaSource, startup time), (2) ShortsQueue never shrinks: preloadManager.remove for entries >2 behind, (3) SEEK_ADJUSTMENT as onSeekEnd, (4) preload selector copies per-group overrides (TrackSelectorManager ~782: keep renderer flags/language/quality only), (5) TrackErrorFixer ignores mediaPeriodId (404 on a preloaded Short can switch the playing codec), (6) FormatFetchLock: foreground fetch of a skipped Short still runs to the end after dispose (skip it in FormatInfoWrapper when its videoId is no longer wanted and the work hasn't started; auditors disagree whether dispose interrupts, RxJava2 ExecutorWorker does not), (7) ShortsPreload/PlaybackFragment release order (harmless). Then stage 5 independent review, merge, stage 6.
 
 Doing now: **Stage 4 done** (m3/stage4 merged into media3, CI green run 38239575727). Next action: 5a: walk the PLAN.md checklist (SponsorBlock, speed, auto frame rate, resume, history, SmartNext, live DASH/HLS, PIP/background, Shorts side panel/history/prefetch/sidebar/hover prefetch, FormatFetchLock) against the code; list what still references removed 2.10 behaviour (grep for TODO M3 / 'M3:' notes), fix each, add JoTubeTiming logs for the Shorts switch and regular start.
 
@@ -22,6 +22,7 @@ Run: FINISHED 2026-10-12T10:25Z
 Run: STARTED 2026-10-12T10:34Z (manual start by Johan)
 Run: FINISHED 2026-10-12T11:25Z
 Run: STARTED 2026-10-12T11:43Z (manual start by Johan, after a skipped fire)
+Run: FINISHED 2026-10-12T12:02Z
 
 ## Stage 4 steps (design from 4a, 2026-10-12)
 Findings: today `ShortsQueue` keeps all Shorts as items of one `ConcatenatingMediaSource` and switching is a seek in the

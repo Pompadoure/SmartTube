@@ -7,6 +7,7 @@ import android.os.Handler;
 import android.os.Looper;
 
 import androidx.media3.common.C;
+import com.liskovsoft.smartyoutubetv2.common.utils.JoTubeTiming;
 import androidx.media3.exoplayer.ExoPlaybackException;
 import androidx.media3.common.Format;
 import androidx.media3.common.PlaybackParameters;
@@ -188,6 +189,7 @@ public class ExoPlayerController implements Player.Listener {
         mEventListener.onSourceChanged(getVideo());
         sSourceGeneration++;
         cancelItemEnd();
+        JoTubeTiming.mark("queued Short: setMediaSource (preloaded)");
         mPlayer.setMediaSource(source);
         mPlayer.prepare();
         mPlayer.setPlayWhenReady(true);
@@ -387,7 +389,9 @@ public class ExoPlayerController implements Player.Listener {
      */
     public void setPositionMs(long positionMs) {
         // Url list videos at load stage has undefined (-1) length. So, we need to remove length check.
-        if (mPlayer != null && positionMs >= 0 && positionMs <= getDurationMs()) {
+        // JoTube M3: Media3 keeps a seek made before the timeline is known (pending initial seek position).
+        long duration = getDurationMs();
+        if (mPlayer != null && positionMs >= 0 && (duration < 0 || positionMs <= duration)) {
             mPlayer.seekTo(positionMs);
         }
     }
@@ -617,6 +621,13 @@ public class ExoPlayerController implements Player.Listener {
 
         // NOTE: Player is released at this point. So, there is no sense to restore the playback here.
 
+        // JoTube M3: a live stream fell behind its window: jump to the live edge, not a client/CDN problem
+        if (playbackError.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW && mPlayer != null) {
+            mPlayer.seekToDefaultPosition();
+            mPlayer.prepare();
+            return;
+        }
+
         Throwable nested = playbackError.getCause() != null ? playbackError.getCause() : playbackError;
 
         // M3: Media3 no longer says "Unable to connect to"; map the network errors to the old message for ErrorFixerController
@@ -634,6 +645,18 @@ public class ExoPlayerController implements Player.Listener {
         }
         if (nested instanceof OutOfMemoryError) {
             type = PlayerEventListener.ERROR_TYPE_OUT_OF_MEMORY;
+        }
+        // JoTube M3: the fork reported transient MediaCodec IllegalStateExceptions as TYPE_UNEXPECTED (FORK_CHANGES D);
+        // Media3 wraps them as ERROR_CODE_DECODING_FAILED / TYPE_RENDERER, which would lower the saved preset.
+        if (type == ExoPlaybackException.TYPE_RENDERER && playbackError.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED) {
+            Throwable root = nested;
+            while (root.getCause() != null && root.getCause() != root) {
+                root = root.getCause();
+            }
+            if (root instanceof IllegalStateException && !(root instanceof android.media.MediaCodec.CodecException)) {
+                type = ExoPlaybackException.TYPE_UNEXPECTED;
+                nested = root;
+            }
         }
 
         mEventListener.onEngineError(type, rendererIndex, nested);
@@ -703,7 +726,7 @@ public class ExoPlayerController implements Player.Listener {
 
     @Override
     public void onPositionDiscontinuity(Player.PositionInfo oldPosition, Player.PositionInfo newPosition, int reason) {
-        Log.e(TAG, "onPositionDiscontinuity");
+        Log.d(TAG, "onPositionDiscontinuity");
 
         // M3: onSeekProcessed is gone; the seek discontinuity is the closest event (reported when the seek starts)
         if (reason == Player.DISCONTINUITY_REASON_SEEK) {

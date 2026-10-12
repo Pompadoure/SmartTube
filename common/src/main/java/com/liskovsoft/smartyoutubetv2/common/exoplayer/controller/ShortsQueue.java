@@ -4,6 +4,8 @@ import androidx.annotation.Nullable;
 import androidx.media3.common.MediaItem;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.exoplayer.source.preload.DefaultPreloadManager;
+import androidx.media3.exoplayer.source.preload.PreloadException;
+import androidx.media3.exoplayer.source.preload.PreloadManagerListener;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo;
 
 import java.util.ArrayList;
@@ -32,6 +34,7 @@ public final class ShortsQueue {
         final long addedTimeMs = System.currentTimeMillis();
         final MediaItem mediaItem;
         final int key;
+        volatile boolean failed; // the preload failed (403, expired poToken...): swipe to it with a normal fetch
 
         Entry(MediaItemFormatInfo formatInfo, MediaSource source, int key) {
             this.videoId = formatInfo.getVideoId();
@@ -50,6 +53,17 @@ public final class ShortsQueue {
     ShortsQueue(DefaultPreloadManager preloadManager, ShortsPreloadControl preloadControl, MediaItemFormatInfo formatInfo, MediaSource first) {
         mPreloadManager = preloadManager;
         mPreloadControl = preloadControl;
+        // A failed preload never reaches the player's error callback: remember it so the swipe doesn't play a broken source
+        mPreloadManager.addListener(new PreloadManagerListener() {
+            @Override
+            public void onError(PreloadException exception) {
+                for (Entry e : mEntries) {
+                    if (e.mediaItem.equals(exception.mediaItem)) {
+                        e.failed = true;
+                    }
+                }
+            }
+        });
         Entry entry = new Entry(formatInfo, first, 0);
         mEntries.add(entry);
         mCurrentIndex = 0;
@@ -119,7 +133,7 @@ public final class ShortsQueue {
      */
     boolean isActual(int index) {
         Entry entry = index >= 0 && index < mEntries.size() ? mEntries.get(index) : null;
-        return entry != null && entry.formatInfo.isCacheActual() &&
+        return entry != null && !entry.failed && entry.formatInfo.isCacheActual() &&
                 System.currentTimeMillis() - entry.addedTimeMs < FORMAT_INFO_MAX_AGE_MS;
     }
 
