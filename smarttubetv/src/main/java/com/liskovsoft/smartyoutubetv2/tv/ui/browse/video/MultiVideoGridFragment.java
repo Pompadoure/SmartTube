@@ -71,7 +71,17 @@ public class MultiVideoGridFragment extends MultiGridFragment implements VideoSe
 
         mMainPresenter = getMainPresenter();
         mCardPresenter1 = new ChannelCardPresenter();
-        mCardPresenter2 = new VideoCardPresenter();
+        mCardPresenter2 = new VideoCardPresenter() {
+            @Override
+            protected android.util.Pair<Integer, Integer> getCardDimensPx(android.content.Context context) {
+                // Exactly three cards per row when the channel list is hidden
+                android.util.DisplayMetrics dm = context.getResources().getDisplayMetrics();
+                int screenW = Math.max(dm.widthPixels, dm.heightPixels);
+                int spacing = context.getResources().getDimensionPixelSize(R.dimen.grid_item_horizontal_spacing);
+                int w = (int) ((screenW * 0.86f - spacing * 3) / 3f);
+                return new android.util.Pair<>(w, (int) (w * 9f / 16f));
+            }
+        };
         mBackgroundManager = ((LeanbackActivity) getActivity()).getBackgroundManager();
         mVideoGridScale = MainUIData.instance(getActivity()).getVideoGridScale();
 
@@ -142,7 +152,10 @@ public class MultiVideoGridFragment extends MultiGridFragment implements VideoSe
         mChannelsHidden = hidden;
 
         grid1.setVisibility(hidden ? View.GONE : View.VISIBLE);
+        // Leanback crashes (AIOOBE in processRowSizeSecondary) when the column count changes during a scroll
+        grid2.stopScroll();
         grid2.setNumColumns(Math.max(hidden ? mMaxColsNum : mMaxColsNum - 1, 1));
+        grid2.stopScroll();
 
         // The dock sizes its cells again: the second grid takes the room of the first one
         grid2.requestLayout();
@@ -302,7 +315,7 @@ public class MultiVideoGridFragment extends MultiGridFragment implements VideoSe
         VerticalGridPresenter presenter2 = new CustomVerticalGridPresenter(R.layout.lb_vertical_grid2, R.id.browse_grid2);
         presenter2.enableChildRoundedCorners(getMainUIData().isUiTweakEnabled(MainUIData.UI_TWEAK_ROUNDED_CORNERS));
         int maxColsNum = GridFragmentHelper.getMaxColsNum(getContext(), R.dimen.card_width, mVideoGridScale);
-        mMaxColsNum = Math.max(maxColsNum, 2);
+        mMaxColsNum = 3;
         presenter2.setNumberOfColumns(mMaxColsNum - 1);
 
         setGridPresenter1(presenter1);

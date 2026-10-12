@@ -3,7 +3,11 @@ package com.liskovsoft.smartyoutubetv2.tv.presenter;
 import android.app.Activity;
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.Typeface;
+import androidx.core.content.res.ResourcesCompat;
 import android.os.Build.VERSION;
 import android.util.Pair;
 import android.view.View;
@@ -89,7 +93,8 @@ public class VideoCardPresenter extends LongClickPresenter {
         cardView.enableBadge(isBadgeEnabled());
         cardView.enableTitle(isTitleEnabled());
         cardView.enableContent(isContentEnabled());
-        cardView.setBackgroundColor(mDefaultBackgroundColor); // background is temporarily visible during animations
+        cardView.setBackgroundColor(Color.TRANSPARENT);
+        styleYouTubeCard(cardView, context);
         //if (VERSION.SDK_INT >= 23 && MainUIData.instance(context).isUiTweakEnabled(MainUIData.UI_TWEAK_ROUNDED_CORNERS)) {
         //    cardView.setForeground(ContextCompat.getDrawable(context, R.drawable.lb_card_outline));
         //}
@@ -97,27 +102,72 @@ public class VideoCardPresenter extends LongClickPresenter {
         return new ViewHolder(cardView);
     }
 
+    // JoTube (media3): YouTube TV look - rounded thumbnail, bold title below, dim meta, no frame around the whole card
+    private void styleYouTubeCard(ComplexImageCardView cardView, Context context) {
+        final float radius = 12 * context.getResources().getDisplayMetrics().density;
+
+        View wrapper = cardView.findViewById(R.id.main_image_wrapper);
+        if (wrapper != null) {
+            wrapper.setOutlineProvider(new ViewOutlineProvider() {
+                @Override
+                public void getOutline(View view, Outline outline) {
+                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), radius);
+                }
+            });
+            wrapper.setClipToOutline(true);
+        }
+
+        TextView titleText = cardView.findViewById(R.id.title_text);
+        if (titleText != null) {
+            Typeface tf = ResourcesCompat.getFont(context, R.font.roboto_medium);
+            if (tf != null) {
+                titleText.setTypeface(tf);
+            }
+            titleText.setTextSize(16);
+        }
+        TextView contentText = cardView.findViewById(R.id.content_text);
+        if (contentText != null) {
+            Typeface tf = ResourcesCompat.getFont(context, R.font.roboto_regular);
+            if (tf != null) {
+                contentText.setTypeface(tf);
+            }
+            contentText.setTextSize(13);
+        }
+    }
+
     private void updateCardBackgroundColor(ComplexImageCardView view, boolean selected) {
-        int backgroundColor = selected ? mSelectedBackgroundColor : mDefaultBackgroundColor;
-        int textColor = selected ? mSelectedTextColor : mDefaultTextColor;
-
-        // Both background colors should be set because the view's
-        // background is temporarily visible during animations.
-        // NOTE: has visual bug with rounded corners
-        //view.setBackgroundColor(backgroundColor);
-
         View infoField = view.findViewById(R.id.info_field);
         if (infoField != null) {
-            infoField.setBackgroundColor(backgroundColor);
+            infoField.setBackgroundColor(Color.TRANSPARENT);
         }
 
         TextView titleText = view.findViewById(R.id.title_text);
         if (titleText != null) {
-            titleText.setTextColor(textColor);
+            titleText.setTextColor(Color.WHITE);
         }
         TextView contentText = view.findViewById(R.id.content_text);
         if (contentText != null) {
-            contentText.setTextColor(textColor);
+            contentText.setTextColor(0xFFAAAAAA);
+        }
+
+        // Focus outline only around the thumbnail
+        View wrapper = view.findViewById(R.id.main_image_wrapper);
+        if (wrapper != null && VERSION.SDK_INT >= 23) {
+            if (selected) {
+                float d = wrapper.getResources().getDisplayMetrics().density;
+                GradientDrawable outline = new GradientDrawable();
+                outline.setColor(Color.TRANSPARENT);
+                outline.setStroke(Math.round(6 * d), Color.WHITE); // half of it is clipped by the rounded outline
+                boolean round = view.getMainImageView().getClipToOutline();
+                if (round) {
+                    outline.setShape(GradientDrawable.OVAL);
+                } else {
+                    outline.setCornerRadius(12 * d);
+                }
+                wrapper.setForeground(outline);
+            } else {
+                wrapper.setForeground(null);
+            }
         }
     }
 
