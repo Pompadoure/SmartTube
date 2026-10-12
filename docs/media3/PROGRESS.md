@@ -1,7 +1,7 @@
 # JoTube M3 progress
 
-Status: DONE
-Next step: none. Stage 6 done: RELEASE_NOTES.md and TEST_LIST.md written; Johan decides when it is installed.
+Status: ACTIVE
+Next step: BUG-1 (audio restarts at video start, see "Bug reports from device tests" below). Johan installed JoTube[beta] (org.smarttube.johan.media3, armeabi-v7a build) on the Streamer 2026-10-12 16:00 and is testing; fix bugs he reports, then set DONE again.
 
 Status values: ACTIVE (the scheduled runs keep going), WAITING_FOR_JOHAN (a question to Johan, runs only check
 for his answer), BLOCKED (a stage can't be made stable; reason below), DONE (stage 6 finished).
@@ -174,3 +174,23 @@ Spent so far: 2.07 USD
   libraries/datasource_okhttp libraries/session libraries/ui libraries/ui_leanback gradle` (raw.githubusercontent, codeload,
   dl.google.com and maven.google.com are blocked, so no local Android build). All 2c ports were checked against them.
 - 2026-10-12 (run 10:34Z, manual start): **Stage 4 done.** Design from the Media3 sources: DefaultPreloadManager.add(MediaSource, key) with our SABR/DASH sources; the player is built via DefaultPreloadManager.Builder.buildExoPlayer (preload track selector = 2nd RestoreTrackSelector, same TrackSelectorManager callback); ShortsQueue = ranked entries with order-preserving gap keys; ShortsPreloadControl next 6 s / +2 3 s / previous 3 s; switch = setMediaSource(preloaded source), no timeline sync/retry/auto-advance. Independent review: 1 BLOCKER (switch set the playing Short to NOT_PRELOADED, which clears its preload before the player takes it: now loaded status for distance 0 and setCurrentIndex after setMediaSource), 2 SHOULD-FIX (preload priority comparator by feed distance, preload selector mirrors parameters) all fixed. Not measurable without a device: real switch time, codec reuse, first-frame event per Short (check in device logs when Johan installs).
+
+
+## Bug reports from device tests (Johan, Google TV Streamer, JoTube[beta] = media3 branch, build 32.56-m3-94)
+Confirmed on device: logcat shows `ExoPlayerImpl: Init [AndroidXMedia3/1.11.1]` and `MediaSessionImpl [AndroidXMedia3/1.11.1]`;
+the Streamer is 32-bit (abilist armeabi-v7a,armeabi), so use the JoTubeM3_armeabi-v7a.apk.
+
+**BUG-1 (every regular video, seen on 2 videos in a row):** at the start of the video the picture freezes and the
+audio jumps back and plays again from the beginning; once the audio has caught up, the video starts and plays on normally.
+Logcat (16:54:05.189, tag MediaCodecAudioRenderer, "Audio sink error"):
+`AudioSink$UnexpectedDiscontinuityException: Unexpected audio track timestamp discontinuity: expected 1000009993500, got 1000000000000`
+(from DefaultAudioSink.handleBuffer). 1000000000000 us is Media3's renderer timestamp offset, so the audio delivered
+~9.99 s of samples and then restarted at position 0 of the period: the audio sample stream is re-read from the start
+(or its timestamps are reset) after ~10 s were already queued, while video waits. Suspects: the SABR media source /
+media3-sabr (audio segment request restarts from 0 after the first response, e.g. initial seek or start position applied
+only to video, wrong timestamp offset / sampleTimeOffset between the first and second audio response, a re-created
+audio chunk source), or the start-position/resume handling. Find the cause with evidence (logs with the SABR request
+sequence and timestamps per track), do not guess. The old build (j-series, ExoPlayer 2.10.6) does not have this.
+Johan can read logcat via Home Assistant: androidtv.adb_command on media_player.android_tv_192_168_1_247 (write the
+output to a file, read via ha_get_state attribute adb_response). Install a new build only after a green CI on media3;
+Johan or the main Claude session installs it (runs never install on devices).
