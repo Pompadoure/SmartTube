@@ -5,41 +5,45 @@ import android.content.Context;
 import android.net.Uri;
 import android.text.TextUtils;
 import androidx.annotation.NonNull;
-import com.google.android.exoplayer2.C;
-import com.google.android.exoplayer2.ext.cronet.CronetDataSourceFactory;
-import com.google.android.exoplayer2.ext.cronet.CronetEngineWrapper;
-import com.google.android.exoplayer2.ext.okhttp.OkHttpDataSourceFactory;
-import com.google.android.exoplayer2.extractor.DefaultExtractorsFactory;
-import com.google.android.exoplayer2.source.ExtractorMediaSource;
-import com.google.android.exoplayer2.source.MediaSource;
-import com.google.android.exoplayer2.source.dash.DashChunkSource;
-import com.google.android.exoplayer2.source.dash.DashMediaSource;
-import com.google.android.exoplayer2.source.dash.DefaultDashChunkSource;
-import com.google.android.exoplayer2.source.dash.manifest.DashManifest;
-import com.google.android.exoplayer2.source.dash.manifest.DashManifestParser;
-import com.google.android.exoplayer2.source.dash.manifest.DashManifestParser2;
-import com.google.android.exoplayer2.source.dash.manifest.Period;
-import com.google.android.exoplayer2.source.dash.manifest.ProgramInformation;
-import com.google.android.exoplayer2.source.dash.manifest.UtcTimingElement;
-import com.google.android.exoplayer2.source.hls.HlsMediaSource;
-import com.google.android.exoplayer2.source.sabr.DefaultSabrChunkSource;
-import com.google.android.exoplayer2.source.sabr.SabrChunkSource;
-import com.google.android.exoplayer2.source.sabr.SabrMediaSource;
-import com.google.android.exoplayer2.source.sabr.manifest.SabrManifest;
-import com.google.android.exoplayer2.source.sabr.manifest.SabrManifestParser;
-import com.google.android.exoplayer2.source.smoothstreaming.DefaultSsChunkSource;
-import com.google.android.exoplayer2.source.smoothstreaming.SsMediaSource;
-import com.google.android.exoplayer2.upstream.DataSource;
-import com.google.android.exoplayer2.upstream.DefaultBandwidthMeter;
-import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
-import com.google.android.exoplayer2.upstream.DefaultHttpDataSourceFactory;
-import com.google.android.exoplayer2.upstream.HttpDataSource;
-import com.google.android.exoplayer2.util.Util;
+import androidx.media3.common.C;
+import androidx.media3.common.MediaItem;
+import androidx.media3.datasource.DataSpec;
+import androidx.media3.datasource.DefaultDataSource;
+import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.datasource.ResolvingDataSource;
+import androidx.media3.datasource.cronet.CronetDataSource;
+import androidx.media3.extractor.DefaultExtractorsFactory;
+import androidx.media3.exoplayer.source.MediaSource;
+import androidx.media3.exoplayer.source.ProgressiveMediaSource;
+import androidx.media3.exoplayer.dash.DashChunkSource;
+import androidx.media3.exoplayer.dash.DashMediaSource;
+import androidx.media3.exoplayer.dash.DefaultDashChunkSource;
+import androidx.media3.exoplayer.dash.manifest.DashManifest;
+import androidx.media3.exoplayer.dash.manifest.DashManifestParser;
+import androidx.media3.exoplayer.dash.manifest.Location;
+import androidx.media3.exoplayer.dash.manifest.Period;
+import androidx.media3.exoplayer.dash.manifest.ProgramInformation;
+import androidx.media3.exoplayer.dash.manifest.ServiceDescriptionElement;
+import androidx.media3.exoplayer.dash.manifest.UtcTimingElement;
+import androidx.media3.exoplayer.hls.HlsMediaSource;
+import com.liskovsoft.media3.sabr.DefaultSabrChunkSource;
+import com.liskovsoft.media3.sabr.SabrChunkSource;
+import com.liskovsoft.media3.sabr.SabrMediaSource;
+import com.liskovsoft.media3.sabr.manifest.SabrManifest;
+import com.liskovsoft.media3.sabr.manifest.SabrManifestParser;
+import androidx.media3.exoplayer.smoothstreaming.DefaultSsChunkSource;
+import androidx.media3.exoplayer.smoothstreaming.SsMediaSource;
+import androidx.media3.datasource.DataSource;
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
+import androidx.media3.datasource.HttpDataSource;
+import androidx.media3.common.util.Util;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo;
 import com.liskovsoft.sharedutils.cronet.CronetManager;
 import com.liskovsoft.sharedutils.helpers.FileHelpers;
 import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.sharedutils.okhttp.OkHttpManager;
+import com.liskovsoft.smartyoutubetv2.common.exoplayer.dash.DashManifestParser2;
+import com.liskovsoft.smartyoutubetv2.common.exoplayer.datasource.OkHttp3DataSource;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.errors.DashDefaultLoadErrorHandlingPolicy;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.errors.SabrDefaultLoadErrorHandlingPolicy;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.errors.TrackErrorFixer;
@@ -49,6 +53,7 @@ import com.liskovsoft.googlecommon.common.helpers.DefaultHeaders;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Executors;
 
@@ -58,8 +63,9 @@ public class ExoMediaSourceFactory {
     //private static ExoMediaSourceFactory sInstance;
     private static final int MAX_SEGMENTS_PER_LOAD = 1; // default - 1 (1-5)
     private static final String USER_AGENT = DefaultHeaders.APP_USER_AGENT;
+    // JoTube M3: Media3's DefaultBandwidthMeter needs a Context (Builder), so it's created lazily (app context)
     @SuppressLint("StaticFieldLeak")
-    private static final DefaultBandwidthMeter BANDWIDTH_METER = new DefaultBandwidthMeter();
+    private static DefaultBandwidthMeter sBandwidthMeter;
     private final Context mContext;
     private static final Uri DASH_MANIFEST_URI = Uri.parse("https://example.com/test.mpd");
     private static final String DASH_MANIFEST_EXTENSION = "mpd";
@@ -69,8 +75,11 @@ public class ExoMediaSourceFactory {
     /**
      * JoTube: the same meter must be used by the player (track selection) and the data sources (measurements).
      */
-    public static DefaultBandwidthMeter getBandwidthMeter() {
-        return BANDWIDTH_METER;
+    public static synchronized DefaultBandwidthMeter getBandwidthMeter(Context context) {
+        if (sBandwidthMeter == null) {
+            sBandwidthMeter = new DefaultBandwidthMeter.Builder(context.getApplicationContext()).build();
+        }
+        return sBandwidthMeter;
     }
     private TrackErrorFixer mTrackErrorFixer;
     private DataSource.Factory mMediaDataSourceFactory;
@@ -113,77 +122,67 @@ public class ExoMediaSourceFactory {
     /**
      * Returns a new DataSource factory.
      *
-     * @param useBandwidthMeter Whether to set {@link #BANDWIDTH_METER} as a listener to the new
+     * @param useBandwidthMeter Whether to set the bandwidth meter as a listener to the new
      *                          DataSource factory.
      * @return A new DataSource factory.
      */
     private DataSource.Factory buildDataSourceFactory(boolean useBandwidthMeter) {
-        DefaultBandwidthMeter bandwidthMeter = useBandwidthMeter ? BANDWIDTH_METER : null;
-        return new DefaultDataSourceFactory(mContext, bandwidthMeter, buildHttpDataSourceFactory(useBandwidthMeter));
+        // JoTube M3: the meter is set once on the http factory (Media3's DefaultDataSource forwards to it)
+        return new DefaultDataSource.Factory(mContext, buildHttpDataSourceFactory(useBandwidthMeter));
     }
 
     /**
      * Returns a new HttpDataSource factory.
      *
-     * @param useBandwidthMeter Whether to set {@link #BANDWIDTH_METER} as a listener to the new
+     * @param useBandwidthMeter Whether to set the bandwidth meter as a listener to the new
      *                          DataSource factory.
      * @return A new HttpDataSource factory.
      */
     private HttpDataSource.Factory buildHttpDataSourceFactory(boolean useBandwidthMeter) {
         PlayerTweaksData tweaksData = PlayerTweaksData.instance(mContext);
         int source = tweaksData.getPlayerDataSource();
-        DefaultBandwidthMeter bandwidthMeter = useBandwidthMeter ? BANDWIDTH_METER : null;
+        DefaultBandwidthMeter bandwidthMeter = useBandwidthMeter ? getBandwidthMeter(mContext) : null;
         return source == PlayerTweaksData.PLAYER_DATA_SOURCE_OKHTTP ? buildOkHttpDataSourceFactory(bandwidthMeter) :
                         source == PlayerTweaksData.PLAYER_DATA_SOURCE_CRONET && CronetManager.getEngine(mContext) != null ? buildCronetDataSourceFactory(bandwidthMeter) :
                                 buildDefaultHttpDataSourceFactory(bandwidthMeter);
     }
 
-    @SuppressWarnings("deprecation")
     private MediaSource buildMediaSource(Uri uri, String overrideExtension) {
-        int type = TextUtils.isEmpty(overrideExtension) ? Util.inferContentType(uri) : Util.inferContentType("." + overrideExtension);
+        @C.ContentType int type = TextUtils.isEmpty(overrideExtension) ? Util.inferContentType(uri) : Util.inferContentTypeForExtension(overrideExtension);
+        MediaItem mediaItem = MediaItem.fromUri(uri);
+        MediaSource source;
         switch (type) {
-            case C.TYPE_SS:
-                SsMediaSource ssSource =
-                        new SsMediaSource.Factory(
+            case C.CONTENT_TYPE_SS:
+                source = new SsMediaSource.Factory(
                                 getSsChunkSourceFactory(),
                                 getMediaDataSourceFactory()
                         )
-                                .createMediaSource(uri);
-                if (mTrackErrorFixer != null) {
-                    ssSource.addEventListener(Utils.sHandler, mTrackErrorFixer);
-                }
-                return ssSource;
-            case C.TYPE_DASH:
-                DashMediaSource dashSource =
-                        new DashMediaSource.Factory(
+                                .createMediaSource(mediaItem);
+                break;
+            case C.CONTENT_TYPE_DASH:
+                source = new DashMediaSource.Factory(
                                 getDashChunkSourceFactory(),
                                 getMediaDataSourceFactory()
                         )
                                 .setManifestParser(new LiveDashManifestParser()) // Don't make static! Need state reset for each live source.
                                 .setLoadErrorHandlingPolicy(new DashDefaultLoadErrorHandlingPolicy())
-                                .createMediaSource(uri);
-                if (mTrackErrorFixer != null) {
-                    dashSource.addEventListener(Utils.sHandler, mTrackErrorFixer);
-                }
-                return dashSource;
-            case C.TYPE_HLS:
-                HlsMediaSource hlsSource = new HlsMediaSource.Factory(getMediaDataSourceFactory()).createMediaSource(uri);
-                if (mTrackErrorFixer != null) {
-                    hlsSource.addEventListener(Utils.sHandler, mTrackErrorFixer);
-                }
-                return hlsSource;
-            case C.TYPE_OTHER:
-                ExtractorMediaSource extractorSource = new ExtractorMediaSource.Factory(getMediaDataSourceFactory())
-                        .setExtractorsFactory(new DefaultExtractorsFactory())
-                        .createMediaSource(uri);
-                if (mTrackErrorFixer != null) {
-                    extractorSource.addEventListener(Utils.sHandler, mTrackErrorFixer);
-                }
-                return extractorSource;
+                                .createMediaSource(mediaItem);
+                break;
+            case C.CONTENT_TYPE_HLS:
+                source = new HlsMediaSource.Factory(getMediaDataSourceFactory()).createMediaSource(mediaItem);
+                break;
+            case C.CONTENT_TYPE_OTHER:
+                source = new ProgressiveMediaSource.Factory(getMediaDataSourceFactory(), new DefaultExtractorsFactory())
+                        .createMediaSource(mediaItem);
+                break;
             default: {
                 throw new IllegalStateException("Unsupported type: " + type);
             }
         }
+        if (mTrackErrorFixer != null) {
+            source.addEventListener(Utils.sHandler, mTrackErrorFixer);
+        }
+        return source;
     }
 
     private MediaSource buildSabrMediaSource(MediaItemFormatInfo formatInfo) {
@@ -202,8 +201,16 @@ public class ExoMediaSourceFactory {
 
     private MediaSource buildDashMediaSource(MediaItemFormatInfo formatInfo) {
         // Are you using FrameworkSampleSource or ExtractorSampleSource when you build your player?
+        // JoTube M3: the fork added the visitor cookie to subtitle requests (DashManifest.visitorCookie, subtitles bot
+        // check). Media3 has no such field: a resolving data source adds it to the timedtext requests of this source.
+        String visitorCookie = formatInfo.getVisitorCookie();
+        DashChunkSource.Factory chunkSourceFactory = TextUtils.isEmpty(visitorCookie) ? getDashChunkSourceFactory() :
+                new DefaultDashChunkSource.Factory(new ResolvingDataSource.Factory(getMediaDataSourceFactory(),
+                        dataSpec -> isSubtitleRequest(dataSpec) ?
+                                dataSpec.withAdditionalHeaders(Collections.singletonMap("Cookie", visitorCookie)) : dataSpec),
+                        MAX_SEGMENTS_PER_LOAD);
         DashMediaSource dashSource = new DashMediaSource.Factory(
-                getDashChunkSourceFactory(),
+                chunkSourceFactory,
                 null
         )
                 .setLoadErrorHandlingPolicy(new DashDefaultLoadErrorHandlingPolicy())
@@ -246,6 +253,11 @@ public class ExoMediaSourceFactory {
         return dashSource;
     }
 
+    private static boolean isSubtitleRequest(DataSpec dataSpec) {
+        String path = dataSpec.uri.getPath();
+        return path != null && path.contains("timedtext");
+    }
+
     private SabrManifest getSabrManifest(MediaItemFormatInfo formatInfo) {
         SabrManifestParser parser = new SabrManifestParser();
         return parser.parse(formatInfo);
@@ -282,23 +294,23 @@ public class ExoMediaSourceFactory {
      * Use OkHttp for networking
      */
     private HttpDataSource.Factory buildOkHttpDataSourceFactory(DefaultBandwidthMeter bandwidthMeter) {
-        OkHttpDataSourceFactory dataSourceFactory = new OkHttpDataSourceFactory(OkHttpManager.instance().getClient(), USER_AGENT,
-                bandwidthMeter);
+        OkHttp3DataSource.Factory dataSourceFactory = new OkHttp3DataSource.Factory(OkHttpManager.instance().getClient())
+                .setUserAgent(USER_AGENT)
+                .setTransferListener(bandwidthMeter);
         addCommonHeaders(dataSourceFactory);
         return dataSourceFactory;
     }
 
     private HttpDataSource.Factory buildCronetDataSourceFactory(DefaultBandwidthMeter bandwidthMeter) {
-        CronetDataSourceFactory dataSourceFactory =
-                new CronetDataSourceFactory(
-                        new CronetEngineWrapper(CronetManager.getEngine(mContext)),
-                        Executors.newSingleThreadExecutor(),
-                        null,
-                        bandwidthMeter,
-                        (int) OkHttpManager.getConnectTimeoutMs(),
-                        (int) OkHttpManager.getReadTimeoutMs(),
-                        true,
-                        USER_AGENT);
+        // JoTube M3: Media3 CronetDataSource on the app's own engine (CronetManager), same timeouts as before.
+        // 2.10 had no fallback factory here either (null).
+        CronetDataSource.Factory dataSourceFactory =
+                new CronetDataSource.Factory(CronetManager.getEngine(mContext), Executors.newSingleThreadExecutor())
+                        .setUserAgent(USER_AGENT)
+                        .setConnectionTimeoutMs((int) OkHttpManager.getConnectTimeoutMs())
+                        .setReadTimeoutMs((int) OkHttpManager.getReadTimeoutMs())
+                        .setResetTimeoutOnRedirects(true)
+                        .setTransferListener(bandwidthMeter);
         addCommonHeaders(dataSourceFactory);
         return dataSourceFactory;
     }
@@ -307,9 +319,12 @@ public class ExoMediaSourceFactory {
      * Use built-in component for networking
      */
     private HttpDataSource.Factory buildDefaultHttpDataSourceFactory(DefaultBandwidthMeter bandwidthMeter) {
-        DefaultHttpDataSourceFactory dataSourceFactory = new DefaultHttpDataSourceFactory(
-                USER_AGENT, bandwidthMeter, (int) OkHttpManager.getConnectTimeoutMs(),
-                (int) OkHttpManager.getReadTimeoutMs(), true); // allowCrossProtocolRedirects = true
+        DefaultHttpDataSource.Factory dataSourceFactory = new DefaultHttpDataSource.Factory()
+                .setUserAgent(USER_AGENT)
+                .setConnectTimeoutMs((int) OkHttpManager.getConnectTimeoutMs())
+                .setReadTimeoutMs((int) OkHttpManager.getReadTimeoutMs())
+                .setAllowCrossProtocolRedirects(true)
+                .setTransferListener(bandwidthMeter);
 
         addCommonHeaders(dataSourceFactory); // cause troubles for some users
         return dataSourceFactory;
@@ -384,7 +399,7 @@ public class ExoMediaSourceFactory {
         return mMediaDataSourceFactory;
     }
 
-    // EXO: 2.10 - 2.12
+    // JoTube M3: Media3 1.11 calls the overload with a Location list (the Uri one is deprecated and unused)
     private static class StaticDashManifestParser extends DashManifestParser {
         @Override
         protected DashManifest buildMediaPresentationDescription(
@@ -398,8 +413,9 @@ public class ExoMediaSourceFactory {
                 long publishTimeMs,
                 ProgramInformation programInformation,
                 UtcTimingElement utcTiming,
-                Uri location,
-                List<Period> periods) {
+                ServiceDescriptionElement serviceDescription,
+                List<Period> periods,
+                List<Location> locations) {
             return new DashManifest(
                     availabilityStartTime,
                     durationMs,
@@ -411,8 +427,9 @@ public class ExoMediaSourceFactory {
                     publishTimeMs,
                     programInformation,
                     utcTiming,
-                    location,
-                    periods);
+                    serviceDescription,
+                    periods,
+                    locations);
         }
     }
 

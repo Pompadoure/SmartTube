@@ -16,6 +16,8 @@ buildscript {
     ext.m3AgpVersion = '8.13.0'
     ext.m3KotlinVersion = '2.2.0'
     ext.m3CompileSdk = 36
+    // Media3 version for every module (PLAN.md Decisions 1)
+    ext.m3Media3Version = '1.11.1'
 
     repositories {
         google()
@@ -49,6 +51,8 @@ allprojects {
         // resolutionStrategy.force 'androidx.lifecycle:lifecycle-livedata:' + liveDataVersion
         // resolutionStrategy.force 'androidx.lifecycle:lifecycle-runtime:' + liveDataVersion
         // Force Android 4 compatible okHttp version
+        // JoTube M3: kept (SharedModules Kotlin code doesn't compile against OkHttp 4); the app uses its own
+        // OkHttp3DataSource instead of media3-datasource-okhttp (built against OkHttp 4)
         resolutionStrategy.force 'com.squareup.okhttp3:okhttp:' + okhttpVersion
         // JoTube M3: Kotlin stdlib pinned to the Kotlin compiler version (was a downgrade for WorkManager);
         // coroutines/core-ktx stay at their older, binary-compatible versions
@@ -82,6 +86,10 @@ allprojects {
 // - compileSdk 36 for every module (targetSdk of the app flavor is pinned separately),
 // - Kotlin bytecode target 1.8 like the Java code (AGP 8/Kotlin 2 fail on mismatched JVM targets).
 subprojects { p ->
+    // JoTube M3 (stage 2c): show all compiler errors, not only the first 100 per module
+    p.tasks.withType(JavaCompile).configureEach {
+        options.compilerArgs += ['-Xmaxerrs', '2000']
+    }
     def m3Glue = {
         def android = p.extensions.getByName('android')
         def mainManifest = p.file('src/main/AndroidManifest.xml')

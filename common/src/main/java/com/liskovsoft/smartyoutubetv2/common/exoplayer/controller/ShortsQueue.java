@@ -1,7 +1,7 @@
 package com.liskovsoft.smartyoutubetv2.common.exoplayer.controller;
 
-import com.google.android.exoplayer2.source.ConcatenatingMediaSource;
-import com.google.android.exoplayer2.source.MediaSource;
+import androidx.media3.exoplayer.source.ConcatenatingMediaSource;
+import androidx.media3.exoplayer.source.MediaSource;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo;
 
 import java.util.ArrayList;

@@ -6,6 +6,37 @@ import re, sys
 E = 'com.google.android.exoplayer2.'
 # Most specific first.
 MAP = [
+    # App-side (stage 2c) additions, most specific first
+    ('SimpleExoPlayer', 'androidx.media3.exoplayer.ExoPlayer'),
+    ('ExoPlayer', 'androidx.media3.exoplayer.ExoPlayer'),
+    ('PlayerMessage', 'androidx.media3.exoplayer.PlayerMessage'),
+    ('PlaybackParameters', 'androidx.media3.common.PlaybackParameters'),
+    ('DefaultRenderersFactory', 'androidx.media3.exoplayer.DefaultRenderersFactory'),
+    ('RenderersFactory', 'androidx.media3.exoplayer.RenderersFactory'),
+    ('DefaultLoadControl', 'androidx.media3.exoplayer.DefaultLoadControl'),
+    ('LoadControl', 'androidx.media3.exoplayer.LoadControl'),
+    ('BaseRenderer', 'androidx.media3.exoplayer.BaseRenderer'),
+    ('Renderer', 'androidx.media3.exoplayer.Renderer'),
+    ('mediacodec.', 'androidx.media3.exoplayer.mediacodec.'),
+    ('video.ColorInfo', 'androidx.media3.common.ColorInfo'),
+    ('video.', 'androidx.media3.exoplayer.video.'),
+    ('audio.AudioAttributes', 'androidx.media3.common.AudioAttributes'),
+    ('audio.AudioProcessor', 'androidx.media3.common.audio.AudioProcessor'),
+    ('audio.', 'androidx.media3.exoplayer.audio.'),
+    ('ui.', 'androidx.media3.ui.'),
+    ('text.CaptionStyleCompat', 'androidx.media3.ui.CaptionStyleCompat'),
+    ('text.Cue', 'androidx.media3.common.text.Cue'),
+    ('text.TextOutput', 'androidx.media3.exoplayer.text.TextOutput'),
+    ('text.', 'androidx.media3.extractor.text.'),
+    ('decoder.DecoderCounters', 'androidx.media3.exoplayer.DecoderCounters'),
+    ('decoder.', 'androidx.media3.decoder.'),
+    ('ext.okhttp.', 'androidx.media3.datasource.okhttp.'),
+    ('ext.cronet.', 'androidx.media3.datasource.cronet.'),
+    ('ext.leanback.', 'androidx.media3.ui.leanback.'),
+    ('database.', 'androidx.media3.database.'),
+    ('util.EventLogger', 'androidx.media3.exoplayer.util.EventLogger'),
+    ('upstream.ByteArrayDataSource', 'androidx.media3.datasource.ByteArrayDataSource'),
+    ('upstream.DefaultDataSource', 'androidx.media3.datasource.DefaultDataSource'),
     ('source.sabr.', 'com.liskovsoft.media3.sabr.'),
     ('source.sabr;', 'com.liskovsoft.media3.sabr;'),
     ('FormatHolder', 'androidx.media3.exoplayer.FormatHolder'),
@@ -21,6 +52,9 @@ MAP = [
     ('extractor.', 'androidx.media3.extractor.'),
     ('offline.StreamKey', 'androidx.media3.common.StreamKey'),
     ('offline.', 'androidx.media3.exoplayer.offline.'),
+    ('source.dash.', 'androidx.media3.exoplayer.dash.'),
+    ('source.hls.', 'androidx.media3.exoplayer.hls.'),
+    ('source.smoothstreaming.', 'androidx.media3.exoplayer.smoothstreaming.'),
     ('source.TrackGroupArray', 'androidx.media3.exoplayer.source.TrackGroupArray'),
     ('source.TrackGroup', 'androidx.media3.common.TrackGroup'),
     ('source.', 'androidx.media3.exoplayer.source.'),
@@ -35,6 +69,7 @@ MAP = [
     ('util.MimeTypes', 'androidx.media3.common.MimeTypes'),
     ('util.', 'androidx.media3.common.util.'),
     ('C;', 'androidx.media3.common.C;'),
+    ('C\n', 'androidx.media3.common.C\n'),
     ('C.', 'androidx.media3.common.C.'),
     ('Format;', 'androidx.media3.common.Format;'),
     ('ParserException', 'androidx.media3.common.ParserException'),
@@ -56,6 +91,8 @@ def fix(text):
     # TrackSelection type -> ExoTrackSelection (only whole-word type uses)
     text = re.sub(r'(?<![\w.])TrackSelection(?=[\s\[>.,)])', 'ExoTrackSelection', text)
     text = text.replace('ExoExoTrackSelection', 'ExoTrackSelection')
+    # SimpleExoPlayer is ExoPlayer in Media3
+    text = re.sub(r'(?<![\w.])SimpleExoPlayer(?!\w)', 'ExoPlayer', text)
     # Media3 ExtractorInput & friends no longer throw InterruptedException
     text = re.sub(r'throws IOException, InterruptedException', 'throws IOException', text)
     return text

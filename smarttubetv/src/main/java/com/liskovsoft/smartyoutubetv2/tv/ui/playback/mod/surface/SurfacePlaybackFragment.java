@@ -9,9 +9,9 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import androidx.leanback.app.PlaybackSupportFragment;
-import com.google.android.exoplayer2.ui.AspectRatioFrameLayout;
-import com.google.android.exoplayer2.ui.AspectRatioFrameLayout.ResizeMode;
-import com.google.android.exoplayer2.ui.SubtitleView;
+import com.liskovsoft.smartyoutubetv2.common.exoplayer.other.ZoomAspectRatioFrameLayout;
+import com.liskovsoft.smartyoutubetv2.common.exoplayer.other.ZoomAspectRatioFrameLayout.ResizeMode;
+import androidx.media3.ui.SubtitleView;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.manager.PlayerEngine;
 import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerData;
@@ -24,7 +24,7 @@ import com.liskovsoft.smartyoutubetv2.tv.util.ViewUtil;
  */
 public class SurfacePlaybackFragment extends PlaybackSupportFragment {
     private SurfaceWrapper mVideoSurfaceWrapper;
-    private AspectRatioFrameLayout mVideoSurfaceRoot;
+    private ZoomAspectRatioFrameLayout mVideoSurfaceRoot;
     private SubtitleView mLeanbackSubtitles;
     private int mSubtitlesPadding;
     private int mBackgroundResId;

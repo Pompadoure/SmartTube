@@ -36,6 +36,8 @@ android {
 
     lintOptions {
         abortOnError true
+        // JoTube M3: most Media3 APIs are @UnstableApi; opting in everywhere instead of per class
+        disable 'UnsafeOptInUsageError'
         disable 'MissingTranslation'
         disable 'MissingQuantity'
     }
@@ -69,9 +71,16 @@ dependencies {
 
     //////// BEGIN EXOPLAYER /////////
 
-    implementation project(':exoplayer-library')
-    implementation project(':exoplayer-extension-okhttp')
-    implementation project(':exoplayer-extension-cronet')
+    // JoTube M3: AndroidX Media3 (PLAN.md, Decisions 4) + the ported SABR module
+    api project(':media3-sabr')
+    api "androidx.media3:media3-exoplayer:$m3Media3Version"
+    api "androidx.media3:media3-exoplayer-dash:$m3Media3Version"
+    api "androidx.media3:media3-exoplayer-hls:$m3Media3Version"
+    api "androidx.media3:media3-exoplayer-smoothstreaming:$m3Media3Version"
+    implementation "androidx.media3:media3-datasource-cronet:$m3Media3Version"
+    // JoTube M3: OkHttp3DataSource (own copy of Media3's OkHttpDataSource for OkHttp 3.12)
+    implementation 'com.squareup.okhttp3:okhttp:' + okhttpVersion
+    api "androidx.media3:media3-ui:$m3Media3Version"
 
     // implementation 'com.amazon.android:exoplayer:' + amazonExoplayerVersion
     // implementation 'com.amazon.android:extension-okhttp:' + amazonExoplayerVersion

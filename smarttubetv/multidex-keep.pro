@@ -105,7 +105,7 @@
     java.lang.String LEGACY_ARRAY_DELIM;
     java.lang.Object findFirst(java.util.Collection, com.liskovsoft.sharedutils.helpers.Helpers$Filter);
 }
--keepclassmembers class com.google.android.exoplayer2.PlaybackParameters {
+-keepclassmembers class androidx.media3.common.PlaybackParameters {
     <init>(...);
     float pitch;
 }
@@ -164,8 +164,8 @@
     boolean isFormatSupported(com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.track.MediaTrack);
     boolean skipCronet();
 }
--keepclassmembers class com.google.android.exoplayer2.video.VideoRendererEventListener {
-    void onVideoDisabled(com.google.android.exoplayer2.decoder.DecoderCounters);
+-keepclassmembers class androidx.media3.exoplayer.video.VideoRendererEventListener {
+    void onVideoDisabled(androidx.media3.exoplayer.DecoderCounters);
 }
 -keepclassmembers class com.liskovsoft.smartyoutubetv2.common.app.models.search.MediaServiceSearchTagProvider {
     <init>(...);
@@ -202,10 +202,10 @@
     <init>(...);
     boolean containsMedia();
 }
--keepclassmembers interface com.google.android.exoplayer2.Player$EventListener {
-    void onPlaybackParametersChanged(com.google.android.exoplayer2.PlaybackParameters);
+-keepclassmembers interface androidx.media3.common.Player$Listener {
+    void onPlaybackParametersChanged(androidx.media3.common.PlaybackParameters);
 }
--keepclassmembers interface com.google.android.exoplayer2.Player {
+-keepclassmembers interface androidx.media3.common.Player {
     boolean isPlaying();
 }
 -keepclassmembers class com.liskovsoft.sharedutils.locale.LocaleContextWrapper {
