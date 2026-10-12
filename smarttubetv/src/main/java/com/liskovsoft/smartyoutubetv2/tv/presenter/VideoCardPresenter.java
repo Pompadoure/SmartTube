@@ -13,6 +13,7 @@ import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 import androidx.leanback.widget.Presenter;
 import com.bumptech.glide.Glide;
+import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions;
 import com.bumptech.glide.load.DataSource;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.load.engine.GlideException;
@@ -157,6 +158,9 @@ public class VideoCardPresenter extends LongClickPresenter {
                         //.asBitmap() // disable animation (webp, gif)
                         .load(ClickbaitRemover.updateThumbnail(video, mThumbQuality)),
                 mWidth, mHeight)
+                // JoTube: a thumbnail that isn't in the cache yet fades in instead of popping in
+                // (an image from the memory cache is shown at once, the transition is skipped for it)
+                .transition(DrawableTransitionOptions.withCrossFade(150))
                 //.placeholder(mDefaultCardImage)
                 .listener(mErrorListener)
                 .error(
