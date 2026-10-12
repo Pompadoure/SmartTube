@@ -14,8 +14,10 @@ a cut-off (Johan's decision 2026-10-10):
   another run is working, so it stops at once.
 - Fast pace: a run keeps working step after step until the work is done, its context gets long, or the usage cap
   stops it. Commit and push after every meaningful change (never more than ~15 minutes uncommitted) and keep
-  `Doing now:` current with each push, so a cut-off loses almost nothing.
-- A run that finds `Run: STARTED` without FINISHED finishes what `Doing now:` describes first and logs "cut off".
+  `Doing now: 2c on m3/stage2: review SHOULD-FIX 1-3 fixed in 65c20ee (fix 1 corrected: HTTP status errors are TYPE_OPEN
+in Media3 too), CI running. Next action: CI green → merge m3/stage2 into media3, mark 2c + stage 2 done, start stage 3.
+
+Run: STARTED` without FINISHED finishes what `Doing now:` describes first and logs "cut off".
 - API tasks (claude-task workflow) run in parallel with the plan's usage, at most one at a time; queue the next one
   before a run ends.
 
