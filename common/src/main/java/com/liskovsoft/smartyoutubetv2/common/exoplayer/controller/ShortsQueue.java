@@ -52,12 +52,13 @@ public final class ShortsQueue {
     private final List<Entry> mEntries = new ArrayList<>();
     private int mCurrentIndex;
     private boolean mReleased;
+    private final PreloadManagerListener mPreloadListener;
 
     ShortsQueue(DefaultPreloadManager preloadManager, ShortsPreloadControl preloadControl, MediaItemFormatInfo formatInfo, MediaSource first) {
         mPreloadManager = preloadManager;
         mPreloadControl = preloadControl;
         // A failed preload never reaches the player's error callback: remember it so the swipe doesn't play a broken source
-        mPreloadManager.addListener(new PreloadManagerListener() {
+        mPreloadListener = new PreloadManagerListener() {
             @Override
             public void onError(PreloadException exception) {
                 for (Entry e : mEntries) {
@@ -66,7 +67,8 @@ public final class ShortsQueue {
                     }
                 }
             }
-        });
+        };
+        mPreloadManager.addListener(mPreloadListener);
         Entry entry = new Entry(formatInfo, first, 0);
         mEntries.add(entry);
         mCurrentIndex = 0;
@@ -201,6 +203,7 @@ public final class ShortsQueue {
     private void release() {
         if (!mReleased) {
             mReleased = true;
+            mPreloadManager.removeListener(mPreloadListener); // the manager outlives the queue
             mPreloadControl.update(new int[0], -1);
             mPreloadManager.reset();
         }
