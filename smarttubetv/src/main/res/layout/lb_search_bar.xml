@@ -23,11 +23,11 @@
             android:layout_height="wrap_content"
             android:layout_centerVertical="true"
             android:layout_marginStart="@dimen/lb_search_bar_speech_orb_margin_start"
-            android:focusable="true"
+            android:focusable="false"
             android:focusableInTouchMode="false"
+            android:visibility="gone"
             >
-        <!-- Should be commented out? Fix voice search activation after fragment restore? -->
-        <requestFocus/>
+        <!-- JoTube: voice search is removed (the view is kept: SearchBar looks it up) -->
     </androidx.leanback.widget.SpeechOrbView>
 
     <!-- MOD: rounded search bg (old value: lb_in_app_search_bg) -->
@@ -35,9 +35,9 @@
             android:id="@+id/lb_search_bar_items"
             android:layout_width="@dimen/lb_search_bar_items_width"
             android:layout_height="@dimen/lb_search_bar_items_height"
-            android:layout_toEndOf="@+id/lb_search_bar_speech_orb"
+            android:layout_alignParentStart="true"
             android:layout_centerVertical="true"
-            android:layout_marginStart="@dimen/lb_search_bar_items_margin_start"
+            android:layout_marginStart="@dimen/lb_search_bar_speech_orb_margin_start"
             android:layout_marginTop="@dimen/lb_search_bar_inner_margin_top"
             android:layout_marginBottom="@dimen/lb_search_bar_inner_margin_bottom"
             android:background="@drawable/rounded_search_bg"

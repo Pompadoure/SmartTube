@@ -63,9 +63,8 @@ public class SearchTagsFragment extends SearchTagsFragmentBase {
         mSearchData = SearchData.instance(getContext());
 
         setupEventListeners();
-        setKeyboardAutoShowEnabled(mSearchData.isKeyboardAutoShowEnabled());
-        setKeyboardFixEnabled(mSearchData.isKeyboardFixEnabled());
-        setTypingCorrectionDisabled(mSearchData.isTypingCorrectionDisabled());
+        // JoTube: built-in keyboard, the Android one never shows up
+        setKeyboardAutoShowEnabled(false);
     }
 
     private void setupEventListeners() {
@@ -181,18 +180,13 @@ public class SearchTagsFragment extends SearchTagsFragmentBase {
 
     @Override
     public void startVoiceRecognition() {
-        startSearch(null, true);
+        // JoTube: voice search is removed
+        startSearch(null, false);
     }
 
     @Override
     public boolean onQueryTextChange(String newQuery) {
         loadSearchTags(newQuery);
-
-        // Commit on voice input.
-        // Note, that voice detection is far from ideal and may results duplicate search loading.
-        if (isVoiceQuery(newQuery)) {
-            loadSearchResult(newQuery);
-        }
 
         return true;
     }
