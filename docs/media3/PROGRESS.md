@@ -1,7 +1,7 @@
 # JoTube M3 progress
 
 Status: WAITING_FOR_JOHAN
-Next step (WAITING_FOR_JOHAN: install the new latest-media3 build, play a regular video once, say so in a commit/note; then the run reads logcat via HA, grep JoTubeSabr and fixes BUG-1): BUG-1 (audio restarts at video start, see "Bug reports from device tests" below). Johan installed JoTube[beta] (org.smarttube.johan.media3, armeabi-v7a build) on the Streamer 2026-10-12 16:00 and is testing; fix bugs he reports, then set DONE again.
+Next step (LOG ARRIVED 2026-10-12 17:31Z, see 'BUG-1 EVIDENCE' at the end; fix it. Old text: WAITING_FOR_JOHAN: install the new latest-media3 build, play a regular video once, say so in a commit/note; then the run reads logcat via HA, grep JoTubeSabr and fixes BUG-1): BUG-1 (audio restarts at video start, see "Bug reports from device tests" below). Johan installed JoTube[beta] (org.smarttube.johan.media3, armeabi-v7a build) on the Streamer 2026-10-12 16:00 and is testing; fix bugs he reports, then set DONE again.
 
 Status values: ACTIVE (the scheduled runs keep going), WAITING_FOR_JOHAN (a question to Johan, runs only check
 for his answer), BLOCKED (a stage can't be made stable; reason below), DONE (stage 6 finished).
@@ -207,3 +207,22 @@ skipped (SKIP_INIT_RESPONSE_MEDIA=false). Diagnostics merged (tag `JoTubeSabr`, 
 "extractor seek:" / "sample:" lines (first 3 samples after each seek, every BACKWARD timestamp jump).
 Read with: androidtv.adb_command `logcat -d -v threadtime | grep -E 'JoTubeSabr|DefaultSabrChunkSource|Audio sink error' > /sdcard/m3.txt; cat /sdcard/m3.txt`
 right after one regular video start (the ring buffer is small).
+
+**BUG-1 EVIDENCE 2026-10-12 19:31 local (17:31Z), build with the 8-task port, tag JoTubeSabr, pid 5756 (Shorts click, Johan gave up after ~9 s: "no video started"):**
+```
+19:31:01.224 extractor seek: SabrMatroskaAdapter@222998212 (video, trackType=2) position=0 timeUs=0 seekCount=1
+19:31:01.228 extractor seek: SabrMatroskaAdapter@161763757 (audio, trackType=1) position=0 timeUs=0 seekCount=1
+19:31:01.653 sample: audio timeUs=0, 21000, 41000 ... (seekCount=1)  -> audio samples queued up to prevUs=9981000
+19:31:01.801 next chunk: track=1 queueSize=0 loadPosUs=0 playbackPosUs=0 seekTimeUs=0 nexChunkIdx=-1
+19:31:01.815 extractor seek: audio position=0 timeUs=0 seekCount=2        <-- second seek of the SAME audio extractor to 0
+19:31:01.867 sample: video timeUs=0, 17000, 33000 (seekCount=1)
+19:31:02.209 sample: audio timeUs=0 prevUs=9981000 BACKWARD (seekCount=2)  <-- the duplicate segment 0
+19:31:02.248 MediaCodec ... then SabrExtractorInput "User doing seek? The SABR read isn't finished yet" (Johan pressed back)
+```
+Reading: the audio chunk source decides "next chunk" a second time with queueSize=0 and nexChunkIdx=-1 although ~10 s of audio
+(segment 0) are already loaded (the first load is not in the sample queue's view yet, or the queue was cleared / the first
+chunk was cancelled), so it re-requests from 0 (seekCount=2) and the stream gets a duplicate of segment 0 -> discontinuity
+(expected 9993500, got 0) and video waits for the audio. Look at what clears/does not account the first audio chunk
+(chunk source `getNextChunk` with queue empty right after the first load; `sabrStream.reset(iTag)` on a second call;
+startMs=-1 -> loadPosition 0). Not a codec problem. No video appears for >9 s on every start now (Johan could not wait).
+
