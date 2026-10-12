@@ -16,7 +16,7 @@ a cut-off (Johan's decision 2026-10-10):
   stops it. Commit and push after every meaningful change (never more than ~15 minutes uncommitted) and keep
   `Doing now:` with each push.
 
-Doing now: 4b+4c+4d pushed on m3/stage4 (ShortsQueue = ranked entries feeding DefaultPreloadManager with stable gap keys; ShortsPreloadControl next=6 s, +2=3 s, previous=3 s; switchToQueued = setMediaSource(preloaded source); no timeline sync/retry/auto-advance; item end message on window 0; dash sources get mediaId=videoId). Not compiled yet. Next action: CI result, fix compile errors; then 4e (TrackSelectorManager sync with preloaded selections), 4f.
+Doing now: 4b-4g done on m3/stage4 (CI green for 4b-4d, run 38237723179). 4e: TrackSelectorManager sync logic unchanged (same flow as the playlist: onQueuedSourceSwitch + syncWithPlayingPeriod in onTracksChanged; the preload selector is a RestoreTrackSelector with the same callback). 4f: no app code needed: tunneling is off, FastStartLoadControl lost its dead PlayedPeriodsPolicy methods, codec reuse = Media3 canReuseCodec default (measure on device later), PreloadMediaSource preloads from the default start position so the player's period matches. Next action: CI of the cleanup commit, independent review of the stage 4 diff (git diff media3...m3/stage4), fix findings, merge into media3.
 
 Run: FINISHED 2026-10-12T10:25Z
 Run: STARTED 2026-10-12T10:34Z (manual start by Johan)

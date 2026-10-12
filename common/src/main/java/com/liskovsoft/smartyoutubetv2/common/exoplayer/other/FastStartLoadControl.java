@@ -30,7 +30,6 @@ public class FastStartLoadControl implements LoadControl {
     private final LoadControl mDelegate;
     private final int mShortsMaxBufferBytes;
     private final int mMaxBufferBytes;
-    @Nullable private PlayerId mPlayerId;
 
     /**
      * @param maxBufferBytes the app's memory limit for the player buffer on this device
@@ -58,29 +57,8 @@ public class FastStartLoadControl implements LoadControl {
         return mDelegate.shouldStartPlayback(parameters);
     }
 
-    // BEGIN JoTube: played Shorts stay in the player (with their data), so going back is instant
-    // M3: not called by Media3 (the fork's PlayedPeriodsPolicy hook); stage 4 decides how this maps to Media3
-
-    public boolean shouldRetainPlayedPeriods() {
-        // Not when the buffer memory is already used up (then the played one is released as usual)
-        return ShortsTransitionState.isShortsMode() && mPlayerId != null &&
-                getAllocator(mPlayerId).getTotalBytesAllocated() < mShortsMaxBufferBytes;
-    }
-
-    public boolean shouldPreloadQueuedPeriods() {
-        return ShortsTransitionState.isShortsMode();
-    }
-
-    public long getCurrentBackBufferDurationUs() {
-        return ShortsTransitionState.isShortsMode() ? SHORTS_BACK_BUFFER_US :
-                (mPlayerId != null ? mDelegate.getBackBufferDurationUs(mPlayerId) : 0);
-    }
-
-    // END JoTube
-
     @Override
     public void onPrepared(PlayerId playerId) {
-        mPlayerId = playerId;
         mDelegate.onPrepared(playerId);
     }
 
