@@ -782,7 +782,8 @@ public class TrackSelectorManager implements TrackSelectorCallback {
         RestoreTrackSelector preloadSelector = mPreloadTrackSelector;
         DefaultTrackSelector selector = mTrackSelector;
         if (preloadSelector != null && selector != null) {
-            preloadSelector.setParameters(selector.getParameters());
+            // No per-group overrides: they point at the playing item's track groups, not at the preloaded ones
+            preloadSelector.setParameters(selector.getParameters().buildUpon().clearOverrides().build());
         }
     }
 

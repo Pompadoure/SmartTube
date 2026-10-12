@@ -198,7 +198,7 @@ public class ExoMediaSourceFactory {
                 .setLoadErrorHandlingPolicy(new SabrDefaultLoadErrorHandlingPolicy())
                 .createMediaSource(getSabrManifest(formatInfo));
         if (mTrackErrorFixer != null) {
-            sabrSource.addEventListener(Utils.sHandler, mTrackErrorFixer);
+            sabrSource.addEventListener(Utils.sHandler, mTrackErrorFixer.forVideo(formatInfo.getVideoId()));
         }
         return sabrSource;
     }
@@ -221,7 +221,7 @@ public class ExoMediaSourceFactory {
                 .setSubtitleParserFactory(new JoSubtitleParserFactory()) // JoTube: the fork's WebVTT fixes
                 .createMediaSource(getManifest(formatInfo), new MediaItem.Builder().setMediaId(formatInfo.getVideoId() != null ? formatInfo.getVideoId() : MediaItem.DEFAULT_MEDIA_ID).build()); // JoTube M3: the id names the source in the Shorts queue
         if (mTrackErrorFixer != null) {
-            dashSource.addEventListener(Utils.sHandler, mTrackErrorFixer);
+            dashSource.addEventListener(Utils.sHandler, mTrackErrorFixer.forVideo(formatInfo.getVideoId()));
         }
         return dashSource;
     }

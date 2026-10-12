@@ -17,6 +17,8 @@ public interface PlayerEngine extends PlayerConstants {
     void openMerged(InputStream dashManifest, String hlsPlaylistUrl);
     long getPositionMs();
     void setPositionMs(long positionMs);
+    /** JoTube M3: start position for the next source (applied with setMediaSource, no seek after prepare). Call from onSourceChanged. */
+    default void setStartPositionMs(long positionMs) {}
     long getDurationMs();
     void setPlayWhenReady(boolean play);
     boolean getPlayWhenReady();
