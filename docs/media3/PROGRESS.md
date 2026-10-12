@@ -23,6 +23,7 @@ Run: STARTED 2026-10-12T10:34Z (manual start by Johan)
 Run: FINISHED 2026-10-12T11:25Z
 Run: STARTED 2026-10-12T11:43Z (manual start by Johan, after a skipped fire)
 Run: FINISHED 2026-10-12T12:02Z
+Run: STARTED 2026-10-12T12:22Z (scheduled fire)
 
 ## Stage 4 steps (design from 4a, 2026-10-12)
 Findings: today `ShortsQueue` keeps all Shorts as items of one `ConcatenatingMediaSource` and switching is a seek in the
