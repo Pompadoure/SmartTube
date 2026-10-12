@@ -112,6 +112,10 @@ public class MultiVideoGridFragment extends MultiGridFragment implements VideoSe
         }
 
         mChannelsHidden = false;
+        if (getBrowseGrid1() != null) {
+            getBrowseGrid1().animate().cancel();
+            getBrowseGrid1().setAlpha(1f);
+        }
         super.onDestroyView();
     }
 
@@ -137,41 +141,27 @@ public class MultiVideoGridFragment extends MultiGridFragment implements VideoSe
         return false;
     }
 
+    /**
+     * The channel list fades out while the videos have the focus. Nothing is laid out again and the column count never
+     * changes at runtime (that crashed leanback): grid2 always has {@link #mMaxColsNum} columns, the dock simply scrolls
+     * so that grid2 is fully visible while it has the focus and grid1 is fully visible while it has the focus.
+     * The faded grid keeps its (invisible) focusability, so DPAD_LEFT from the first column still reaches the channels.
+     */
     private void setChannelsHidden(boolean hidden) {
         if (hidden == mChannelsHidden) {
             return;
         }
 
         VerticalGridView grid1 = getBrowseGrid1();
-        VerticalGridView grid2 = getBrowseGrid2();
 
-        if (grid1 == null || grid2 == null) {
+        if (grid1 == null) {
             return;
         }
 
         mChannelsHidden = hidden;
 
-        grid1.setVisibility(hidden ? View.GONE : View.VISIBLE);
-        // Leanback crashes (AIOOBE in processRowSizeSecondary) when the column count changes during a scroll
-        grid2.stopScroll();
-        grid2.setNumColumns(Math.max(hidden ? mMaxColsNum : mMaxColsNum - 1, 1));
-        grid2.stopScroll();
-
-        // The dock sizes its cells again: the second grid takes the room of the first one
-        grid2.requestLayout();
-
-        if (grid2.getParent() instanceof View) {
-            View cell = (View) grid2.getParent();
-            cell.requestLayout();
-
-            if (cell.getParent() instanceof View) {
-                ((View) cell.getParent()).requestLayout();
-            }
-        }
-
-        if (grid1.getParent() instanceof View) {
-            ((View) grid1.getParent()).requestLayout();
-        }
+        grid1.animate().cancel();
+        grid1.animate().alpha(hidden ? 0f : 1f).setDuration(hidden ? 120 : 180).start();
     }
 
     @Override
@@ -316,7 +306,7 @@ public class MultiVideoGridFragment extends MultiGridFragment implements VideoSe
         presenter2.enableChildRoundedCorners(getMainUIData().isUiTweakEnabled(MainUIData.UI_TWEAK_ROUNDED_CORNERS));
         int maxColsNum = GridFragmentHelper.getMaxColsNum(getContext(), R.dimen.card_width, mVideoGridScale);
         mMaxColsNum = 3;
-        presenter2.setNumberOfColumns(mMaxColsNum - 1);
+        presenter2.setNumberOfColumns(mMaxColsNum); // never changed at runtime
 
         setGridPresenter1(presenter1);
         setGridPresenter2(presenter2);
