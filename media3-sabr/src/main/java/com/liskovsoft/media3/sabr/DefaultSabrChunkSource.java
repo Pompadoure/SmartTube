@@ -442,6 +442,11 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
         //}
 
         long seekTimeUs = queue.isEmpty() ? loadPositionUs : C.TIME_UNSET;
+        // BUG-1 diagnostics
+        Log.e("JoTubeSabr", "next chunk: track=" + trackType + " queueSize=" + queue.size()
+                + " loadPosUs=" + loadPositionUs + " playbackPosUs=" + playbackPositionUs
+                + " seekTimeUs=" + seekTimeUs + " nexChunkIdx=" + nexChunkIdx
+                + (previous != null ? " prevStartUs=" + previous.startTimeUs + " prevEndUs=" + previous.endTimeUs : ""));
         out.chunk =
                 newMediaChunk(
                         representationHolder,
@@ -737,7 +742,9 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
                 representation.getCacheKey());
         long sampleOffsetUs = -representation.presentationTimeOffsetUs;
         Log.e(TAG, "Load media chunk: track=" + trackType + ", rn=" + manifest.getSabrRequestNumber()
-                + ", startTimeMs=" + startTimeMs + ", backoffTimeMs=" + sabrStream.getBackoffTimeMs());
+                + ", startTimeMs=" + startTimeMs + ", durationMs=" + durationMs + ", startTimeUs=" + startTimeUs
+                + ", endTimeUs=" + endTimeUs + ", clippedStartUs=" + seekTimeUs + ", isInit=" + isInit
+                + ", backoffTimeMs=" + sabrStream.getBackoffTimeMs());
         return new ContainerMediaChunk(
                 dataSource,
                 dataSpec,
