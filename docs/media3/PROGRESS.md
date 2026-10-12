@@ -1,7 +1,7 @@
 # JoTube M3 progress
 
 Status: ACTIVE
-Next step: 2c (on branch `m3/stage2`: swap the app's ExoPlayer modules for Media3 + `:media3-sabr`, port the minimal player path until CI is green, then merge)
+Next step: 3a (stage 3, on branch `m3/stage3`: the player around it; see "Stage 3 steps" below)
 
 Status values: ACTIVE (the scheduled runs keep going), WAITING_FOR_JOHAN (a question to Johan, runs only check
 for his answer), BLOCKED (a stage can't be made stable; reason below), DONE (stage 6 finished).
@@ -14,8 +14,23 @@ a cut-off (Johan's decision 2026-10-10):
   another run is working, so it stops at once.
 - Fast pace: a run keeps working step after step until the work is done, its context gets long, or the usage cap
   stops it. Commit and push after every meaningful change (never more than ~15 minutes uncommitted) and keep
-  `Doing now: 2c on m3/stage2: review SHOULD-FIX 1-3 fixed in 65c20ee (fix 1 corrected: HTTP status errors are TYPE_OPEN
-in Media3 too), CI running. Next action: CI green → merge m3/stage2 into media3, mark 2c + stage 2 done, start stage 3.
+  `Doing now: stage 2 merged into media3. Next action: 3a on a new branch m3/stage3.
+
+## Stage 3 steps
+- 3a. Cronet: the root build.gradle forces `cronet-api` 105 (for cronet-okhttp); check what media3-datasource-cronet
+  1.11.1 needs (API calls that don't exist in 105 → NoSuchMethodError at runtime) and fix the force or the data source.
+- 3b. Subtitles: the fork's WebVTT fixes (HTML entities, 10 s cue cap) as a wrapping SubtitleParser.Factory for SABR
+  and DASH; check that captions show (SubtitleManager, CueGroup).
+- 3c. Track selection: TrackSelectorManager/RestoreTrackSelector behaviour vs 2.10 (quality restore, audio language,
+  no dubbed audio by default, `getSelectedFormat()` instead of `getFormat(0)` for the quality label).
+- 3d. LeanbackPlayerAdapter no-surface fix (JoTube), seek-end event timing (onSeekEnd now at seek start), the dead
+  settings (audio sync fix, AmazonQuirks): hide or note them.
+- 3e. DashDefaultLoadErrorHandlingPolicy: use Media3's default for cleartext/416 (review NIT 6); OOM path check.
+- 3f. Independent review of stage 3, fixes, merge.
+Notes from the 2c review: played Shorts are no longer kept in the player (Media3 releases played periods; the back
+buffer only covers the current Short) → stage 4 (DefaultPreloadManager). OOM: Media3's Loader turns an
+OutOfMemoryError into UnexpectedLoaderException (cause OOM), which ErrorFixerController still catches; an OOM on the
+playback thread itself is not caught (same as a crash in 2.10 for that thread).
 
 Run: STARTED` without FINISHED finishes what `Doing now:` describes first and logs "cut off".
 - API tasks (claude-task workflow) run in parallel with the plan's usage, at most one at a time; queue the next one
@@ -100,6 +115,11 @@ Spent so far: 1.76 USD
 - 2026-10-10 (run 18:18Z): cut off (STARTED without FINISHED; no new commits after the run-started marker). Run 20:15Z
   continues 2c from `Doing now:`. The 20:15Z run could not re-arm the scheduled task (update_trigger denied by the
   permission classifier); the daily watchdog re-arms the chain.
+- 2026-10-12 (run 09:25Z): found two API tasks from an earlier run that never logged them (review + fixes, queued
+  ~08:06Z); logged their cost. Usage guard section repaired (it had the Doing-now text pasted into it). Review fix 1
+  corrected (Media3's InvalidResponseCodeException is TYPE_OPEN: a 403 would have switched the engine), fix 3 done
+  (SessionPlayer.notifyMediaMetadataChanged on setVideo; verified the session only re-reads metadata on
+  onMediaMetadataChanged). CI green (run 38229710435). **Stage 2 done**: m3/stage2 merged into media3.
 - 2026-10-10 (run 20:15Z): Media3 1.11.1 sources are readable through the proxy with
   `git clone --depth 1 --branch 1.11.1 --filter=blob:none --sparse https://github.com/androidx/media /home/claude/media3src`
   + `git sparse-checkout set libraries/exoplayer libraries/exoplayer_dash libraries/common libraries/datasource
