@@ -60,6 +60,7 @@ public class ShortsSidePanel {
     private static final int RIGHT_MARGIN_DP = 20;
     // The frame around the video: white when the video gets the focus, then it fades to grey (like the official app)
     private static final int FRAME_MARGIN_DP = 16; // above and below the 9:16 frame (room for the border)
+    private static final int FRAME_VERTICAL_MARGIN_DP = 0; // JoTube: the player fills the screen from top to bottom
     private static final int BORDER_DP = 3;
     private static final int BORDER_OUTSET_DP = 5;
     private static final int BORDER_RADIUS_DP = 14;
@@ -660,7 +661,7 @@ public class ShortsSidePanel {
     }
 
     private int getFrameHeight(int rootHeight) {
-        return Math.max(1, rootHeight - dp(FRAME_MARGIN_DP) * 2);
+        return Math.max(1, rootHeight - dp(FRAME_VERTICAL_MARGIN_DP) * 2);
     }
 
     /**

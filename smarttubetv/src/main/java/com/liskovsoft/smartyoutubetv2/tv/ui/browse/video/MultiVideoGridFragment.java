@@ -2,6 +2,8 @@ package com.liskovsoft.smartyoutubetv2.tv.ui.browse.video;
 
 import android.os.Bundle;
 import android.view.View;
+import android.view.ViewParent;
+import android.view.ViewTreeObserver;
 import android.widget.Toast;
 
 import androidx.annotation.Nullable;
@@ -54,6 +56,14 @@ public class MultiVideoGridFragment extends MultiGridFragment implements VideoSe
     private Video mSelectedItem1;
     private float mVideoGridScale;
     private final Runnable mRestore1Task = this::restorePosition1;
+    private int mMaxColsNum = 3;
+    private boolean mChannelsHidden;
+    // JoTube: the channel list is hidden while the videos have the focus (3 cards per row instead of 2)
+    private final ViewTreeObserver.OnGlobalFocusChangeListener mFocusListener = (oldFocus, newFocus) -> {
+        if (newFocus != null) {
+            setChannelsHidden(isInside(newFocus, getBrowseGrid2()));
+        }
+    };
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -79,6 +89,64 @@ public class MultiVideoGridFragment extends MultiGridFragment implements VideoSe
         super.onViewCreated(view, savedInstanceState);
 
         removePadding();
+
+        view.getViewTreeObserver().addOnGlobalFocusChangeListener(mFocusListener);
+    }
+
+    @Override
+    public void onDestroyView() {
+        View root = getView();
+
+        if (root != null) {
+            root.getViewTreeObserver().removeOnGlobalFocusChangeListener(mFocusListener);
+        }
+
+        mChannelsHidden = false;
+        super.onDestroyView();
+    }
+
+    private static boolean isInside(View view, View container) {
+        if (view == null || container == null) {
+            return false;
+        }
+
+        ViewParent parent = view.getParent();
+
+        if (view == container) {
+            return true;
+        }
+
+        while (parent != null) {
+            if (parent == container) {
+                return true;
+            }
+
+            parent = parent.getParent();
+        }
+
+        return false;
+    }
+
+    private void setChannelsHidden(boolean hidden) {
+        if (hidden == mChannelsHidden) {
+            return;
+        }
+
+        VerticalGridView grid1 = getBrowseGrid1();
+        VerticalGridView grid2 = getBrowseGrid2();
+
+        if (grid1 == null || grid2 == null) {
+            return;
+        }
+
+        mChannelsHidden = hidden;
+
+        grid1.setVisibility(hidden ? View.GONE : View.VISIBLE);
+        grid2.setNumColumns(Math.max(hidden ? mMaxColsNum : mMaxColsNum - 1, 1));
+
+        if (grid1.getParent() instanceof View) {
+            ((View) grid1.getParent()).requestLayout();
+        }
     }
 
     @Override
@@ -222,7 +290,8 @@ public class MultiVideoGridFragment extends MultiGridFragment implements VideoSe
         VerticalGridPresenter presenter2 = new CustomVerticalGridPresenter(R.layout.lb_vertical_grid2, R.id.browse_grid2);
         presenter2.enableChildRoundedCorners(getMainUIData().isUiTweakEnabled(MainUIData.UI_TWEAK_ROUNDED_CORNERS));
         int maxColsNum = GridFragmentHelper.getMaxColsNum(getContext(), R.dimen.card_width, mVideoGridScale);
-        presenter2.setNumberOfColumns(Math.max(maxColsNum, 1) - 1);
+        mMaxColsNum = Math.max(maxColsNum, 2);
+        presenter2.setNumberOfColumns(mMaxColsNum - 1);
 
         setGridPresenter1(presenter1);
         setGridPresenter2(presenter2);

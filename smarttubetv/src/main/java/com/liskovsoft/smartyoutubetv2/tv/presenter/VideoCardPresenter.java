@@ -7,6 +7,8 @@ import android.graphics.drawable.Drawable;
 import android.os.Build.VERSION;
 import android.util.Pair;
 import android.view.View;
+import android.graphics.Outline;
+import android.view.ViewOutlineProvider;
 import android.widget.ImageView;
 import android.view.ViewGroup;
 import android.widget.TextView;
@@ -154,11 +156,14 @@ public class VideoCardPresenter extends LongClickPresenter {
         }
 
         // JoTube: channel cards ("Top channels you watch" etc.): a small round sharp avatar instead of a stretched blurry one
-        if (video.isChannel() && video.cardImageUrl != null) {
+        if (isAvatarCard(video)) {
             bindChannelAvatar(cardView, context, video);
             return;
         }
 
+        // Cards are recycled: undo the round avatar look
+        cardView.getMainImageView().setClipToOutline(false);
+        cardView.getMainImageView().setOutlineProvider(ViewOutlineProvider.BACKGROUND);
         cardView.getMainImageView().setScaleType(ImageView.ScaleType.CENTER_CROP);
 
         // JoTube: options are shared with ThumbnailPreloader (same Glide cache key)
@@ -203,9 +208,18 @@ public class VideoCardPresenter extends LongClickPresenter {
      * The source is requested in a bigger size (the default one is tiny) and scaled down: sharp result.
      */
     private void bindChannelAvatar(ComplexImageCardView cardView, Context context, Video video) {
-        int size = Math.max(Math.round(mHeight * 0.6f), 1);
+        // A round button: the whole picture is a circle (the card is as wide as it is high)
+        int size = Math.max(mHeight, 1);
+        cardView.setMainImageDimensions(size, size);
         ImageView imageView = cardView.getMainImageView();
-        imageView.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        imageView.setOutlineProvider(new ViewOutlineProvider() {
+            @Override
+            public void getOutline(View view, Outline outline) {
+                outline.setOval(0, 0, view.getWidth(), view.getHeight());
+            }
+        });
+        imageView.setClipToOutline(true);
 
         Glide.with(context)
                 .load(upscaleAvatarUrl(video.cardImageUrl))
@@ -220,6 +234,15 @@ public class VideoCardPresenter extends LongClickPresenter {
     }
 
     /**
+     * Channel cards with a real avatar (round button). Channel-like items with a wide picture
+     * (e.g. recommended shows) get an ordinary thumbnail.
+     */
+    private static boolean isAvatarCard(Video video) {
+        String url = video.cardImageUrl;
+        return video.isChannel() && url != null && (url.contains("ggpht.com") || url.contains("googleusercontent.com"));
+    }
+
+    /**
      * Avatar urls end with a size parameter, e.g. "...=s88-c-k-c0x00ffffff-no-rj". Ask for a bigger one.
      */
     private static String upscaleAvatarUrl(String url) {
@@ -230,7 +253,7 @@ public class VideoCardPresenter extends LongClickPresenter {
      * JoTube: warm Glide cache with the thumbnail this presenter would load on bind.
      */
     public void preload(Context context, Video video) {
-        if (context == null || video == null || video.isChannel()) {
+        if (context == null || video == null || isAvatarCard(video)) {
             return; // channel avatars use their own request
         }
 
