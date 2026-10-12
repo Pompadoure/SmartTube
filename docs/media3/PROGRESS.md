@@ -1,7 +1,7 @@
 # JoTube M3 progress
 
 Status: ACTIVE
-Next step: 3a (stage 3, on branch `m3/stage3`: the player around it; see "Stage 3 steps" below)
+Next step: 4a (stage 4, Shorts on Media3: split PLAN.md stage 4 into steps first, on branch `m3/stage4`)
 
 Status values: ACTIVE (the scheduled runs keep going), WAITING_FOR_JOHAN (a question to Johan, runs only check
 for his answer), BLOCKED (a stage can't be made stable; reason below), DONE (stage 6 finished).
@@ -14,10 +14,12 @@ a cut-off (Johan's decision 2026-10-10):
   another run is working, so it stops at once.
 - Fast pace: a run keeps working step after step until the work is done, its context gets long, or the usage cap
   stops it. Commit and push after every meaningful change (never more than ~15 minutes uncommitted) and keep
-  `Doing now: stage 3 on m3/stage3: 3a-3e done, 3f review (subagent) done: no BLOCKER, 3 SHOULD-FIX + NITs fixed in
-f875a84, CI running. Next action: CI green (check the API check notice still shows 0 MISSING and the new
-JoSubtitleParserFactoryTest passes); merge m3/stage3 into media3, mark stage 3 done; then stage 4 (Shorts on Media3:
-DefaultPreloadManager), split into steps first.
+  `Doing now: **Stage 3 done** (m3/stage3 merged into media3, CI green run 38235470708, independent review fixed). Model of
+the scheduled task is now Sonnet 5.5 (Johan, to save usage). Next action: 4a: read FORK_CHANGES.md rows for
+ExoPlayerImplInternal/MediaPeriodQueue, ShortsQueue and VideoLoaderController; write the stage 4 step list into
+PLAN.md/PROGRESS.md (DefaultPreloadManager design); then implement on m3/stage4.
+
+Run: FINISHED 2026-10-12T10:25Z
 
 ## Stage 3 steps
 - 3a. Cronet: the root build.gradle forces `cronet-api` 105 (for cronet-okhttp); check what media3-datasource-cronet
@@ -124,6 +126,12 @@ Spent so far: 2.07 USD
   corrected (Media3's InvalidResponseCodeException is TYPE_OPEN: a 403 would have switched the engine), fix 3 done
   (SessionPlayer.notifyMediaMetadataChanged on setVideo; verified the session only re-reads metadata on
   onMediaMetadataChanged). CI green (run 38229710435). **Stage 2 done**: m3/stage2 merged into media3.
+- 2026-10-12 (same run): **Stage 3 done.** 3a: CI "API check" (docs/media3/tools/api_check.py): 186 Media3 refs into
+  cronet-api 105 / core 1.9.0 / annotation 1.1.0, none missing (cronet 46 refs checked). 3b: subtitles: last cue only,
+  padded background; entity decoding + 10 s cap per cue at parse time in media3-sabr JoSubtitleParserFactory (also DASH,
+  HLS); unit tests. 3c: track selector without the audio channel constraint (no Context). 3d: JoLeanbackPlayerAdapter
+  (copy with the no-surface fix, restarts progress when the surface returns). 3e: retry delay = Media3 default. 3f review
+  agent: no blockers, 3 SHOULD-FIX fixed. Known no-ops: audio sync fix, AmazonQuirks settings (Media3 has no equivalent).
 - 2026-10-10 (run 20:15Z): Media3 1.11.1 sources are readable through the proxy with
   `git clone --depth 1 --branch 1.11.1 --filter=blob:none --sparse https://github.com/androidx/media /home/claude/media3src`
   + `git sparse-checkout set libraries/exoplayer libraries/exoplayer_dash libraries/common libraries/datasource
