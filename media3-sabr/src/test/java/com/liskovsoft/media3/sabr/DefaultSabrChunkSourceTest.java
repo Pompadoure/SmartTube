@@ -218,20 +218,57 @@ public class DefaultSabrChunkSourceTest {
     }
 
     @Test
-    public void videoInitializationStillUsesSabrPost() {
-        Representation representation = Representation.newInstance(
-                createVideoFormat(), SABR_URL,
-                new SingleSegmentBase(new RangedUri(null, 0, 100), 1, 0, 0, 0));
-        SabrManifest manifest = createManifest(
-                DURATION_MS, null,
-                new AdaptationSet(0, C.TRACK_TYPE_VIDEO, Collections.singletonList(representation)));
+    public void startFromTheBeginningLoadsInitAndFirstMediaAsOneMediaChunk() {
+        SabrManifest manifest = createManifestWithInitRange();
         ChunkHolder out = new ChunkHolder();
 
         createSource(manifest).getNextChunk(loadingInfo(0), 0, Collections.emptyList(), out);
 
+        // JoTube: the init response is loaded as the first media chunk (samples kept, sample format at once)
+        assertTrue(out.chunk instanceof ContainerMediaChunk);
+        assertEquals(DataSpec.HTTP_METHOD_POST, out.chunk.dataSpec.httpMethod);
+        assertEquals(SABR_URL + "&rn=0", out.chunk.dataSpec.uri.toString());
+        assertTrue(out.chunk.dataSpec.httpBody.length > 0);
+        assertEquals(0, out.chunk.startTimeUs);
+    }
+
+    @Test
+    public void startInTheMiddleStillLoadsTheInitializationChunkFirst() {
+        SabrManifest manifest = createManifestWithInitRange();
+        ChunkHolder out = new ChunkHolder();
+
+        createSource(manifest).getNextChunk(loadingInfo(30_000_000), 30_000_000, Collections.emptyList(), out);
+
         assertTrue(out.chunk instanceof InitializationChunk);
         assertEquals(DataSpec.HTTP_METHOD_POST, out.chunk.dataSpec.httpMethod);
         assertEquals(SABR_URL + "&rn=0", out.chunk.dataSpec.uri.toString());
+    }
+
+    @Test
+    public void chunkAfterTheStartChunkContinuesWithoutSeek() {
+        SabrManifest manifest = createManifestWithInitRange();
+        DefaultSabrChunkSource source = createSource(manifest);
+        ChunkHolder out = new ChunkHolder();
+        source.getNextChunk(loadingInfo(0), 0, Collections.emptyList(), out);
+        MediaChunk startChunk = (MediaChunk) out.chunk;
+        out.clear();
+
+        source.getNextChunk(loadingInfo(0), startChunk.endTimeUs, Collections.singletonList(startChunk), out);
+
+        // A continuation request (rn=1), not another init request and not a seek back to 0
+        assertTrue(out.chunk instanceof ContainerMediaChunk);
+        assertFalse(out.endOfStream);
+        assertEquals(SABR_URL + "&rn=1", out.chunk.dataSpec.uri.toString());
+        assertEquals(C.TIME_UNSET, ((ContainerMediaChunk) out.chunk).clippedStartTimeUs);
+    }
+
+    private static SabrManifest createManifestWithInitRange() {
+        Representation representation = Representation.newInstance(
+                createVideoFormat(), SABR_URL,
+                new SingleSegmentBase(new RangedUri(null, 0, 100), 1, 0, 0, 0));
+        return createManifest(
+                DURATION_MS, null,
+                new AdaptationSet(0, C.TRACK_TYPE_VIDEO, Collections.singletonList(representation)));
     }
 
     private static void assertSabrRequest(Format format, int trackType) {

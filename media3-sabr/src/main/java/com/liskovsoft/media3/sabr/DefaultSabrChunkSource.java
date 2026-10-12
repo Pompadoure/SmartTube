@@ -62,6 +62,15 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
     // JoTube: off. Ending the init response early made some videos stall at the first segment boundary
     // (~10 s, deterministic, also after an engine restart): the server state no longer matched.
     private static final boolean SKIP_INIT_RESPONSE_MEDIA = false;
+    // JoTube: a start from the beginning loads the SABR init response as the FIRST MEDIA CHUNK (init segment + the first
+    // media segment in one request, samples kept) instead of an InitializationChunk (whole response read and its media
+    // dropped) followed by a second request that downloads the same first segment again. Media3's ChunkSampleStream hands
+    // nothing to the renderers (not even the sample format, so no decoder init) while the first media chunk has not
+    // started, so the old order made the decoder wait for the complete download of the first segment (measured: Short
+    // from Home, tracks selected +413 ms, decoder init +4726 ms) and downloaded that segment twice.
+    private static final boolean START_WITH_MEDIA_CHUNK = true;
+    // Only for a start at (nearly) the beginning: the init request always asks for the segments at player time 0.
+    private static final long START_CHUNK_MAX_POSITION_US = 1_000_000L;
     public static final class Factory implements SabrChunkSource.Factory {
 
         private final DataSource.Factory dataSourceFactory;
@@ -151,6 +160,9 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
     @Nullable private final SabrStream sabrStream;
     private final Map<String, String> sabrHeaders;
     private int nexChunkIdx = -1;
+    // JoTube: the init+media chunk that started this source (null: not used), see START_WITH_MEDIA_CHUNK
+    @Nullable private Chunk startChunk;
+    private long startChunkRequestedMs;
 
     /**
      * @param manifestLoaderErrorThrower Throws errors affecting loading of manifests.
@@ -309,10 +321,16 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
 
         long playbackPositionUs = loadingInfo.playbackPositionUs;
 
+        MediaChunk previous = queue.isEmpty() ? null : queue.get(queue.size() - 1);
+
+        if (previous != null && previous == startChunk) {
+            // The end time of the start chunk wasn't known when it was created: the SABR stream knows it now
+            loadPositionUs = resolveStartChunkEndUs(loadPositionUs);
+        }
+
         long bufferedDurationUs = loadPositionUs - playbackPositionUs;
         long timeToLiveEdgeUs = resolveTimeToLiveEdgeUs(playbackPositionUs);
         long nowUnixTimeUs = getNowUnixTimeUs();
-        MediaChunk previous = queue.isEmpty() ? null : queue.get(queue.size() - 1);
         MediaChunkIterator[] chunkIterators = new MediaChunkIterator[trackSelection.length()];
         // No segment index for SABR: no per-track iterators (adaptive selections dereference them).
         java.util.Arrays.fill(chunkIterators, MediaChunkIterator.EMPTY);
@@ -367,6 +385,13 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
             //}
             //if (pendingInitializationUri != null || pendingIndexUri != null) {
             if (pendingInitializationUri != null) {
+                if (START_WITH_MEDIA_CHUNK && sabrStream != null && queue.isEmpty()
+                        && loadPositionUs <= START_CHUNK_MAX_POSITION_US) {
+                    out.chunk = newStartChunk(representationHolder, dataSource,
+                            trackSelection.getSelectedFormat(), trackSelection.getSelectionReason(),
+                            trackSelection.getSelectionData());
+                    return;
+                }
                 // We have initialization and/or index requests to make.
                 out.chunk = newInitializationChunk(representationHolder, dataSource,
                         trackSelection.getSelectedFormat(), trackSelection.getSelectionReason(),
@@ -463,6 +488,10 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
 
     @Override
     public void onChunkLoadCompleted(Chunk chunk) {
+        if (chunk == startChunk) {
+            Log.e(TAG, "Start chunk loaded: track=" + trackType + ", " + chunk.bytesLoaded() + " bytes in "
+                    + (SystemClock.elapsedRealtime() - startChunkRequestedMs) + " ms");
+        }
         if (chunk instanceof InitializationChunk) {
             InitializationChunk initializationChunk = (InitializationChunk) chunk;
             int trackIndex = trackSelection.indexOf(initializationChunk.trackFormat);
@@ -610,6 +639,58 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
     //    liveEdgeTimeUs = manifest.dynamic
     //            ? representationHolder.getSegmentEndTimeUs(lastAvailableSegmentNum) : C.TIME_UNSET;
     //}
+
+    /**
+     * JoTube: the first request of a start from the beginning (see START_WITH_MEDIA_CHUNK): the SABR init request, but
+     * loaded as a media chunk so its samples are kept and the sample format reaches the renderers as soon as the init
+     * segment is parsed. The next chunk continues after the segments of this response (no seek, no reset).
+     */
+    private Chunk newStartChunk(
+            RepresentationHolder representationHolder,
+            DataSource dataSource,
+            Format trackFormat,
+            int trackSelectionReason,
+            Object trackSelectionData) {
+        DataSpec dataSpec = createSabrDataSpec(
+                manifest.getRequestUrl(trackType),
+                manifest.createVideoPlaybackAbrRequest(trackType, true).toByteArray(),
+                representationHolder.representation.getCacheKey());
+        long sampleOffsetUs = -representationHolder.representation.presentationTimeOffsetUs;
+        nexChunkIdx = 0; // the following chunk is a plain continuation
+        startChunkRequestedMs = SystemClock.elapsedRealtime();
+        Log.e(TAG, "Load start chunk (init + media): track=" + trackType + ", rn=" + manifest.getSabrRequestNumber());
+        // Times are unknown until the response is parsed: the chunk starts at 0 and is treated as empty until it is loaded
+        // (the next getNextChunk() asks the SABR stream for the real end, see resolveStartChunkEndUs)
+        startChunk = new ContainerMediaChunk(
+                dataSource,
+                dataSpec,
+                trackFormat,
+                trackSelectionReason,
+                trackSelectionData,
+                /* startTimeUs= */ 0,
+                /* endTimeUs= */ 0,
+                /* clippedStartTimeUs= */ C.TIME_UNSET,
+                /* clippedEndTimeUs= */ C.TIME_UNSET,
+                /* chunkIndex= */ C.INDEX_UNSET,
+                /* chunkCount= */ C.INDEX_UNSET,
+                sampleOffsetUs,
+                representationHolder.extractorWrapper);
+        return startChunk;
+    }
+
+    /**
+     * End of the segments the start chunk's response contained (start + duration of the last one), in microseconds.
+     */
+    private long resolveStartChunkEndUs(long fallbackUs) {
+        if (sabrStream == null) {
+            return fallbackUs;
+        }
+
+        FormatId formatId = formatSelector.getSelectedFormatId();
+        long endMs = sabrStream.getSegmentStartTimeMs(formatId != null ? formatId.getItag() : -1);
+
+        return endMs > 0 ? endMs * 1_000L : fallbackUs;
+    }
 
     protected Chunk newInitializationChunk(
             RepresentationHolder representationHolder,
