@@ -20,6 +20,7 @@ ExoPlayerImplInternal/MediaPeriodQueue, ShortsQueue and VideoLoaderController; w
 PLAN.md/PROGRESS.md (DefaultPreloadManager design); then implement on m3/stage4.
 
 Run: FINISHED 2026-10-12T10:25Z
+Run: STARTED 2026-10-12T10:34Z (manual start by Johan)
 
 ## Stage 3 steps
 - 3a. Cronet: the root build.gradle forces `cronet-api` 105 (for cronet-okhttp); check what media3-datasource-cronet
