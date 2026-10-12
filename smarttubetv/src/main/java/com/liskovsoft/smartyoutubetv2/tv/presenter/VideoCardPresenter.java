@@ -7,6 +7,7 @@ import android.graphics.drawable.Drawable;
 import android.os.Build.VERSION;
 import android.util.Pair;
 import android.view.View;
+import android.widget.ImageView;
 import android.view.ViewGroup;
 import android.widget.TextView;
 import androidx.annotation.Nullable;
@@ -152,6 +153,14 @@ public class VideoCardPresenter extends LongClickPresenter {
             return;
         }
 
+        // JoTube: channel cards ("Top channels you watch" etc.): a small round sharp avatar instead of a stretched blurry one
+        if (video.isChannel() && video.cardImageUrl != null) {
+            bindChannelAvatar(cardView, context, video);
+            return;
+        }
+
+        cardView.getMainImageView().setScaleType(ImageView.ScaleType.CENTER_CROP);
+
         // JoTube: options are shared with ThumbnailPreloader (same Glide cache key)
         ThumbnailPreloader.applyCardOptions(
                 Glide.with(context)
@@ -190,11 +199,39 @@ public class VideoCardPresenter extends LongClickPresenter {
     }
 
     /**
+     * JoTube: avatar is drawn as a circle (~60% of the card height) in the middle of the card.
+     * The source is requested in a bigger size (the default one is tiny) and scaled down: sharp result.
+     */
+    private void bindChannelAvatar(ComplexImageCardView cardView, Context context, Video video) {
+        int size = Math.max(Math.round(mHeight * 0.6f), 1);
+        ImageView imageView = cardView.getMainImageView();
+        imageView.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+
+        Glide.with(context)
+                .load(upscaleAvatarUrl(video.cardImageUrl))
+                .apply(ViewUtil.glideOptions())
+                .skipMemoryCache(false)
+                .override(size, size)
+                .circleCrop()
+                .transition(DrawableTransitionOptions.withCrossFade(150))
+                .listener(mErrorListener)
+                .error(R.drawable.card_placeholder)
+                .into(imageView);
+    }
+
+    /**
+     * Avatar urls end with a size parameter, e.g. "...=s88-c-k-c0x00ffffff-no-rj". Ask for a bigger one.
+     */
+    private static String upscaleAvatarUrl(String url) {
+        return url.replaceFirst("=s\\d+(-|$)", "=s400$1");
+    }
+
+    /**
      * JoTube: warm Glide cache with the thumbnail this presenter would load on bind.
      */
     public void preload(Context context, Video video) {
-        if (context == null || video == null) {
-            return;
+        if (context == null || video == null || video.isChannel()) {
+            return; // channel avatars use their own request
         }
 
         if (mWidth <= 0 || mHeight <= 0) {
