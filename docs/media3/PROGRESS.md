@@ -14,7 +14,9 @@ a cut-off (Johan's decision 2026-10-10):
   another run is working, so it stops at once.
 - Fast pace: a run keeps working step after step until the work is done, its context gets long, or the usage cap
   stops it. Commit and push after every meaningful change (never more than ~15 minutes uncommitted) and keep
-  `Doing now: stage 2 merged into media3. Next action: 3a on a new branch m3/stage3.
+  `Doing now: 3a on m3/stage3: CI step "API check of forced downgrades" (docs/media3/tools/api_check.py) pushed, waiting
+for its result (run 38230568651). Next action: read the notice; fix the cronet-api/androidx.core force if Media3 calls
+missing members. API task claude-task/m3-subtitles (3b) running since 09:33Z: review and merge into m3/stage3.
 
 ## Stage 3 steps
 - 3a. Cronet: the root build.gradle forces `cronet-api` 105 (for cronet-okhttp); check what media3-datasource-cronet
@@ -53,6 +55,7 @@ Each claude-task run has a hard cap in `.claude-task/BUDGET_USD` (at most 1.50 U
 
 | 2026-10-12 | claude-task/m3-stage2-review | 1.50 | 1.03 | Independent review of 2c: no BLOCKER, 3 SHOULD-FIX (connect error message, Shorts back buffer, MediaSession metadata), 6 NIT |
 | 2026-10-12 | claude-task/m3-stage2-fixes | 1.20 | 0.18 | SHOULD-FIX 1+2 implemented (not built) |
+| 2026-10-12 | claude-task/m3-subtitles | 1.50 | (running) | 3b: fork subtitle fixes (entities, 10 s cap, last cue, padded background) on Media3 |
 
 Spent so far: 1.76 USD
 
