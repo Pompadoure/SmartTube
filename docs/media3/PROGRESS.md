@@ -1,7 +1,7 @@
 # JoTube M3 progress
 
 Status: ACTIVE
-Next step: 4b (stage 4, Shorts on Media3, branch `m3/stage4`; step list below)
+Next step: 5a (stage 5, the rest of JoTube: go through the PLAN.md checklist item by item against the code, see Doing now)
 
 Status values: ACTIVE (the scheduled runs keep going), WAITING_FOR_JOHAN (a question to Johan, runs only check
 for his answer), BLOCKED (a stage can't be made stable; reason below), DONE (stage 6 finished).
@@ -16,10 +16,11 @@ a cut-off (Johan's decision 2026-10-10):
   stops it. Commit and push after every meaningful change (never more than ~15 minutes uncommitted) and keep
   `Doing now:` with each push.
 
-Doing now: 4b-4g done on m3/stage4 (CI green for 4b-4d, run 38237723179). 4e: TrackSelectorManager sync logic unchanged (same flow as the playlist: onQueuedSourceSwitch + syncWithPlayingPeriod in onTracksChanged; the preload selector is a RestoreTrackSelector with the same callback). 4f: no app code needed: tunneling is off, FastStartLoadControl lost its dead PlayedPeriodsPolicy methods, codec reuse = Media3 canReuseCodec default (measure on device later), PreloadMediaSource preloads from the default start position so the player's period matches. Next action: CI of the cleanup commit, independent review of the stage 4 diff (git diff media3...m3/stage4), fix findings, merge into media3.
+Doing now: **Stage 4 done** (m3/stage4 merged into media3, CI green run 38239575727). Next action: 5a: walk the PLAN.md checklist (SponsorBlock, speed, auto frame rate, resume, history, SmartNext, live DASH/HLS, PIP/background, Shorts side panel/history/prefetch/sidebar/hover prefetch, FormatFetchLock) against the code; list what still references removed 2.10 behaviour (grep for TODO M3 / 'M3:' notes), fix each, add JoTubeTiming logs for the Shorts switch and regular start.
 
 Run: FINISHED 2026-10-12T10:25Z
 Run: STARTED 2026-10-12T10:34Z (manual start by Johan)
+Run: FINISHED 2026-10-12T11:25Z
 
 ## Stage 4 steps (design from 4a, 2026-10-12)
 Findings: today `ShortsQueue` keeps all Shorts as items of one `ConcatenatingMediaSource` and switching is a seek in the
@@ -168,3 +169,4 @@ Spent so far: 2.07 USD
   + `git sparse-checkout set libraries/exoplayer libraries/exoplayer_dash libraries/common libraries/datasource
   libraries/datasource_okhttp libraries/session libraries/ui libraries/ui_leanback gradle` (raw.githubusercontent, codeload,
   dl.google.com and maven.google.com are blocked, so no local Android build). All 2c ports were checked against them.
+- 2026-10-12 (run 10:34Z, manual start): **Stage 4 done.** Design from the Media3 sources: DefaultPreloadManager.add(MediaSource, key) with our SABR/DASH sources; the player is built via DefaultPreloadManager.Builder.buildExoPlayer (preload track selector = 2nd RestoreTrackSelector, same TrackSelectorManager callback); ShortsQueue = ranked entries with order-preserving gap keys; ShortsPreloadControl next 6 s / +2 3 s / previous 3 s; switch = setMediaSource(preloaded source), no timeline sync/retry/auto-advance. Independent review: 1 BLOCKER (switch set the playing Short to NOT_PRELOADED, which clears its preload before the player takes it: now loaded status for distance 0 and setCurrentIndex after setMediaSource), 2 SHOULD-FIX (preload priority comparator by feed distance, preload selector mirrors parameters) all fixed. Not measurable without a device: real switch time, codec reuse, first-frame event per Short (check in device logs when Johan installs).
