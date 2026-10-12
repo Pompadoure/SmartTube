@@ -12,6 +12,7 @@ import androidx.media3.common.Format;
 import androidx.media3.common.PlaybackParameters;
 import androidx.media3.common.Player;
 import androidx.media3.common.PlaybackException;
+import androidx.media3.datasource.HttpDataSource.HttpDataSourceException;
 import androidx.media3.common.Tracks;
 import androidx.media3.exoplayer.PlayerMessage;
 import androidx.media3.exoplayer.ExoPlayer;
@@ -44,6 +45,7 @@ import com.liskovsoft.smartyoutubetv2.common.exoplayer.versions.ExoUtils;
 import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerData;
 import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerTweaksData;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ref.WeakReference;
 import java.util.List;
@@ -686,6 +688,11 @@ public class ExoPlayerController implements Player.Listener {
 
         Throwable nested = playbackError.getCause() != null ? playbackError.getCause() : playbackError;
 
+        // M3: Media3 no longer says "Unable to connect to"; map the network errors to the old message for ErrorFixerController
+        if (isConnectError(playbackError)) {
+            nested = new IOException("Unable to connect to: " + nested.getMessage(), nested);
+        }
+
         // M3: ExoPlayer reports ExoPlaybackException; an OutOfMemoryError is TYPE_UNEXPECTED now (2.10 had its own type)
         int type = ExoPlaybackException.TYPE_UNEXPECTED;
         int rendererIndex = C.INDEX_UNSET;
@@ -699,6 +706,21 @@ public class ExoPlayerController implements Player.Listener {
         }
 
         mEventListener.onEngineError(type, rendererIndex, nested);
+    }
+
+    private static boolean isConnectError(PlaybackException error) {
+        if (error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT) {
+            return true;
+        }
+
+        for (Throwable cause = error.getCause(); cause != null; cause = cause.getCause()) {
+            if (cause instanceof HttpDataSourceException && ((HttpDataSourceException) cause).type == HttpDataSourceException.TYPE_OPEN) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     @SuppressWarnings("deprecation") // M3: still called by ExoPlayer (one callback for both values, like 2.10)

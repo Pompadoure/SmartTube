@@ -106,12 +106,12 @@ public class FastStartLoadControl implements LoadControl {
 
     @Override
     public long getBackBufferDurationUs(PlayerId playerId) {
-        return mDelegate.getBackBufferDurationUs(playerId);
+        return ShortsTransitionState.isShortsMode() ? SHORTS_BACK_BUFFER_US : mDelegate.getBackBufferDurationUs(playerId);
     }
 
     @Override
     public boolean retainBackBufferFromKeyframe(PlayerId playerId) {
-        return mDelegate.retainBackBufferFromKeyframe(playerId);
+        return ShortsTransitionState.isShortsMode() || mDelegate.retainBackBufferFromKeyframe(playerId);
     }
 
     @Override
