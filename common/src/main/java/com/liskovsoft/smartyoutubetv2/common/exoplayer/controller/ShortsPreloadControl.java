@@ -34,7 +34,7 @@ public final class ShortsPreloadControl implements TargetPreloadStatusControl<In
      * Preload order (lower first): next, the one after, the previous one, then the rest by distance.
      * Keys can't be compared directly: ties and midpoint inserts would give an arbitrary order.
      */
-    int getPriority(int key) {
+    public int getPriority(int key) {
         State state = mState;
 
         for (int i = 0; i < state.keys.length; i++) {
