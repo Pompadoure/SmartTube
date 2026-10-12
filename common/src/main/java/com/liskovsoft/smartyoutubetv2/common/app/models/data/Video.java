@@ -83,6 +83,10 @@ public final class Video {
     public boolean isSynced;
     public final long timestamp = System.currentTimeMillis();
     public int sectionId = -1;
+    /**
+     * JoTube: the first item of the merged Subscriptions list - shows the latest uploads of all channels
+     */
+    public boolean isSubscriptionsFeed;
     public String channelGroupId;
     public long startTimeMs;
     public long pendingPosMs;

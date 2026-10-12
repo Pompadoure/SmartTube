@@ -111,6 +111,13 @@ public class ChannelCardPresenter extends LongClickPresenter {
         ImageView imageView = viewHolder.view.findViewById(R.id.channel_image);
         imageView.setVisibility(View.VISIBLE);
 
+        if (video.isSubscriptionsFeed) {
+            // JoTube: "all subscriptions" item has no avatar
+            Glide.with(context).clear(imageView);
+            imageView.setImageResource(R.drawable.icon_subscriptions);
+            return;
+        }
+
         Glide.with(context)
                 .load(video.cardImageUrl)
                 .apply(ViewUtil.glideOptions())
