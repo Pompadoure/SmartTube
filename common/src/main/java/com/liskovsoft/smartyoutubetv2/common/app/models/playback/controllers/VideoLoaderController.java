@@ -865,7 +865,11 @@ public class VideoLoaderController extends BasePlayerController {
 
         VideoGroup group = current.getGroup();
 
-        if (group != null && !group.isEmpty()) {
+        // JoTube M3: a Short opened from another list (the Shorts shelf on Home, search...) doesn't play that list in a row:
+        // the Shorts feed (varied, personal) follows. A channel keeps its own order.
+        boolean fromOtherList = !current.belongsToShorts() && !current.belongsToChannelShorts();
+
+        if (group != null && !group.isEmpty() && !fromOtherList) {
             boolean found = false;
 
             for (Video item : group.getVideos()) {
@@ -886,7 +890,7 @@ public class VideoLoaderController extends BasePlayerController {
         // JoTube: a Short opened from another list (e.g. the Shorts shelf on Home, a channel): when that list ends,
         // carry on with the Shorts feed (like the official app) instead of stopping at "Please wait..."
         // (not for a channel: its Shorts play in the order of the channel, nothing random is added)
-        if (result.size() < PREFETCH_LOOKAHEAD && !current.belongsToShorts() && !current.belongsToChannelShorts()) {
+        if (result.size() < PREFETCH_LOOKAHEAD && fromOtherList) {
             appendFallbackShorts(current, group, result);
         }
 
