@@ -1,7 +1,7 @@
 # JoTube M3 progress
 
-Status: ACTIVE
-Next step: 5a (stage 5, the rest of JoTube: go through the PLAN.md checklist item by item against the code, see Doing now)
+Status: DONE
+Next step: none. Stage 6 done: RELEASE_NOTES.md and TEST_LIST.md written; Johan decides when it is installed.
 
 Status values: ACTIVE (the scheduled runs keep going), WAITING_FOR_JOHAN (a question to Johan, runs only check
 for his answer), BLOCKED (a stage can't be made stable; reason below), DONE (stage 6 finished).
@@ -14,7 +14,7 @@ a cut-off (Johan's decision 2026-10-10):
   another run is working, so it stops at once.
 - Fast pace: a run keeps working step after step until the work is done, its context gets long, or the usage cap
   stops it. Commit and push after every meaningful change (never more than ~15 minutes uncommitted) and keep
-  `Doing now: **Stage 5 in progress.** 5a audit fixes and 5b items 1-5 merged (CI green, m3/stage5b): saved position via setMediaSource(source, startMs) (PlayerEngine.setStartPositionMs, VideoStateController.applyStartPosition), ShortsQueue takes Shorts >2 behind out of the preload manager, SEEK_ADJUSTMENT also fires onSeekEnd, preload selector copies parameters without per-group overrides, TrackErrorFixer.forVideo ignores load errors of non-playing Shorts. Deferred on purpose: (6) FormatFetchLock skip of a no-longer-wanted foreground fetch (needs a MediaServiceCore patch, a skipped fetch can't be cancelled half-way and a null/err result on a disposed Rx chain is risky; wait for device evidence), (7) release order (harmless). Next action: independent review of the whole stage 5 diff (179c706d..media3, fresh subagent), fix BLOCKER/SHOULD-FIX, CI green, mark stage 5 done, then stage 6 (final review, release notes, test list for Johan).
+  `Doing now: **All stages done.** Stage 5 reviewed (1 agent, 0 blockers, 2 should-fix fixed, CI green run 38250273348), stage 6 docs written. Nothing left; the scheduled task can be turned off.
 
 Doing now: **Stage 4 done** (m3/stage4 merged into media3, CI green run 38239575727). Next action: 5a: walk the PLAN.md checklist (SponsorBlock, speed, auto frame rate, resume, history, SmartNext, live DASH/HLS, PIP/background, Shorts side panel/history/prefetch/sidebar/hover prefetch, FormatFetchLock) against the code; list what still references removed 2.10 behaviour (grep for TODO M3 / 'M3:' notes), fix each, add JoTubeTiming logs for the Shorts switch and regular start.
 
@@ -24,6 +24,7 @@ Run: FINISHED 2026-10-12T11:25Z
 Run: STARTED 2026-10-12T11:43Z (manual start by Johan, after a skipped fire)
 Run: FINISHED 2026-10-12T12:02Z
 Run: STARTED 2026-10-12T12:22Z (scheduled fire)
+Run: FINISHED 2026-10-12T12:45Z (stage 5 and 6 done, Status DONE)
 
 ## Stage 4 steps (design from 4a, 2026-10-12)
 Findings: today `ShortsQueue` keeps all Shorts as items of one `ConcatenatingMediaSource` and switching is a seek in the
