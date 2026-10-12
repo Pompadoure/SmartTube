@@ -84,7 +84,7 @@ public final class ShortsQueue {
                 mPreloadManager.getMediaSource(mEntries.get(index).mediaItem) : null;
     }
 
-    int indexOf(String videoId) {
+    public int indexOf(String videoId) {
         if (videoId == null) {
             return -1;
         }
@@ -114,7 +114,7 @@ public final class ShortsQueue {
         return index >= 0 && index < mEntries.size() ? mEntries.get(index).videoId : null;
     }
 
-    String getCurrentVideoId() {
+    public String getCurrentVideoId() {
         return getVideoId(mCurrentIndex);
     }
 
@@ -218,7 +218,7 @@ public final class ShortsQueue {
         }
     }
 
-    static ShortsQueue getActive() {
+    public static ShortsQueue getActive() {
         return sActive;
     }
 

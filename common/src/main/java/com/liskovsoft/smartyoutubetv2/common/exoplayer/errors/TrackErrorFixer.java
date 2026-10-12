@@ -13,6 +13,7 @@ import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException;
 import androidx.media3.common.MimeTypes;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.sharedutils.mylogger.Log;
+import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ShortsQueue;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.TrackSelectorManager;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.track.MediaTrack;
 
@@ -251,6 +252,31 @@ public class TrackErrorFixer implements MediaSourceEventListener {
                 }
             }
         }
+    }
+
+    /**
+     * JoTube M3: listener for the source of one video. While Shorts are playing, a load error of a preloaded (not playing)
+     * Short must not switch the codec of the Short that is playing.
+     */
+    public MediaSourceEventListener forVideo(@Nullable String videoId) {
+        if (videoId == null) {
+            return this;
+        }
+
+        return new MediaSourceEventListener() {
+            @Override
+            public void onLoadError(int windowIndex, @Nullable MediaPeriodId mediaPeriodId, LoadEventInfo loadEventInfo,
+                                    MediaLoadData mediaLoadData, IOException error, boolean wasCanceled) {
+                ShortsQueue queue = ShortsQueue.getActive();
+
+                if (queue != null && queue.indexOf(videoId) != -1 && !videoId.equals(queue.getCurrentVideoId())) {
+                    Log.d(TAG, "Ignoring the load error of the not playing Short %s", videoId);
+                    return;
+                }
+
+                fixError(error);
+            }
+        };
     }
 
     @Override
