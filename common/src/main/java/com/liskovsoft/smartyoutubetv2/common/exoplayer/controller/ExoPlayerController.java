@@ -371,8 +371,23 @@ public class ExoPlayerController implements Player.Listener {
         mTrackSelectorManager.setMergedSource(mediaSource instanceof MergingMediaSource);
         mTrackSelectorManager.invalidate();
         mOnSourceChanged = true;
-        mEventListener.onSourceChanged(getVideo());
-        mPlayer.prepare(mediaSource);
+        mStartPositionMs = C.TIME_UNSET;
+        mEventListener.onSourceChanged(getVideo()); // may call setStartPositionMs
+        long startPositionMs = mStartPositionMs;
+        mStartPositionMs = C.TIME_UNSET;
+        if (startPositionMs != C.TIME_UNSET && startPositionMs > 0) {
+            // JoTube M3: start at the saved position instead of seeking after the tracks are known
+            mPlayer.setMediaSource(mediaSource, startPositionMs);
+            mPlayer.prepare();
+        } else {
+            mPlayer.prepare(mediaSource);
+        }
+    }
+
+    private long mStartPositionMs = C.TIME_UNSET;
+
+    public void setStartPositionMs(long positionMs) {
+        mStartPositionMs = positionMs;
     }
 
     public long getPositionMs() {
