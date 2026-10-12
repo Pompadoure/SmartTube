@@ -73,7 +73,7 @@ public final class JoSubtitleParserFactory implements SubtitleParser.Factory {
             String decoded = Html.fromHtml(matcher.group()).toString();
             // A numeric &, < or > goes back as the entity Media3 knows (a bare < would start a fake tag),
             // a line break becomes a space (an empty line would end the cue)
-            if (decoded.contains("\n") || decoded.contains("\r")) {
+            if (decoded.isEmpty() || decoded.contains("\n") || decoded.contains("\r")) { // fromHtml collapses a lone line break to ""
                 decoded = " ";
             } else if ("<".equals(decoded)) {
                 decoded = "&lt;";
