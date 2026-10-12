@@ -122,7 +122,7 @@ jobs:
           # JoTube M3: Media3 is compiled against newer cronet-api/androidx.core/annotation than the root build.gradle
           # forces. List every member Media3 calls that doesn't exist in the forced version (NoSuchMethodError risk).
           v() { grep -oE "^ *$1 *= *'[^']+'" SharedModules/constants.gradle | head -1 | grep -oE "'[^']+'" | tr -d "'"; }
-          m3=$(grep -oE "m3Media3Version = '[^']+'" build.gradle | grep -oE "[0-9][^']*")
+          m3=$(grep -oE "m3Media3Version = '[^']+'" build.gradle | grep -oE "'[^']+'" | tr -d "'")
           cache=$HOME/.gradle/caches/modules-2/files-2.1
           consumers=""
           for a in $(ls "$cache/androidx.media3"); do
