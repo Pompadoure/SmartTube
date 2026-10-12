@@ -19,3 +19,6 @@ Verify the title TextViews (MarqueeTextViewCompat, id title_text/content_text) r
 
 ## Definition of done by 16:00
 Items A,B pushed, CI green, `latest-media3` release published after the last push; PROGRESS.md/this file updated with a short Swedish summary at top ("Status till Johan") listing what changed and what to test on the device (specific things: Subscriptions 3 cols + scroll down no crash; first Short from Home time; swap time; normal<->wide Shorts), plus risks.
+
+## LOG (append newest at bottom; save progress OFTEN - a run can be cut off by usage limits; commit+push this file after each finding)
+- 23:40 (session 1): pushed 0e2ec67 (leanback guard + stopScroll), cards YouTube-style (0fbfe3a), brief written. Static finding A: VerticalGridPresenter applies numColumns only at holder creation (line ~293), so runtime changes come only from MultiVideoGridFragment.setChannelsHidden. Dock = HorizontalGridView with 2 FrameLayout cells; hidden grid1 = GONE leaves a 0-width cell. Unverified: whether grid2 width (3 cards = 0.86*screen) fits the dock/padding (check lb padding of itemsVerticalGridStyle + removePadding()). Next: B (4.3 s gap), then re-check A.
