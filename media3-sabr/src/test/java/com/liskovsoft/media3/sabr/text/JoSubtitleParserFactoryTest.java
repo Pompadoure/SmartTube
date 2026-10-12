@@ -31,8 +31,11 @@ public class JoSubtitleParserFactoryTest {
 
     @Test
     public void decodesEntitiesMedia3WouldDrop() {
-        assertEquals("it's \"x\" &lt;b&gt; &amp; &lt; a b",
-                JoSubtitleParserFactory.decodeEntities("it&#39;s &quot;x&quot; &lt;b&gt; &amp; &#60; a&#10;b"));
+        assertEquals("it's", JoSubtitleParserFactory.decodeEntities("it&#39;s"));
+        assertEquals("\"x\"", JoSubtitleParserFactory.decodeEntities("&quot;x&quot;"));
+        assertEquals("a b", JoSubtitleParserFactory.decodeEntities("a&#10;b"));
+        assertEquals("&lt;", JoSubtitleParserFactory.decodeEntities("&#60;"));
+        assertEquals("&lt;b&gt; &amp; x", JoSubtitleParserFactory.decodeEntities("&lt;b&gt; &amp; &#120;"));
         assertNull(JoSubtitleParserFactory.decodeEntities("no &amp; entities &lt; here &nbsp;"));
     }
 }
