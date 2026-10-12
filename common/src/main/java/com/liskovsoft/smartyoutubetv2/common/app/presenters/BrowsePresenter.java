@@ -213,7 +213,8 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
 
     private void initSectionMapping() {
         String country = LocaleUtility.getCurrentLocale(getContext()).getCountry();
-        int uploadsType = getMainUIData().isUploadsOldLookEnabled() ? BrowseSection.TYPE_GRID : BrowseSection.TYPE_MULTI_GRID;
+        // JoTube: Channels and Subscriptions are merged: channel list on the left, latest uploads of all channels (or of the picked one) on the right
+        int uploadsType = BrowseSection.TYPE_MULTI_GRID;
 
         mSectionsMapping.put(MediaGroup.TYPE_HOME, new BrowseSection(MediaGroup.TYPE_HOME, getContext().getString(R.string.header_home), BrowseSection.TYPE_ROW, R.drawable.icon_home, false));
         mSectionsMapping.put(MediaGroup.TYPE_SHORTS, new BrowseSection(MediaGroup.TYPE_SHORTS, getContext().getString(R.string.header_shorts), BrowseSection.TYPE_SHORTS_GRID, R.drawable.icon_shorts));
@@ -227,8 +228,8 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
             mSectionsMapping.put(MediaGroup.TYPE_NEWS, new BrowseSection(MediaGroup.TYPE_NEWS, getContext().getString(R.string.header_news), BrowseSection.TYPE_ROW, R.drawable.icon_news));
         }
         mSectionsMapping.put(MediaGroup.TYPE_MUSIC, new BrowseSection(MediaGroup.TYPE_MUSIC, getContext().getString(R.string.header_music), BrowseSection.TYPE_ROW, R.drawable.icon_music));
-        mSectionsMapping.put(MediaGroup.TYPE_CHANNEL_UPLOADS, new BrowseSection(MediaGroup.TYPE_CHANNEL_UPLOADS, getContext().getString(R.string.header_channels), uploadsType, R.drawable.icon_channels, false));
-        mSectionsMapping.put(MediaGroup.TYPE_SUBSCRIPTIONS, new BrowseSection(MediaGroup.TYPE_SUBSCRIPTIONS, getContext().getString(R.string.header_subscriptions), BrowseSection.TYPE_GRID, R.drawable.icon_subscriptions, false));
+        mSectionsMapping.put(MediaGroup.TYPE_CHANNEL_UPLOADS, new BrowseSection(MediaGroup.TYPE_CHANNEL_UPLOADS, getContext().getString(R.string.header_subscriptions), uploadsType, R.drawable.icon_subscriptions, false));
+        // JoTube: TYPE_SUBSCRIPTIONS has no section of its own any more (merged into TYPE_CHANNEL_UPLOADS)
         mSectionsMapping.put(MediaGroup.TYPE_HISTORY, new BrowseSection(MediaGroup.TYPE_HISTORY, getContext().getString(R.string.header_history), BrowseSection.TYPE_GRID, R.drawable.icon_history, true));
         mSectionsMapping.put(MediaGroup.TYPE_BLOCKED_CHANNELS,
                 new BrowseSection(MediaGroup.TYPE_BLOCKED_CHANNELS, getContext().getString(R.string.header_blocked_channels), BrowseSection.TYPE_GRID, R.drawable.icon_blocked_channels, false));
@@ -272,9 +273,9 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
                     BrowseSection section = createPinnedSection(item);
                     mSections.add(section);
                 } else {
-                    BrowseSection section = mSectionsMapping.get(item.sectionId);
+                    BrowseSection section = mSectionsMapping.get(mergedSectionId(item.sectionId));
 
-                    if (section != null) {
+                    if (section != null && !mSections.contains(section)) {
                         mSections.add(section);
                     }
                 }
@@ -454,7 +455,7 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
         }
 
         if (belongsToChannelUploadsMultiGrid(item)) {
-            if (getMainUIData().isUploadsAutoLoadEnabled()) {
+            if (item.isSubscriptionsFeed || getMainUIData().isUploadsAutoLoadEnabled()) {
                 updateChannelUploadsMultiGrid(item);
             } else {
                 updateChannelUploadsMultiGrid(null); // clear
@@ -1246,7 +1247,9 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
 
         // Check that channels new look enabled and we're on the first columnAdd commentMore actions
         if (belongsToChannelUploadsMultiGrid(item)) {
-            if (getMainUIData().isUploadsAutoLoadEnabled()) {
+            if (item.isSubscriptionsFeed) {
+                updateChannelUploadsMultiGrid(item);
+            } else if (getMainUIData().isUploadsAutoLoadEnabled()) {
                 VideoActionPresenter.instance(getContext()).apply(item);
             } else {
                 updateChannelUploadsMultiGrid(item);
@@ -1260,6 +1263,10 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
     public void onVideoItemLongClicked(Video item) {
         if (getContext() == null) {
             return;
+        }
+
+        if (item != null && item.isSubscriptionsFeed) {
+            return; // JoTube: no menu for the "all subscriptions" item
         }
 
         if (belongsToChannelUploads(item)) { // We need to be sure we exactly on Channels section
@@ -1630,6 +1637,10 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
                                 ShortsHistory.instance(getContext()).filterNew(videoGroup, sizeBefore); // JoTube: less repetition
                             }
                             appendLocalHistory(videoGroup);
+                            if (column == 0 && sizeBefore == 0 && section.getId() == MediaGroup.TYPE_CHANNEL_UPLOADS &&
+                                    section.getType() == BrowseSection.TYPE_MULTI_GRID) {
+                                videoGroup.add(0, createSubscriptionsFeedItem());
+                            }
                             getView().updateSection(videoGroup);
                             mBrowseProcessor.process(videoGroup);
 
@@ -1789,8 +1800,24 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
         mBrowseProcessor.dispose();
     }
 
+    /**
+     * JoTube: first item of the left list. Picking it shows the latest uploads of all subscribed channels.
+     */
+    private Video createSubscriptionsFeedItem() {
+        Video item = new Video();
+        item.title = getContext().getString(R.string.header_subscriptions);
+        item.channelId = "jotube-subscriptions-feed"; // non empty item
+        item.isSubscriptionsFeed = true;
+        return item;
+    }
+
     private void updateChannelUploadsMultiGrid(Video item) {
         if (mCurrentSection == null) {
+            return;
+        }
+
+        if (item != null && item.isSubscriptionsFeed) {
+            updateVideoGrid(mCurrentSection, getContentService().getSubscriptionsObserve(), 1, false);
             return;
         }
 
@@ -1811,6 +1838,8 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
     }
 
     private BrowseSection findSectionById(int sectionId) {
+        sectionId = mergedSectionId(sectionId);
+
         for (BrowseSection section : mErrorSections) {
             if (section.getId() == sectionId) {
                 return section;
@@ -1826,10 +1855,19 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
         return null;
     }
 
+    /**
+     * JoTube: Subscriptions live inside the merged section
+     */
+    private static int mergedSectionId(int sectionId) {
+        return sectionId == MediaGroup.TYPE_SUBSCRIPTIONS ? MediaGroup.TYPE_CHANNEL_UPLOADS : sectionId;
+    }
+
     private int findSectionIndex(int sectionId) {
         if (sectionId == -1) {
             return -1;
         }
+
+        sectionId = mergedSectionId(sectionId);
 
         int sectionIndex = -1;
 
