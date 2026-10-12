@@ -595,6 +595,14 @@ public class ExoPlayerController implements Player.Listener {
     @Override
     public void onPlaybackStateChanged(int playbackState) {
         JoTubeTiming.mark("player state " + playbackState); // 2 = buffering, 3 = ready
+
+        if (playbackState == Player.STATE_READY) {
+            ShortsQueue queue = ShortsQueue.getActive();
+
+            if (queue != null) {
+                queue.releasePreloadHold(); // the Short has started: preload the next ones now
+            }
+        }
     }
 
     @SuppressWarnings("deprecation")

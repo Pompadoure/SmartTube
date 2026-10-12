@@ -52,6 +52,9 @@ public final class ShortsQueue {
     private final List<Entry> mEntries = new ArrayList<>();
     private int mCurrentIndex;
     private boolean mReleased;
+    // The first Short of a queue is still starting: the manager doesn't preload the next ones yet (they would share the
+    // network with the first segments of the Short the user waits for)
+    private boolean mPreloadHeld = true;
     private final PreloadManagerListener mPreloadListener;
 
     ShortsQueue(DefaultPreloadManager preloadManager, ShortsPreloadControl preloadControl, MediaItemFormatInfo formatInfo, MediaSource first) {
@@ -122,6 +125,7 @@ public final class ShortsQueue {
 
     void setCurrentIndex(int index) {
         mCurrentIndex = index;
+        mPreloadHeld = false; // the user moved on: the next Shorts are wanted now
 
         if (!mReleased && index >= 0 && index < mEntries.size()) {
             publish();
@@ -185,9 +189,27 @@ public final class ShortsQueue {
         mEntries.add(index, new Entry(formatInfo, source, key));
         publish();
         mPreloadManager.add(source, key);
-        mPreloadManager.invalidate();
+
+        if (!mPreloadHeld) {
+            mPreloadManager.invalidate();
+        }
 
         return true;
+    }
+
+    /**
+     * The playing Short has started (ready): the manager may preload the queued ones now.
+     */
+    void releasePreloadHold() {
+        if (!mPreloadHeld) {
+            return;
+        }
+
+        mPreloadHeld = false;
+
+        if (!mReleased && mEntries.size() > 1) {
+            mPreloadManager.invalidate();
+        }
     }
 
     private void publish() {

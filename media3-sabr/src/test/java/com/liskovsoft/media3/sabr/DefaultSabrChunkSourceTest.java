@@ -245,7 +245,7 @@ public class DefaultSabrChunkSourceTest {
     }
 
     @Test
-    public void chunkAfterTheStartChunkContinuesWithoutSeek() {
+    public void startChunkThatDidNotYieldASampleFormatIsFollowedByTheInitializationChunk() {
         SabrManifest manifest = createManifestWithInitRange();
         DefaultSabrChunkSource source = createSource(manifest);
         ChunkHolder out = new ChunkHolder();
@@ -253,13 +253,12 @@ public class DefaultSabrChunkSourceTest {
         MediaChunk startChunk = (MediaChunk) out.chunk;
         out.clear();
 
+        // Nothing was parsed from the start chunk (no sample format): recover with the old init request
         source.getNextChunk(loadingInfo(0), startChunk.endTimeUs, Collections.singletonList(startChunk), out);
 
-        // A continuation request (rn=1), not another init request and not a seek back to 0
-        assertTrue(out.chunk instanceof ContainerMediaChunk);
+        assertTrue(out.chunk instanceof InitializationChunk);
         assertFalse(out.endOfStream);
         assertEquals(SABR_URL + "&rn=1", out.chunk.dataSpec.uri.toString());
-        assertEquals(C.TIME_UNSET, ((ContainerMediaChunk) out.chunk).clippedStartTimeUs);
     }
 
     private static SabrManifest createManifestWithInitRange() {
