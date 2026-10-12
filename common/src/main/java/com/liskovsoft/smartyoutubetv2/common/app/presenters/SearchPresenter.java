@@ -291,11 +291,8 @@ public class SearchPresenter extends BasePresenter<SearchView> implements VideoG
             return;
         }
 
-        if ((mIsVoice || getSearchData().isInstantVoiceSearchEnabled()) && mSearchText == null) {
-            getView().startVoiceRecognition();
-        } else {
-            getView().startSearch(mSearchText);
-        }
+        // JoTube: voice search is removed (built-in keyboard)
+        getView().startSearch(mSearchText);
     }
 
     public void onSearchSettingsClicked() {

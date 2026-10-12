@@ -32,6 +32,7 @@ import androidx.leanback.widget.Presenter.ViewHolder;
 import androidx.leanback.widget.Row;
 import androidx.leanback.widget.RowPresenter;
 import androidx.leanback.widget.SearchBar;
+import com.liskovsoft.smartyoutubetv2.tv.ui.widgets.search.SearchKeyboardView;
 import androidx.leanback.widget.SearchEditText;
 import androidx.leanback.widget.SearchOrbView;
 import androidx.leanback.widget.SpeechOrbView;
@@ -347,6 +348,9 @@ public class SearchSupportFragment extends Fragment {
 
         mSearchTextEditor = mSearchBar.findViewById(R.id.lb_search_text_editor);
         mSearchTextEditor.setSelectAllOnFocus(true); // Select all on focus (easy clear previous search)
+        // JoTube: the built-in keyboard is used, the Android one never pops up
+        mSearchTextEditor.setShowSoftInputOnFocus(false);
+        setupBuiltInKeyboard(root);
         mSearchTextEditor.setOnFocusChangeListener((v, focused) -> {
             Log.d(TAG, "on search field focused");
 
@@ -776,7 +780,74 @@ public class SearchSupportFragment extends Fragment {
     }
 
     public void focusOnSearchField() {
-        mSearchTextEditor.requestFocus(); // MOD: focus on search field
+        // JoTube: the built-in keyboard takes the focus
+        if (mKeyboard == null || !mKeyboard.focusFirstKey()) {
+            mSearchTextEditor.requestFocus(); // MOD: focus on search field
+        }
+    }
+
+    private SearchKeyboardView mKeyboard;
+
+    private void setupBuiltInKeyboard(View root) {
+        mKeyboard = root.findViewById(com.liskovsoft.smartyoutubetv2.tv.R.id.search_keyboard);
+
+        if (mKeyboard == null) {
+            return;
+        }
+
+        mKeyboard.setListener(new SearchKeyboardView.Listener() {
+            @Override
+            public void onChar(String text) {
+                Editable editable = mSearchTextEditor.getText();
+                if (editable != null) {
+                    // An old query is selected (select all on focus): the first letter replaces it
+                    int start = Math.max(mSearchTextEditor.getSelectionStart(), 0);
+                    int end = Math.max(mSearchTextEditor.getSelectionEnd(), 0);
+                    if (start != end) {
+                        editable.replace(Math.min(start, end), Math.max(start, end), text);
+                    } else {
+                        editable.insert(start, text);
+                    }
+                }
+            }
+
+            @Override
+            public void onBackspace() {
+                Editable editable = mSearchTextEditor.getText();
+                if (editable != null && editable.length() > 0) {
+                    int start = mSearchTextEditor.getSelectionStart();
+                    int end = mSearchTextEditor.getSelectionEnd();
+                    if (start != end && start >= 0 && end >= 0) {
+                        editable.delete(Math.min(start, end), Math.max(start, end));
+                    } else {
+                        editable.delete(editable.length() - 1, editable.length());
+                    }
+                }
+            }
+
+            @Override
+            public void onClear() {
+                Editable editable = mSearchTextEditor.getText();
+                if (editable != null) {
+                    editable.clear();
+                }
+            }
+
+            @Override
+            public void onSubmit() {
+                submitQuery(getSearchBarText());
+            }
+
+            @Override
+            public boolean onLeaveRight() {
+                // Seamless jump to the suggestions (the first row) or the results
+                if (mRowsSupportFragment != null && mResultAdapter != null && mResultAdapter.size() > 0
+                        && mRowsSupportFragment.getVerticalGridView() != null) {
+                    return mRowsSupportFragment.getVerticalGridView().requestFocus();
+                }
+                return true; // nothing to jump to: stay
+            }
+        });
     }
 
     protected String getSearchBarText() {
