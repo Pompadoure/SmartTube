@@ -102,9 +102,16 @@ public class ShortsTransitionOverlay {
     /**
      * JoTube: in the Shorts frame the images cover only the frame (0 = the whole screen).
      */
-    public void setFrame(int width, int height) {
+    public void setFrame(int width, int height, int offsetX) {
         setImageSize(mIn, width, height);
         setImageSize(mOut, width, height);
+        // JoTube: the frame is not in the middle (the right edge is fixed)
+        if (mIn != null) {
+            mIn.setTranslationX(offsetX);
+        }
+        if (mOut != null) {
+            mOut.setTranslationX(offsetX);
+        }
     }
 
     private static void setImageSize(ImageView image, int width, int height) {

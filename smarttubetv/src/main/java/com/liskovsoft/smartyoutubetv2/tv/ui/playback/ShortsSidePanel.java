@@ -42,7 +42,7 @@ public class ShortsSidePanel {
         void showControls();
         boolean isLeftRightSwitchEnabled();
         void openSidebar();
-        void onShortsFrame(int width, int height); // 0 = no frame
+        void onShortsFrame(int width, int height, int offsetX); // 0 = no frame; offsetX: shift from the center
     }
 
     private static final int ITEM_NONE = -1;
@@ -552,10 +552,15 @@ public class ShortsSidePanel {
                 ((FrameLayout.LayoutParams) mSurface.getLayoutParams()).gravity == -1;
         boolean show = mFrameEnabled && rootWidth > 0 && rootHeight > 0 && centered;
         int frameHeight = show ? getFrameHeight(rootHeight) : 0;
-        int frameWidth = show ? Math.round(frameHeight * 9f / 16f) : 0;
+        int frameWidth = show ? getFrameWidth(rootHeight) : 0;
+        int offsetX = show ? getFrameOffsetX(rootHeight) : 0;
 
         if (mCallback != null) {
-            mCallback.onShortsFrame(frameWidth, frameHeight);
+            mCallback.onShortsFrame(frameWidth, frameHeight, offsetX);
+        }
+
+        if (mCard != null && mCard.getTranslationX() != offsetX) {
+            mCard.setTranslationX(offsetX);
         }
 
         if (mCard != null) {
@@ -573,7 +578,7 @@ public class ShortsSidePanel {
 
         if (show) {
             int outset = dp(BORDER_OUTSET_DP);
-            int left = (rootWidth - frameWidth) / 2 - outset;
+            int left = (rootWidth - frameWidth) / 2 + offsetX - outset;
             int top = (rootHeight - frameHeight) / 2 - outset;
             int width = frameWidth + outset * 2;
             int height = frameHeight + outset * 2;
@@ -638,17 +643,38 @@ public class ShortsSidePanel {
         }
 
         int height = mFrameEnabled ? getFrameHeight(rootHeight) : ViewGroup.LayoutParams.MATCH_PARENT;
-        int width = mFrameEnabled ? Math.round(height * 9f / 16f) : ViewGroup.LayoutParams.MATCH_PARENT;
+        int width = mFrameEnabled ? getFrameWidth(rootHeight) : ViewGroup.LayoutParams.MATCH_PARENT;
 
         if (params.width != width || params.height != height) {
             params.width = width;
             params.height = height;
             mSurface.setLayoutParams(params);
         }
+
+        float offsetX = mFrameEnabled ? getFrameOffsetX(rootHeight) : 0;
+        if (mSurface.getTranslationX() != offsetX) {
+            mSurface.setTranslationX(offsetX);
+        }
     }
 
     private int getFrameHeight(int rootHeight) {
         return Math.max(1, rootHeight - dp(FRAME_MARGIN_DP) * 2);
+    }
+
+    /**
+     * JoTube: the frame is square (1:1), a bit bigger than the old 9:16 one. 9:16 videos are fitted by height as before.
+     */
+    private int getFrameWidth(int rootHeight) {
+        return getFrameHeight(rootHeight);
+    }
+
+    /**
+     * JoTube: the right edge of the frame stays where the right edge of the old 9:16 frame was (the panel never moves),
+     * the frame grows to the left. Returns the shift of the frame's center from the center of the screen.
+     */
+    private int getFrameOffsetX(int rootHeight) {
+        int frameHeight = getFrameHeight(rootHeight);
+        return Math.round(frameHeight * 9f / 32f) - getFrameWidth(rootHeight) / 2;
     }
 
     private void updatePosition() {
@@ -666,8 +692,8 @@ public class ShortsSidePanel {
             return;
         }
 
-        // Fixed place: next to the 9:16 frame, whatever the video's own width
-        int left = rootWidth / 2 + Math.round(getFrameHeight(rootHeight) * 9f / 32f) + dp(GAP_DP);
+        // Fixed place: next to the right edge of the frame (rootWidth / 2 + offset + width / 2), whatever the video's own width
+        int left = rootWidth / 2 + getFrameOffsetX(rootHeight) + getFrameWidth(rootHeight) / 2 + dp(GAP_DP);
         int width = Math.min(rootWidth - left - dp(RIGHT_MARGIN_DP), dp(MAX_WIDTH_DP));
 
         boolean fits = width >= dp(MIN_WIDTH_DP);

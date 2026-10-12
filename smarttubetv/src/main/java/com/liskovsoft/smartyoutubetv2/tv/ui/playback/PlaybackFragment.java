@@ -257,8 +257,8 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             }
 
             @Override
-            public void onShortsFrame(int width, int height) {
-                mShortsTransition.setFrame(width, height);
+            public void onShortsFrame(int width, int height, int offsetX) {
+                mShortsTransition.setFrame(width, height, offsetX);
             }
 
             @Override
