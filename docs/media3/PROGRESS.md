@@ -14,9 +14,10 @@ a cut-off (Johan's decision 2026-10-10):
   another run is working, so it stops at once.
 - Fast pace: a run keeps working step after step until the work is done, its context gets long, or the usage cap
   stops it. Commit and push after every meaningful change (never more than ~15 minutes uncommitted) and keep
-  `Doing now: stage 3 on m3/stage3: 3a (API check clean), 3b (subtitles, 38583c8), 3d (JoLeanbackPlayerAdapter) and 3e
-(retry delay) pushed; CI running for 38583c8. Next action: CI green (fix compile errors first); check the API-check
-notice shows cronet references (org/chromium/net count); then 3c (track selection), then 3f review + merge.
+  `Doing now: stage 3 on m3/stage3: 3a-3e done, 3f review (subagent) done: no BLOCKER, 3 SHOULD-FIX + NITs fixed in
+f875a84, CI running. Next action: CI green (check the API check notice still shows 0 MISSING and the new
+JoSubtitleParserFactoryTest passes); merge m3/stage3 into media3, mark stage 3 done; then stage 4 (Shorts on Media3:
+DefaultPreloadManager), split into steps first.
 
 ## Stage 3 steps
 - 3a. Cronet: the root build.gradle forces `cronet-api` 105 (for cronet-okhttp); check what media3-datasource-cronet
