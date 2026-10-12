@@ -676,7 +676,14 @@ public class ShortsSidePanel {
         }
 
         mVideoAspect = newAspect;
-        mHandler.post(mUpdatePosition);
+
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            // Reshape the frame right away: with a post it lagged one frame behind the first frame of a wider/narrower Short
+            mHandler.removeCallbacks(mUpdatePosition);
+            updatePosition();
+        } else {
+            mHandler.post(mUpdatePosition);
+        }
     }
 
     private int getFrameWidth(int rootHeight) {
