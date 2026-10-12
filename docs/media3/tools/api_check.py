@@ -111,9 +111,10 @@ def main():
     pjars = [j for c in providers for j in artifact_jars(cache, c, tmp)]
     members = provider_members(pjars)
     packages = sorted({c.rsplit('/', 1)[0] for c in members})
-    print('providers: %d classes in %s' % (len(members), ', '.join(packages[:8])))
+    print('providers: %d classes, %d packages; jars: %s' % (len(members), len(packages), ', '.join(os.path.basename(j) for j in pjars)))
     missing = set()
     checked = 0
+    per_package = {}
     for coord in consumers:
         for jar in artifact_jars(cache, coord, tmp):
             text = javap(jar, class_names(jar), ['-c', '-p'])
@@ -129,11 +130,13 @@ def main():
                 if not any(owner.startswith(p + '/') and owner.count('/') == p.count('/') + 1 for p in packages):
                     continue
                 checked += 1
+                pkg = owner.rsplit('/', 1)[0]
+                per_package[pkg] = per_package.get(pkg, 0) + 1
                 if owner not in members:
                     missing.add('MISSING CLASS %s (used by %s)' % (owner, coord))
                 elif not has_member(members, owner, name + ':' + desc):
                     missing.add('MISSING %s.%s%s (used by %s)' % (owner, name, desc, coord))
-    print('checked %d references' % checked)
+    print('checked %d references: %s' % (checked, ', '.join('%s %d' % kv for kv in sorted(per_package.items()))))
     for m in sorted(missing):
         print(m)
 

@@ -40,7 +40,7 @@ import androidx.media3.common.MediaMetadata;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.common.Player;
 import androidx.media3.exoplayer.ExoPlayer;
-import androidx.media3.ui.leanback.LeanbackPlayerAdapter;
+import com.liskovsoft.smartyoutubetv2.tv.ui.playback.other.JoLeanbackPlayerAdapter;
 import androidx.media3.session.MediaSession;
 import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
@@ -589,7 +589,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     }
 
     private void createPlayerGlue() {
-        PlayerAdapter playerAdapter = new LeanbackPlayerAdapter(getContext(), mPlayer, UPDATE_DELAY_MS); // NOTE: possible context memory leak
+        PlayerAdapter playerAdapter = new JoLeanbackPlayerAdapter(getContext(), mPlayer, UPDATE_DELAY_MS); // NOTE: possible context memory leak. M3: copy with the no-surface fix
 
         OnActionClickedListener playerActionListener = new PlayerActionListener();
         mPlayerGlue = new VideoPlayerGlue(getContext(), playerAdapter, playerActionListener); // NOTE: possible context memory leak
