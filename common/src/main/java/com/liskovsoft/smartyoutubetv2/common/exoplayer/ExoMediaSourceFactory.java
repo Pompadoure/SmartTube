@@ -219,7 +219,7 @@ public class ExoMediaSourceFactory {
         )
                 .setLoadErrorHandlingPolicy(new DashDefaultLoadErrorHandlingPolicy())
                 .setSubtitleParserFactory(new JoSubtitleParserFactory()) // JoTube: the fork's WebVTT fixes
-                .createMediaSource(getManifest(formatInfo));
+                .createMediaSource(getManifest(formatInfo), new MediaItem.Builder().setMediaId(formatInfo.getVideoId() != null ? formatInfo.getVideoId() : MediaItem.DEFAULT_MEDIA_ID).build()); // JoTube M3: the id names the source in the Shorts queue
         if (mTrackErrorFixer != null) {
             dashSource.addEventListener(Utils.sHandler, mTrackErrorFixer);
         }

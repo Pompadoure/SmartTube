@@ -46,6 +46,7 @@ public class TrackSelectorManager implements TrackSelectorCallback {
     private final Map<String, Integer> mBlacklist = new HashMap<>();
 
     private DefaultTrackSelector mTrackSelector;
+    private RestoreTrackSelector mPreloadTrackSelector; // Shorts preloading: selects like mTrackSelector
 
     private final Renderer[] mRenderers = new Renderer[3];
     private final MediaTrack[] mSelectedTracks = new MediaTrack[3];
@@ -650,6 +651,15 @@ public class TrackSelectorManager implements TrackSelectorCallback {
         }
     }
 
+    /**
+     * JoTube M3: the track selector of the preload manager (Shorts) selects the preloaded Shorts through this manager too,
+     * like the playlist periods did in 2.10 (see {@link #syncWithPlayingPeriod()}).
+     */
+    public void setPreloadTrackSelector(RestoreTrackSelector selector) {
+        mPreloadTrackSelector = selector;
+        selector.setOnTrackSelectCallback(this);
+    }
+
     public synchronized void release() {
         if (mTrackSelector != null) {
             Log.d(TAG, "Destroying TrackSelector...");
@@ -658,6 +668,7 @@ public class TrackSelectorManager implements TrackSelectorCallback {
             }
             mTrackSelector = null;
         }
+        mPreloadTrackSelector = null;
 
         invalidate();
     }
@@ -764,6 +775,18 @@ public class TrackSelectorManager implements TrackSelectorCallback {
     }
 
     private void applyOverride(int rendererIndex) {
+        applyOverrideInt(rendererIndex);
+
+        // Review (stage 4): the preload selector keeps the same parameters (disabled renderers etc.), else a preloaded
+        // Short is selected differently from how the player selects it and the preload is lost
+        RestoreTrackSelector preloadSelector = mPreloadTrackSelector;
+        DefaultTrackSelector selector = mTrackSelector;
+        if (preloadSelector != null && selector != null) {
+            preloadSelector.setParameters(selector.getParameters());
+        }
+    }
+
+    private void applyOverrideInt(int rendererIndex) {
         Renderer renderer = mRenderers[rendererIndex];
 
         if (renderer == null) {

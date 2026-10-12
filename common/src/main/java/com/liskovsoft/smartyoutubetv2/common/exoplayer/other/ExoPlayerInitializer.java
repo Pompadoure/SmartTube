@@ -9,7 +9,10 @@ import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.SeekParameters;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.common.AudioAttributes;
+import androidx.media3.exoplayer.source.preload.DefaultPreloadManager;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
+import androidx.media3.exoplayer.trackselection.TrackSelector;
+import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ShortsPreloadControl;
 import com.liskovsoft.sharedutils.helpers.DeviceHelpers;
 import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerData;
 import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerTweaksData;
@@ -21,6 +24,8 @@ public class ExoPlayerInitializer {
     private VolumeBooster mVolumeBooster;
     private float mVolumeBoost;
     private ExoPlayer mPlayer;
+    private DefaultPreloadManager mPreloadManager;
+    private final ShortsPreloadControl mPreloadControl = new ShortsPreloadControl();
     private static AudioAttributes sAudioAttributes;
 
     public ExoPlayerInitializer(Context context) {
@@ -36,6 +41,16 @@ public class ExoPlayerInitializer {
     }
 
     public ExoPlayer createPlayer(Context context, DefaultRenderersFactory renderersFactory, DefaultTrackSelector trackSelector) {
+        return createPlayer(context, renderersFactory, trackSelector, null);
+    }
+
+    /**
+     * @param preloadSelectorFactory not null: the player is built together with a {@link DefaultPreloadManager} (Shorts
+     *                               preloading). It creates the track selector of the preload manager: it must select
+     *                               like {@code trackSelector}, else a preloaded Short is selected again when it plays.
+     */
+    public ExoPlayer createPlayer(Context context, DefaultRenderersFactory renderersFactory, DefaultTrackSelector trackSelector,
+                                  TrackSelector.Factory preloadSelectorFactory) {
         DefaultLoadControl loadControl = createLoadControl();
 
         // HDR fix?
@@ -44,11 +59,39 @@ public class ExoPlayerInitializer {
         // Old initializer
         // SmartTube J: faster first frame for Shorts
         // JoTube M3: ExoPlayer.Builder replaces ExoPlayerFactory.newSimpleInstance (no DRM manager, as before: null)
-        ExoPlayer player = new ExoPlayer.Builder(context, renderersFactory)
-                .setTrackSelector(trackSelector)
-                .setLoadControl(new FastStartLoadControl(loadControl, mMaxBufferBytes))
-                .setBandwidthMeter(ExoMediaSourceFactory.getBandwidthMeter(context))
-                .build();
+        ExoPlayer player;
+        mPreloadManager = null;
+
+        if (preloadSelectorFactory != null) {
+            // JoTube M3: the player and the preload manager share the playback thread, renderers factory, load
+            // control and bandwidth meter (DefaultPreloadManager.Builder.buildExoPlayer). The factory is called for the
+            // player first, then for the preload manager.
+            final boolean[] playerSelectorGiven = {false};
+            DefaultPreloadManager.Builder builder = new DefaultPreloadManager.Builder(context, new DefaultPreloadManager.SimpleRankingDataComparator() {
+                        @Override
+                        public int compare(Integer key1, Integer key2) {
+                            return Integer.compare(mPreloadControl.getPriority(key1), mPreloadControl.getPriority(key2));
+                        }
+                    }, mPreloadControl)
+                    .setRenderersFactory(renderersFactory)
+                    .setLoadControl(new FastStartLoadControl(loadControl, mMaxBufferBytes))
+                    .setBandwidthMeter(ExoMediaSourceFactory.getBandwidthMeter(context))
+                    .setTrackSelectorFactory(ctx -> {
+                        if (!playerSelectorGiven[0]) {
+                            playerSelectorGiven[0] = true;
+                            return trackSelector;
+                        }
+                        return preloadSelectorFactory.createTrackSelector(ctx);
+                    });
+            player = builder.buildExoPlayer(new ExoPlayer.Builder(context));
+            mPreloadManager = builder.build();
+        } else {
+            player = new ExoPlayer.Builder(context, renderersFactory)
+                    .setTrackSelector(trackSelector)
+                    .setLoadControl(new FastStartLoadControl(loadControl, mMaxBufferBytes))
+                    .setBandwidthMeter(ExoMediaSourceFactory.getBandwidthMeter(context))
+                    .build();
+        }
 
         // New initializer
         //ExoPlayer player = ExoPlayerFactory.newSimpleInstance(
@@ -73,6 +116,17 @@ public class ExoPlayerInitializer {
         mPlayer = player;
 
         return player;
+    }
+
+    /**
+     * Null if the player was built without preloading (embed player).
+     */
+    public DefaultPreloadManager getPreloadManager() {
+        return mPreloadManager;
+    }
+
+    public ShortsPreloadControl getPreloadControl() {
+        return mPreloadControl;
     }
 
     private static AudioAttributes getAudioAttributes() {
@@ -194,6 +248,10 @@ public class ExoPlayerInitializer {
 
         mVolumeBooster = null;
         mPlayer = null;
+        if (mPreloadManager != null) {
+            mPreloadManager.release();
+            mPreloadManager = null;
+        }
     }
 
     // JoTube M3: the unused createDrmManager() and DummyBandwidthMeter (2.10 only) were removed.
