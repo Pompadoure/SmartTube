@@ -744,7 +744,8 @@ public class ExoPlayerController implements Player.Listener {
         Log.d(TAG, "onPositionDiscontinuity");
 
         // M3: onSeekProcessed is gone; the seek discontinuity is the closest event (reported when the seek starts)
-        if (reason == Player.DISCONTINUITY_REASON_SEEK) {
+        // SEEK_ADJUSTMENT: the seek landed on another position (e.g. a sync sample): refresh the ending time and chapter
+        if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) {
             mEventListener.onSeekEnd();
             return;
         }
