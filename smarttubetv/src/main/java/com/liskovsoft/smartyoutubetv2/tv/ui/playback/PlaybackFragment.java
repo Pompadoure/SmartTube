@@ -122,6 +122,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     private boolean mIsUIAnimationsEnabled = false;
     private boolean mIsEngineBlocked;
     private MediaSession mMediaSession; // M3: media3-session (replaces MediaSessionCompat + MediaSessionConnector)
+    private SessionPlayer mSessionPlayer;
     private DoubleTapPlayerAdapter mDoubleTapPlayerAdapter;
     private YouTubeOverlay mYouTubeOverlay;
     private Boolean mIsControlsShownPreviously;
@@ -515,6 +516,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             mMediaSession.release();
             mMediaSession = null;
         }
+        mSessionPlayer = null;
         if (mPlayerGlue != null) {
             ((PlaybackTransportRowPresenter) mPlayerGlue.getPlaybackRowPresenter()).setOnActionLongClickedListener(null);
             ((PlaybackTransportRowPresenter) mPlayerGlue.getPlaybackRowPresenter()).setOnActionClickedListener(null);
@@ -701,6 +703,36 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         });
     }
 
+    /**
+     * M3: a session player that can tell the session's listeners about new metadata (a new video in the same player).
+     */
+    private static class SessionPlayer extends ForwardingPlayer {
+        private final List<Player.Listener> mSessionListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+        SessionPlayer(Player player) {
+            super(player);
+        }
+
+        @Override
+        public void addListener(Player.Listener listener) {
+            super.addListener(listener);
+            mSessionListeners.add(listener);
+        }
+
+        @Override
+        public void removeListener(Player.Listener listener) {
+            super.removeListener(listener);
+            mSessionListeners.remove(listener);
+        }
+
+        void notifyMediaMetadataChanged() {
+            MediaMetadata metadata = getMediaMetadata();
+            for (Player.Listener listener : mSessionListeners) {
+                listener.onMediaMetadataChanged(metadata);
+            }
+        }
+    }
+
     private void createMediaSession() {
         if (getContext() == null || mPlayer == null) {
             return;
@@ -713,8 +745,10 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         }
 
         // M3: the MediaSessionConnector parts (metadata provider, queue navigator, control dispatcher) live in a
-        // ForwardingPlayer the session talks to. TODO stage 3: refresh the session metadata when the video changes.
-        Player sessionPlayer = new ForwardingPlayer(mPlayer) {
+        // ForwardingPlayer the session talks to. The session reads the metadata only on onMediaMetadataChanged, so
+        // setVideo() calls notifyMediaMetadataChanged() (MediaSessionConnector re-read it on every player event).
+        // The duration comes from the player itself.
+        SessionPlayer sessionPlayer = new SessionPlayer(mPlayer) {
             @Override
             public MediaMetadata getMediaMetadata() {
                 Video video = getVideo();
@@ -787,6 +821,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             mMediaSession = new MediaSession.Builder(getContext().getApplicationContext(), sessionPlayer)
                     .setId(getContext().getPackageName() + "." + SystemClock.uptimeMillis()) // unique per player instance
                     .build();
+            mSessionPlayer = sessionPlayer;
         } catch (RuntimeException e) {
             // E.g. a session with the same id that wasn't released yet
             Log.e(TAG, "createMediaSession: " + e.getMessage());
@@ -962,6 +997,10 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             mShortsPanel.bind(video);
         }
         updateShortsPanel();
+
+        if (mSessionPlayer != null && mMediaSession != null) {
+            mSessionPlayer.notifyMediaMetadataChanged();
+        }
     }
 
     /**

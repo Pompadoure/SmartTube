@@ -12,6 +12,7 @@ import androidx.media3.common.Format;
 import androidx.media3.common.PlaybackParameters;
 import androidx.media3.common.Player;
 import androidx.media3.common.PlaybackException;
+import androidx.media3.datasource.HttpDataSource;
 import androidx.media3.datasource.HttpDataSource.HttpDataSourceException;
 import androidx.media3.common.Tracks;
 import androidx.media3.exoplayer.PlayerMessage;
@@ -708,19 +709,33 @@ public class ExoPlayerController implements Player.Listener {
         mEventListener.onEngineError(type, rendererIndex, nested);
     }
 
+    /**
+     * 2.10 said "Unable to connect to" only when opening a connection failed with an IOException.
+     * Not for a bad HTTP status or content type (also TYPE_OPEN in Media3: 403 etc. keep their own handling),
+     * not for read errors and not for Cronet errors (ErrorFixerController has its own Cronet branch).
+     */
     private static boolean isConnectError(PlaybackException error) {
-        if (error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
-                error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT) {
-            return true;
-        }
+        boolean connectError = false;
 
         for (Throwable cause = error.getCause(); cause != null; cause = cause.getCause()) {
-            if (cause instanceof HttpDataSourceException && ((HttpDataSourceException) cause).type == HttpDataSourceException.TYPE_OPEN) {
-                return true;
+            String message = cause.getMessage();
+            if (message != null && message.contains("Exception in CronetUrlRequest")) {
+                return false;
+            }
+
+            if (cause instanceof HttpDataSourceException
+                    && !(cause instanceof HttpDataSource.InvalidResponseCodeException)
+                    && !(cause instanceof HttpDataSource.InvalidContentTypeException)) {
+                HttpDataSourceException httpError = (HttpDataSourceException) cause;
+                if (httpError.type == HttpDataSourceException.TYPE_OPEN &&
+                        (httpError.reason == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                         httpError.reason == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT)) {
+                    connectError = true;
+                }
             }
         }
 
-        return false;
+        return connectError;
     }
 
     @SuppressWarnings("deprecation") // M3: still called by ExoPlayer (one callback for both values, like 2.10)
