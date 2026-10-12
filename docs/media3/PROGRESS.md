@@ -1,7 +1,7 @@
 # JoTube M3 progress
 
-Status: ACTIVE
-Next step: BUG-1 (audio restarts at video start, see "Bug reports from device tests" below). Johan installed JoTube[beta] (org.smarttube.johan.media3, armeabi-v7a build) on the Streamer 2026-10-12 16:00 and is testing; fix bugs he reports, then set DONE again.
+Status: WAITING_FOR_JOHAN
+Next step (WAITING_FOR_JOHAN: install the new latest-media3 build, play a regular video once, say so in a commit/note; then the run reads logcat via HA, grep JoTubeSabr and fixes BUG-1): BUG-1 (audio restarts at video start, see "Bug reports from device tests" below). Johan installed JoTube[beta] (org.smarttube.johan.media3, armeabi-v7a build) on the Streamer 2026-10-12 16:00 and is testing; fix bugs he reports, then set DONE again.
 
 Status values: ACTIVE (the scheduled runs keep going), WAITING_FOR_JOHAN (a question to Johan, runs only check
 for his answer), BLOCKED (a stage can't be made stable; reason below), DONE (stage 6 finished).
@@ -26,6 +26,7 @@ Run: FINISHED 2026-10-12T12:02Z
 Run: STARTED 2026-10-12T12:22Z (scheduled fire)
 Run: FINISHED 2026-10-12T12:45Z (stage 5 and 6 done, Status DONE)
 Run: STARTED 2026-10-12T15:02Z (manual fire by Johan, BUG-1)
+Run: FINISHED 2026-10-12T15:15Z (BUG-1 diagnostics merged, CI green run 38267393403; waiting for a device log)
 
 ## Stage 4 steps (design from 4a, 2026-10-12)
 Findings: today `ShortsQueue` keeps all Shorts as items of one `ConcatenatingMediaSource` and switching is a seek in the
@@ -195,3 +196,14 @@ sequence and timestamps per track), do not guess. The old build (j-series, ExoPl
 Johan can read logcat via Home Assistant: androidtv.adb_command on media_player.android_tv_192_168_1_247 (write the
 output to a file, read via ha_get_state attribute adb_response). Install a new build only after a green CI on media3;
 Johan or the main Claude session installs it (runs never install on devices).
+
+**BUG-1 status 2026-10-12 15:15Z:** The start of the old test is gone from logcat (ring buffer), so the cause is not proven.
+Evidence so far: expected 9993500 vs got 0 means the audio sample queue received a second chunk whose first sample is at
+period position 0 (a duplicate of segment 0) after ~10 s were queued. Code candidates (unproven): first media chunk after
+the init chunk uses seekTimeUs=loadPosition and `sabrStream.reset(iTag)`; a later request with queue non-empty uses
+`getSegmentStartTimeMs` (start of the last segment, 0 when startMs=-1) as playerTimeMs; init response media is not
+skipped (SKIP_INIT_RESPONSE_MEDIA=false). Diagnostics merged (tag `JoTubeSabr`, Log.e): "next chunk:" per decision
+(queueSize, loadPosUs, playbackPosUs, seekTimeUs, prev start/end), "Load media chunk:" with start/end/clipped, and
+"extractor seek:" / "sample:" lines (first 3 samples after each seek, every BACKWARD timestamp jump).
+Read with: androidtv.adb_command `logcat -d -v threadtime | grep -E 'JoTubeSabr|DefaultSabrChunkSource|Audio sink error' > /sdcard/m3.txt; cat /sdcard/m3.txt`
+right after one regular video start (the ring buffer is small).
