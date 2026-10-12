@@ -27,6 +27,7 @@ Run: STARTED 2026-10-12T12:22Z (scheduled fire)
 Run: FINISHED 2026-10-12T12:45Z (stage 5 and 6 done, Status DONE)
 Run: STARTED 2026-10-12T15:02Z (manual fire by Johan, BUG-1)
 Run: FINISHED 2026-10-12T15:15Z (BUG-1 diagnostics merged, CI green run 38267393403; waiting for a device log)
+Run: STARTED 2026-10-12T18:21Z (scheduled fire, BUG-1 from device evidence 17:31Z)
 
 ## Stage 4 steps (design from 4a, 2026-10-12)
 Findings: today `ShortsQueue` keeps all Shorts as items of one `ConcatenatingMediaSource` and switching is a seek in the
