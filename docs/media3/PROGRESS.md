@@ -1,7 +1,7 @@
 # JoTube M3 progress
 
 Status: ACTIVE
-Next step: 4a (stage 4, Shorts on Media3: split PLAN.md stage 4 into steps first, on branch `m3/stage4`)
+Next step: 4b (stage 4, Shorts on Media3, branch `m3/stage4`; step list below)
 
 Status values: ACTIVE (the scheduled runs keep going), WAITING_FOR_JOHAN (a question to Johan, runs only check
 for his answer), BLOCKED (a stage can't be made stable; reason below), DONE (stage 6 finished).
@@ -14,13 +14,43 @@ a cut-off (Johan's decision 2026-10-10):
   another run is working, so it stops at once.
 - Fast pace: a run keeps working step after step until the work is done, its context gets long, or the usage cap
   stops it. Commit and push after every meaningful change (never more than ~15 minutes uncommitted) and keep
-  `Doing now: **Stage 3 done** (m3/stage3 merged into media3, CI green run 38235470708, independent review fixed). Model of
-the scheduled task is now Sonnet 5.5 (Johan, to save usage). Next action: 4a: read FORK_CHANGES.md rows for
-ExoPlayerImplInternal/MediaPeriodQueue, ShortsQueue and VideoLoaderController; write the stage 4 step list into
-PLAN.md/PROGRESS.md (DefaultPreloadManager design); then implement on m3/stage4.
+  `Doing now:` with each push.
+
+Doing now: 4a done (design below). Next action: 4b on m3/stage4: build the player through DefaultPreloadManager.Builder.
 
 Run: FINISHED 2026-10-12T10:25Z
 Run: STARTED 2026-10-12T10:34Z (manual start by Johan)
+
+## Stage 4 steps (design from 4a, 2026-10-12)
+Findings: today `ShortsQueue` keeps all Shorts as items of one `ConcatenatingMediaSource` and switching is a seek in the
+playlist (`ExoPlayerController.switchToQueued`, retry loop while the timeline is out of sync, `scheduleItemEnd` message per
+window, `handleQueueAutoAdvance`). Media3 releases played periods and only preloads the next item with its default, so
+this design is replaced. Media3 1.11.1 `DefaultPreloadManager` (verified in the sources): `add(MediaSource, Integer rank)`
+takes our own SABR/DASH `MediaSource` (no MediaItem factory hack needed, mediaId = videoId); `getMediaSource(MediaItem)`
+returns the `PreloadMediaSource` to play with `player.setMediaSource(..)` + `prepare()`; `TargetPreloadStatusControl` gives
+the status per rank (`PreloadStatus.specifiedRangeLoaded(0, ms)`); `setCurrentPlayingIndex` + `invalidate()`;
+the player must come from `DefaultPreloadManager.Builder.buildExoPlayer(ExoPlayer.Builder)` (shared playback looper,
+renderers factory, load control, bandwidth meter and a `TrackSelector.Factory`, which is called for the player and again
+for the preload manager).
+- 4b. Player construction: `ExoPlayerInitializer.createPlayer` builds through the preload manager builder (renderers
+  factory, FastStartLoadControl, bandwidth meter). Open question: TrackSelectorManager owns ONE DefaultTrackSelector;
+  the factory is called twice, so the preload selector needs the same parameters (mirror setParameters) — decide from
+  the sources. Regular videos must behave exactly as before.
+- 4c. `ShortsQueue` becomes a ranked list (videoId, formatInfo, source, added time) feeding the preload manager:
+  `add(source, index)`, TargetPreloadStatusControl: current+1 = loaded 6 s, current+2 = loaded 3 s, current-1 kept
+  (for the swipe back), the rest NOT_PRELOADED; max size and removal of far items (`remove`) to bound memory.
+  `enqueueShort(formatInfo, distance)` keeps its signature (VideoLoaderController unchanged).
+- 4d. Switching: `switchToQueued` = `setCurrentPlayingIndex`, `player.setMediaSource(preloadManager.getMediaSource(item))`,
+  `prepare()`, `play`. No timeline sync/retry loop, no `handleQueueAutoAdvance`; `scheduleItemEnd` works on window 0 of the
+  single-item timeline (or Player.STATE_ENDED / position check).
+- 4e. App hooks that assumed one playlist: `ShortsQueue.isPlayerOn(videoId, windowIndex)`, `onTracksChanged` sync,
+  `TrackSelectorManager.onQueuedSourceSwitch`, duration update, release/reset on leaving Shorts (`setActive(null)` →
+  `preloadManager.reset()`), `isQueued/getUpcomingIds/getQueuedFormatInfo` semantics.
+- 4f. Codec reuse across Shorts (`canReuseCodec`, `getCodecMaxValues` in the Shorts renderer), tunneling off for Shorts,
+  re-check the ChunkSampleStream "seek to clipped start" need (FORK_CHANGES A) with the PreloadMediaSource start position.
+- 4g. Remaining: swipe transition / side panel / 9:16 frame / blurred background glue still works with the new events
+  (ShortsTransitionState), JoTubeTiming logs for switch time; unit tests where possible.
+- 4h. CI green, independent review of the stage 4 diff, fixes, merge m3/stage4 into media3.
 
 ## Stage 3 steps
 - 3a. Cronet: the root build.gradle forces `cronet-api` 105 (for cronet-okhttp); check what media3-datasource-cronet
