@@ -10,9 +10,9 @@ import androidx.media3.common.C;
 import androidx.media3.common.Format;
 import androidx.media3.exoplayer.SeekParameters;
 import androidx.media3.extractor.Extractor;
-import androidx.media3.extractor.text.DefaultSubtitleParserFactory;
 import androidx.media3.extractor.text.SubtitleExtractor;
 import androidx.media3.extractor.text.SubtitleParser;
+import com.liskovsoft.media3.sabr.text.JoSubtitleParserFactory;
 import androidx.media3.exoplayer.source.BehindLiveWindowException;
 import androidx.media3.exoplayer.source.chunk.Chunk;
 import androidx.media3.exoplayer.source.chunk.BundledChunkExtractor;
@@ -66,7 +66,8 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
 
         private final DataSource.Factory dataSourceFactory;
         private final int maxSegmentsPerLoad;
-        private final SubtitleParser.Factory subtitleParserFactory = new DefaultSubtitleParserFactory();
+        // JoTube: Media3 parsers + the fork's WebVTT fixes (entities, 10 s cue cap)
+        private final SubtitleParser.Factory subtitleParserFactory = new JoSubtitleParserFactory();
 
         public Factory(DataSource.Factory dataSourceFactory) {
             this(dataSourceFactory, 1);

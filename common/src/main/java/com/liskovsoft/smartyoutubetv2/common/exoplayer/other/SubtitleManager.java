@@ -4,6 +4,9 @@ import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Build.VERSION;
+import android.text.Spannable;
+import android.text.SpannableString;
+import android.text.Spanned;
 import android.util.TypedValue;
 import android.view.View;
 import android.view.accessibility.CaptioningManager;
@@ -17,6 +20,7 @@ import androidx.media3.common.text.Cue;
 import androidx.media3.common.text.CueGroup;
 import androidx.media3.ui.SubtitleView;
 import com.liskovsoft.sharedutils.helpers.Helpers;
+import com.liskovsoft.sharedutils.misc.PaddingBackgroundColorSpan;
 import com.liskovsoft.smartyoutubetv2.common.R;
 import com.liskovsoft.smartyoutubetv2.common.prefs.AppPrefs;
 import com.liskovsoft.smartyoutubetv2.common.prefs.common.DataChangeBase.OnDataChange;
@@ -36,6 +40,8 @@ public class SubtitleManager implements Player.Listener, OnDataChange {
     private final AppPrefs mPrefs;
     private final PlayerData mPlayerData;
     private CharSequence subsBuffer;
+    // The fork's WebVTT fixes (entities, 10 s cue cap) are in media3-sabr's JoSubtitleParserFactory (parse time)
+    private int mBackgroundColor = Color.TRANSPARENT;
 
     public static class SubtitleStyle {
         public final int nameResId;
@@ -80,6 +86,18 @@ public class SubtitleManager implements Player.Listener, OnDataChange {
         }
     }
 
+    /**
+     * Fork fix (SubtitlePainter): padded background instead of the plain one.
+     */
+    private CharSequence applyPaddedBackground(CharSequence text) {
+        if (Color.alpha(mBackgroundColor) == 0) {
+            return text;
+        }
+        Spannable result = new SpannableString(text);
+        result.setSpan(new PaddingBackgroundColorSpan(mBackgroundColor), 0, result.length(), Spanned.SPAN_PRIORITY);
+        return result;
+    }
+
     public void show(boolean show) {
         if (mSubtitleView != null) {
             mSubtitleView.setVisibility(show ? View.VISIBLE : View.GONE);
@@ -121,15 +139,20 @@ public class SubtitleManager implements Player.Listener, OnDataChange {
                     text = textStr;
                 }
 
-                result.add(new Cue.Builder().setText(text).build()); // sub centered by default
+                result.add(new Cue.Builder().setText(applyPaddedBackground(text)).build()); // sub centered by default
 
                 String[] split = textStr.split("\n");
                 subsBuffer = split.length == 2 ? split[1] : textStr;
             } else {
                 CharSequence text = subsBuffer != null ? textStr.replace(subsBuffer, "") : textStr;
-                result.add(new Cue.Builder().setText(text).build()); // sub centered by default
+                result.add(new Cue.Builder().setText(applyPaddedBackground(text)).build()); // sub centered by default
                 subsBuffer = text;
             }
+        }
+
+        // Fork fix (SubtitleView): all cues are rendered simultaneously, so remain only the last one
+        if (result.size() > 1) {
+            result = new ArrayList<>(result.subList(result.size() - 1, result.size()));
         }
 
         return result;
@@ -137,8 +160,8 @@ public class SubtitleManager implements Player.Listener, OnDataChange {
 
     private void configureSubtitleView() {
         if (mSubtitleView != null) {
-            // disable default style
-            mSubtitleView.setApplyEmbeddedStyles(false);
+            // Cues are rebuilt as plain text + our padding span: keep spans (Media3 may strip them when false)
+            mSubtitleView.setApplyEmbeddedStyles(true);
 
             SubtitleStyle subtitleStyle = getSubtitleStyle();
 
@@ -159,9 +182,11 @@ public class SubtitleManager implements Player.Listener, OnDataChange {
         int outlineColor = ContextCompat.getColor(mContext, R.color.black);
         int backgroundColor = ContextCompat.getColor(mContext, subtitleStyle.backgroundColorResId);
 
+        mBackgroundColor = backgroundColor;
+
         CaptionStyleCompat style =
                 new CaptionStyleCompat(textColor,
-                        backgroundColor, Color.TRANSPARENT,
+                        Color.TRANSPARENT, Color.TRANSPARENT, // background is drawn by PaddingBackgroundColorSpan
                         subtitleStyle.captionStyle,
                         outlineColor, Typeface.DEFAULT_BOLD);
         mSubtitleView.setStyle(style);
@@ -177,10 +202,11 @@ public class SubtitleManager implements Player.Listener, OnDataChange {
 
         if (captioningManager != null) {
             CaptionStyle userStyle = captioningManager.getUserStyle();
+            mBackgroundColor = userStyle.backgroundColor;
 
             CaptionStyleCompat style =
                     new CaptionStyleCompat(userStyle.foregroundColor,
-                            userStyle.backgroundColor, VERSION.SDK_INT >= 21 ? userStyle.windowColor : Color.TRANSPARENT,
+                            Color.TRANSPARENT, VERSION.SDK_INT >= 21 ? userStyle.windowColor : Color.TRANSPARENT,
                             userStyle.edgeType,
                             userStyle.edgeColor, userStyle.getTypeface());
             mSubtitleView.setStyle(style);
