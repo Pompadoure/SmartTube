@@ -1015,6 +1015,15 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     /**
      * JoTube: title, channel and buttons next to a Short, while the player controls are hidden.
      */
+    @Override
+    protected void onVideoSizeChanged(int width, int height) {
+        super.onVideoSizeChanged(width, height);
+
+        if (height > 0) {
+            mShortsPanel.setVideoAspect((float) width / height);
+        }
+    }
+
     private void updateShortsPanel() {
         Video video = getVideo();
         boolean isShort = video != null && video.isShorts && !video.isLive && !isInPIPMode();
