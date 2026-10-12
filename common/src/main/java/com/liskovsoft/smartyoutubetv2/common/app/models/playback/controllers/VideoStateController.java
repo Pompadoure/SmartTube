@@ -314,7 +314,8 @@ public class VideoStateController extends BasePlayerController {
         State state = getStateService().getByVideoId(item.videoId);
 
         if (state == null || isStateOutdated(state, item) || state.durationMs <= 0 || state.positionMs <= 0
-                || state.durationMs - state.positionMs <= 1_000) {
+                || state.positionMs >= state.durationMs * 0.98f
+                || (item.getDurationMs() > 0 && state.positionMs >= item.getDurationMs() * 0.98f)) { // near the end: the normal restore decides with the real duration
             return;
         }
 
