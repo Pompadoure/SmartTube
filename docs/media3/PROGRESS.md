@@ -14,11 +14,9 @@ a cut-off (Johan's decision 2026-10-10):
   another run is working, so it stops at once.
 - Fast pace: a run keeps working step after step until the work is done, its context gets long, or the usage cap
   stops it. Commit and push after every meaningful change (never more than ~15 minutes uncommitted) and keep
-  `Doing now: stage 3 on m3/stage3. 3a: CI API check (run 38231280649): 186 Media3 references into the forced
-cronet-api 105 / androidx.core 1.9.0 / annotation 1.1.0, none missing; waiting for per-package counts (7ef5bb1) as
-evidence that the cronet references were checked. 3d: JoLeanbackPlayerAdapter (copy with the no-surface fix) in 7ef5bb1;
-3e: DASH/SABR retry delay = Media3 default. Next action: CI of 7ef5bb1 green; then review the 3b API task
-(claude-task/m3-subtitles) and merge it into m3/stage3; then 3c (track selection).
+  `Doing now: stage 3 on m3/stage3: 3a (API check clean), 3b (subtitles, 38583c8), 3d (JoLeanbackPlayerAdapter) and 3e
+(retry delay) pushed; CI running for 38583c8. Next action: CI green (fix compile errors first); check the API-check
+notice shows cronet references (org/chromium/net count); then 3c (track selection), then 3f review + merge.
 
 ## Stage 3 steps
 - 3a. Cronet: the root build.gradle forces `cronet-api` 105 (for cronet-okhttp); check what media3-datasource-cronet
@@ -57,9 +55,9 @@ Each claude-task run has a hard cap in `.claude-task/BUDGET_USD` (at most 1.50 U
 
 | 2026-10-12 | claude-task/m3-stage2-review | 1.50 | 1.03 | Independent review of 2c: no BLOCKER, 3 SHOULD-FIX (connect error message, Shorts back buffer, MediaSession metadata), 6 NIT |
 | 2026-10-12 | claude-task/m3-stage2-fixes | 1.20 | 0.18 | SHOULD-FIX 1+2 implemented (not built) |
-| 2026-10-12 | claude-task/m3-subtitles | 1.50 | (running) | 3b: fork subtitle fixes (entities, 10 s cap, last cue, padded background) on Media3 |
+| 2026-10-12 | claude-task/m3-subtitles | 1.50 | 0.31 | 3b: last cue + padded background taken; entity decode + 10 s timer redone at parse time in review (Media3 drops unknown entities) |
 
-Spent so far: 1.76 USD
+Spent so far: 2.07 USD
 
 ## Run log
 - 2026-10-10: branch `media3` created from master (j66, 997b69a). Package org.smarttube.johan.media3, app
