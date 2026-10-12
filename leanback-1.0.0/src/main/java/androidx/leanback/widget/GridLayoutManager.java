@@ -1253,7 +1253,7 @@ final class GridLayoutManager extends RecyclerView.LayoutManager {
         if (mFixedRowSizeSecondary != 0) {
             return mFixedRowSizeSecondary;
         }
-        if (mRowSizeSecondary == null) {
+        if (mRowSizeSecondary == null || rowIndex >= mRowSizeSecondary.length) {
             return 0;
         }
         return mRowSizeSecondary[rowIndex];
@@ -1318,6 +1318,11 @@ final class GridLayoutManager extends RecyclerView.LayoutManager {
 
         if (TRACE) TraceCompat.beginSection("processRowSizeSecondary");
         CircularIntArray[] rows = mGrid == null ? null : mGrid.getItemPositionsInRows();
+        // JoTube: column count changed at runtime, arrays are rebuilt on the next layout pass
+        if ((rows != null && rows.length < mNumRows) || mRowSizeSecondary.length < mNumRows) {
+            if (TRACE) TraceCompat.endSection();
+            return false;
+        }
         boolean changed = false;
         int scrapeChildSize = -1;
 
