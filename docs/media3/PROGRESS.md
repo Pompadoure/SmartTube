@@ -227,3 +227,10 @@ chunk was cancelled), so it re-requests from 0 (seekCount=2) and the stream gets
 (chunk source `getNextChunk` with queue empty right after the first load; `sabrStream.reset(iTag)` on a second call;
 startMs=-1 -> loadPosition 0). Not a codec problem. No video appears for >9 s on every start now (Johan could not wait).
 
+**BUG-1 ROOT CAUSE (run 2026-10-12 18:3xZ, from a fresh device log 19:40 local, read via HA):** Media3 ChunkSampleStream calls
+`InitializationChunk.init(chunkOutput)`, so the media inside the SABR init response (audio 0..9.98 s, video 0..9.47 s) went into the
+sample queues; the first media chunk (seek to 0) then delivered segment 0 again -> audio sink discontinuity (expected 9993500, got 0)
+at ~10 s of playback. ExoPlayer 2.10.6 loaded the init chunk with a null track output provider (samples dropped). Fix: DefaultSabrChunkSource
+wraps the extractor of the InitializationChunk (InitOnlyChunkExtractor, init(null,..)). First frame was +1824 ms in that log.
+Awaiting CI + device check by Johan (play a regular video >15 s).
+

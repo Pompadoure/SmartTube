@@ -646,7 +646,44 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
         }
         Log.e(TAG, "Load init chunk: track=" + trackType + ", rn=" + manifest.getSabrRequestNumber());
         return new InitializationChunk(dataSource, dataSpec, trackFormat,
-                trackSelectionReason, trackSelectionData, representationHolder.extractorWrapper);
+                trackSelectionReason, trackSelectionData,
+                new InitOnlyChunkExtractor(representationHolder.extractorWrapper));
+    }
+
+    /**
+     * BUG-1 fix: Media3's ChunkSampleStream hands its sample queues to an InitializationChunk, while ExoPlayer 2.10.6
+     * loaded it with a null track output provider (samples dropped). A SABR init response also carries ~10 s of media
+     * (the first segment), which then reached the sample queue and was delivered a second time by the first media
+     * chunk (seek to 0): audio sink "Unexpected audio track timestamp discontinuity", frozen picture at the start.
+     * This wrapper loads the init response with a null provider, so only the sample formats are taken from it.
+     */
+    private static final class InitOnlyChunkExtractor implements ChunkExtractor {
+        private final ChunkExtractor delegate;
+
+        InitOnlyChunkExtractor(ChunkExtractor delegate) {
+            this.delegate = delegate;
+        }
+
+        @Nullable @Override public androidx.media3.extractor.ChunkIndex getChunkIndex() {
+            return delegate.getChunkIndex();
+        }
+
+        @Nullable @Override public Format[] getSampleFormats() {
+            return delegate.getSampleFormats();
+        }
+
+        @Override
+        public void init(@Nullable TrackOutputProvider trackOutputProvider, long startTimeUs, long endTimeUs) {
+            delegate.init(/* trackOutputProvider= */ null, startTimeUs, endTimeUs);
+        }
+
+        @Override public void release() {
+            delegate.release();
+        }
+
+        @Override public boolean read(androidx.media3.extractor.ExtractorInput input) throws java.io.IOException {
+            return delegate.read(input);
+        }
     }
 
     /** A SABR request: UMP over an HTTP POST with a protobuf body (the fork's 11-arg DataSpec constructor). */
