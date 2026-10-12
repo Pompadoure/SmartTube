@@ -521,6 +521,7 @@ public class TrackSelectorManager implements TrackSelectorCallback {
         DefaultTrackSelector trackSelector = mTrackSelector;
 
         if (trackSelector instanceof RestoreTrackSelector) {
+            com.liskovsoft.smartyoutubetv2.common.utils.JoTubeTiming.mark("reselect tracks");
             ((RestoreTrackSelector) trackSelector).reselect();
         }
     }

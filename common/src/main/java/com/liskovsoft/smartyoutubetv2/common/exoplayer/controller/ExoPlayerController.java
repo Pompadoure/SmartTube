@@ -474,6 +474,27 @@ public class ExoPlayerController implements Player.Listener {
                                                   long initializedTimestampMs, long initializationDurationMs) {
                 JoTubeTiming.mark("video decoder " + decoderName + " init " + initializationDurationMs + " ms");
             }
+
+            @Override
+            public void onAudioDecoderInitialized(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime, String decoderName,
+                                                  long initializedTimestampMs, long initializationDurationMs) {
+                JoTubeTiming.mark("audio decoder " + decoderName + " init " + initializationDurationMs + " ms");
+            }
+
+            @Override
+            public void onVideoInputFormatChanged(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime,
+                                                  androidx.media3.common.Format format,
+                                                  @androidx.annotation.Nullable androidx.media3.exoplayer.DecoderReuseEvaluation decoderReuseEvaluation) {
+                // First Format of the video stream reaching the renderer (before the decoder is created / reused)
+                JoTubeTiming.mark("video format " + format.width + "x" + format.height + (decoderReuseEvaluation != null ?
+                        " reuse result " + decoderReuseEvaluation.result : ""));
+            }
+
+            @Override
+            public void onVideoSizeChanged(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime,
+                                           androidx.media3.common.VideoSize videoSize) {
+                JoTubeTiming.mark("video size " + videoSize.width + "x" + videoSize.height);
+            }
         });
         sCurrent = new WeakReference<>(this);
     }

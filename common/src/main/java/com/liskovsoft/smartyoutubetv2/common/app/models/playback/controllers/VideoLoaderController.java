@@ -501,6 +501,7 @@ public class VideoLoaderController extends BasePlayerController {
         final MediaItemFormatInfo prefetched = cached != null ? cached : ShortsQueue.getQueuedFormatInfo(video.videoId);
         if (prefetched != null) {
             Log.d(TAG, "Using prefetched format info for %s", video.videoId);
+            JoTubeTiming.mark("format info: prefetched");
             mCurrentFromPrefetch = true;
             // Keep the original async order (the player state is reset at this point)
             Utils.post(() -> {
