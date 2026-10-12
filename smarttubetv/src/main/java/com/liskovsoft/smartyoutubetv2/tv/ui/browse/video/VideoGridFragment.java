@@ -43,7 +43,7 @@ public class VideoGridFragment extends GridFragment implements VideoSection {
     private VideoCardPresenter mCardPresenter;
     private int mSelectedItemIndex = -1;
     private Video mSelectedItem;
-    private static final int PRELOAD_GRID_ROWS = 3; // JoTube: grid rows preloaded below the focused item
+    private static final int PRELOAD_GRID_ROWS = 5; // JoTube: grid rows preloaded below the focused item
     private float mVideoGridScale;
     private final Runnable mRestoreTask = this::restorePosition;
 
@@ -190,7 +190,16 @@ public class VideoGridFragment extends GridFragment implements VideoSection {
             return;
         }
 
+        int sizeBefore = mGridAdapter.size();
+
         mGridAdapter.add(group);
+
+        // JoTube: warm the thumbnails of the new items (the first screens of a list, the next page of a long one)
+        // before they are scrolled to, not only after the selection has moved next to them
+        if (getContext() != null) {
+            int cols = GridFragmentHelper.getMaxColsNum(getContext(), isShorts() ? R.dimen.shorts_card_width : R.dimen.card_width, mVideoGridScale);
+            ThumbnailPreloader.preload(getContext(), mGridAdapter, sizeBefore, Math.max(cols, 1) * PRELOAD_GRID_ROWS);
+        }
 
         restorePosition();
     }

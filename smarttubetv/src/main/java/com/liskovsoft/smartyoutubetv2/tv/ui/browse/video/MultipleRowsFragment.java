@@ -45,8 +45,8 @@ import java.util.Map;
 
 public abstract class MultipleRowsFragment extends RowsSupportFragment implements VideoSection {
     private static final String TAG = MultipleRowsFragment.class.getSimpleName();
-    private static final int PRELOAD_ROW_CARDS = 6; // JoTube: thumbnails preloaded per row
-    private static final int PRELOAD_NEXT_ROWS = 2; // JoTube: rows below the focused one
+    private static final int PRELOAD_ROW_CARDS = 10; // JoTube: thumbnails preloaded per row
+    private static final int PRELOAD_NEXT_ROWS = 3; // JoTube: rows below the focused one
     private UriBackgroundManager mBackgroundManager;
     private ArrayObjectAdapter mRowsAdapter;
     private ListRowPresenter mRowPresenter;

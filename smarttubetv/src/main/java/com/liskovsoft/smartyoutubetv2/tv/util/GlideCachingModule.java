@@ -5,6 +5,7 @@ import android.content.Context;
 import com.bumptech.glide.GlideBuilder;
 import com.bumptech.glide.annotation.GlideModule;
 import com.bumptech.glide.load.engine.cache.InternalCacheDiskCacheFactory;
+import com.bumptech.glide.load.engine.cache.MemorySizeCalculator;
 import com.bumptech.glide.module.AppGlideModule;
 
 /**
@@ -13,7 +14,7 @@ import com.bumptech.glide.module.AppGlideModule;
  */
 @GlideModule
 public class GlideCachingModule extends AppGlideModule {
-    private final static long CACHE_SIZE = 10 * 1024 * 1024; // 10 MB
+    private final static long CACHE_SIZE = 100 * 1024 * 1024; // 100 MB (JoTube: 10 MB held only ~250 thumbnails: they were fetched again and again)
 
     @Override
     public void applyOptions(Context context, GlideBuilder builder) {
@@ -22,5 +23,7 @@ public class GlideCachingModule extends AppGlideModule {
 
         // Limit cache size
         builder.setDiskCache(new InternalCacheDiskCacheFactory(context, CACHE_SIZE));
+        // JoTube: a bit more decoded thumbnails kept in memory (3 screens instead of 2): scrolling back shows them at once
+        builder.setMemorySizeCalculator(new MemorySizeCalculator.Builder(context).setMemoryCacheScreens(3).build());
     }
 }
