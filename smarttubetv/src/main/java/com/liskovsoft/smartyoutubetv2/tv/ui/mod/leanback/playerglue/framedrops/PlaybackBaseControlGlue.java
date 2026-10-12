@@ -119,7 +119,8 @@ public abstract class PlaybackBaseControlGlue<T extends PlayerAdapter> extends P
     final T mPlayerAdapter;
     PlaybackControlsRow mControlsRow;
     PlaybackRowPresenter mControlsRowPresenter;
-    PlaybackControlsRow.PlayPauseAction mPlayPauseAction;
+    // JoTube: protected, VideoPlayerGlue puts the button into the secondary row (under the progress bar)
+    protected PlaybackControlsRow.PlayPauseAction mPlayPauseAction;
     boolean mIsPlaying = false;
     boolean mFadeWhenPlaying = true;
 

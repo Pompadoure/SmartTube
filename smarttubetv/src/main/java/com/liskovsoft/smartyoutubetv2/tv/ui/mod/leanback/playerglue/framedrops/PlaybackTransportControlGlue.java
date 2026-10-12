@@ -321,6 +321,11 @@ public class PlaybackTransportControlGlue<T extends PlayerAdapter>
                 mPlayPauseAction.setIndex(index);
                 notifyItemChanged((ArrayObjectAdapter) getControlsRow().getPrimaryActionsAdapter(),
                         mPlayPauseAction);
+                // JoTube: the button may live in the secondary row
+                if (getControlsRow().getSecondaryActionsAdapter() instanceof ArrayObjectAdapter) {
+                    notifyItemChanged((ArrayObjectAdapter) getControlsRow().getSecondaryActionsAdapter(),
+                            mPlayPauseAction);
+                }
             }
         }
     }
