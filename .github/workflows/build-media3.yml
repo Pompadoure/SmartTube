@@ -115,6 +115,25 @@ jobs:
             exit 1
           fi
 
+      - name: API check of forced downgrades
+        if: always()
+        continue-on-error: true
+        run: |
+          # JoTube M3: Media3 is compiled against newer cronet-api/androidx.core/annotation than the root build.gradle
+          # forces. List every member Media3 calls that doesn't exist in the forced version (NoSuchMethodError risk).
+          v() { grep -oE "^ *$1 *= *'[^']+'" SharedModules/constants.gradle | head -1 | grep -oE "'[^']+'" | tr -d "'"; }
+          m3=$(grep -oE "m3Media3Version = '[^']+'" build.gradle | grep -oE "'[^']+'" | tr -d "'")
+          cache=$HOME/.gradle/caches/modules-2/files-2.1
+          consumers=""
+          for a in $(ls "$cache/androidx.media3"); do
+            [ -d "$cache/androidx.media3/$a/$m3" ] && consumers="$consumers androidx.media3:$a:$m3"
+          done
+          python3 docs/media3/tools/api_check.py "$cache" $consumers -- \
+            org.chromium.net:cronet-api:$(v cronetApiVersion) androidx.core:core:$(v coreXVersion) \
+            androidx.annotation:annotation:$(v annotationXVersion) > apicheck.txt 2>/dev/null || true
+          cat apicheck.txt
+          echo "::notice::API CHECK (forced downgrades vs Media3 $m3)%0A$(head -80 apicheck.txt | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
+
       - name: Unit test summary
         if: always()
         run: |

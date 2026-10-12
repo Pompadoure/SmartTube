@@ -29,6 +29,7 @@ import androidx.media3.exoplayer.hls.HlsMediaSource;
 import com.liskovsoft.media3.sabr.DefaultSabrChunkSource;
 import com.liskovsoft.media3.sabr.SabrChunkSource;
 import com.liskovsoft.media3.sabr.SabrMediaSource;
+import com.liskovsoft.media3.sabr.text.JoSubtitleParserFactory;
 import com.liskovsoft.media3.sabr.manifest.SabrManifest;
 import com.liskovsoft.media3.sabr.manifest.SabrManifestParser;
 import androidx.media3.exoplayer.smoothstreaming.DefaultSsChunkSource;
@@ -166,10 +167,13 @@ public class ExoMediaSourceFactory {
                         )
                                 .setManifestParser(new LiveDashManifestParser()) // Don't make static! Need state reset for each live source.
                                 .setLoadErrorHandlingPolicy(new DashDefaultLoadErrorHandlingPolicy())
+                                .setSubtitleParserFactory(new JoSubtitleParserFactory()) // JoTube: the fork's WebVTT fixes
                                 .createMediaSource(mediaItem);
                 break;
             case C.CONTENT_TYPE_HLS:
-                source = new HlsMediaSource.Factory(getMediaDataSourceFactory()).createMediaSource(mediaItem);
+                source = new HlsMediaSource.Factory(getMediaDataSourceFactory())
+                        .setSubtitleParserFactory(new JoSubtitleParserFactory()) // JoTube: the fork's WebVTT fixes
+                        .createMediaSource(mediaItem);
                 break;
             case C.CONTENT_TYPE_OTHER:
                 source = new ProgressiveMediaSource.Factory(getMediaDataSourceFactory(), new DefaultExtractorsFactory())
@@ -214,6 +218,7 @@ public class ExoMediaSourceFactory {
                 null
         )
                 .setLoadErrorHandlingPolicy(new DashDefaultLoadErrorHandlingPolicy())
+                .setSubtitleParserFactory(new JoSubtitleParserFactory()) // JoTube: the fork's WebVTT fixes
                 .createMediaSource(getManifest(formatInfo));
         if (mTrackErrorFixer != null) {
             dashSource.addEventListener(Utils.sHandler, mTrackErrorFixer);
@@ -228,6 +233,7 @@ public class ExoMediaSourceFactory {
                 null
         )
                 .setLoadErrorHandlingPolicy(new DashDefaultLoadErrorHandlingPolicy())
+                .setSubtitleParserFactory(new JoSubtitleParserFactory()) // JoTube: the fork's WebVTT fixes
                 .createMediaSource(getManifest(uri, mpdContent));
         if (mTrackErrorFixer != null) {
             dashSource.addEventListener(Utils.sHandler, mTrackErrorFixer);
@@ -246,6 +252,7 @@ public class ExoMediaSourceFactory {
                 new DefaultDashChunkSource.Factory(getMediaDataSourceFactory()),
                 null
         )
+                .setSubtitleParserFactory(new JoSubtitleParserFactory()) // JoTube: the fork's WebVTT fixes
                 .createMediaSource(getManifest(uri, mpdContent));
         if (mTrackErrorFixer != null) {
             dashSource.addEventListener(Utils.sHandler, mTrackErrorFixer);

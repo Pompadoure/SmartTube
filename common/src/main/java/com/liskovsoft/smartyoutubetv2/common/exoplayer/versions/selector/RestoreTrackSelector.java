@@ -27,8 +27,11 @@ public class RestoreTrackSelector extends DefaultTrackSelector {
     }
 
     public RestoreTrackSelector(ExoTrackSelection.Factory trackSelectionFactory) {
-        // JoTube M3: no Context, like 2.10 (Parameters.DEFAULT, no viewport/display based defaults)
-        super(Parameters.DEFAULT, trackSelectionFactory);
+        // JoTube M3: no Context, like 2.10 (Parameters.DEFAULT, no viewport/display based defaults).
+        // Media3 would also drop multichannel (> 2 ch, non-Dolby) audio from the automatic selection when it can't tell
+        // the device is a TV (no Context); 2.10 had no such constraint.
+        super(Parameters.DEFAULT.buildUpon().setConstrainAudioChannelCountToDeviceCapabilities(false).build(),
+                trackSelectionFactory);
         // Could help with Shield resolution bug?
         //setParameters(buildUponParameters().setForceHighestSupportedBitrate(true));
     }
