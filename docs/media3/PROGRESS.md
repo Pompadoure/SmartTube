@@ -16,7 +16,7 @@ a cut-off (Johan's decision 2026-10-10):
   stops it. Commit and push after every meaningful change (never more than ~15 minutes uncommitted) and keep
   `Doing now:` with each push.
 
-Doing now: 4a done (design below). Next action: 4b on m3/stage4: build the player through DefaultPreloadManager.Builder.
+Doing now: 4b pushed on m3/stage4 (player built via DefaultPreloadManager.Builder in ExoPlayerInitializer, preload selector = second RestoreTrackSelector sharing the TrackSelectorManager callback, ShortsPreloadControl). Waiting for CI; next action: 4c (ShortsQueue feeds the preload manager).
 
 Run: FINISHED 2026-10-12T10:25Z
 Run: STARTED 2026-10-12T10:34Z (manual start by Johan)

@@ -650,6 +650,14 @@ public class TrackSelectorManager implements TrackSelectorCallback {
         }
     }
 
+    /**
+     * JoTube M3: the track selector of the preload manager (Shorts) selects the preloaded Shorts through this manager too,
+     * like the playlist periods did in 2.10 (see {@link #syncWithPlayingPeriod()}).
+     */
+    public void setPreloadTrackSelector(RestoreTrackSelector selector) {
+        selector.setOnTrackSelectCallback(this);
+    }
+
     public synchronized void release() {
         if (mTrackSelector != null) {
             Log.d(TAG, "Destroying TrackSelector...");

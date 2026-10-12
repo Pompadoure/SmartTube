@@ -22,6 +22,7 @@ import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.exoplayer.source.MergingMediaSource;
 import androidx.media3.exoplayer.source.TrackGroupArray;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
+import com.liskovsoft.smartyoutubetv2.common.exoplayer.versions.selector.RestoreTrackSelector;
 import androidx.media3.exoplayer.trackselection.ExoTrackSelection;
 import androidx.media3.exoplayer.trackselection.TrackSelectionArray;
 import androidx.media3.exoplayer.trackselection.TrackSelection;
@@ -535,6 +536,10 @@ public class ExoPlayerController implements Player.Listener {
         mPlayerView = playerView;
     }
     
+    public void setPreloadTrackSelector(RestoreTrackSelector selector) {
+        mTrackSelectorManager.setPreloadTrackSelector(selector);
+    }
+
     public void setTrackSelector(DefaultTrackSelector trackSelector) {
         mTrackSelectorManager.setTrackSelector(trackSelector);
         mTunnelingTrackSelector = null;

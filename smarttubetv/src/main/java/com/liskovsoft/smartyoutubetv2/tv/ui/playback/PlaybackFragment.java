@@ -571,17 +571,25 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         initializeDoubleTapHandler();
     }
 
+    private RestoreTrackSelector newTrackSelector() {
+        return new RestoreTrackSelector(new AdaptiveTrackSelection.Factory(3_000, 25_000, 25_000, 0.85f));
+    }
+
     private void createPlayer() {
         // Use default or pass your bandwidthMeter here: bandwidthMeter = new DefaultBandwidthMeter.Builder(getContext()).build()
         // JoTube: fast start. Quality goes up as soon as 3 s is buffered and the measured bandwidth allows it.
         // M3: the bandwidth meter isn't passed to the factory any more: ExoPlayer hands its own meter (set in
         // ExoPlayerInitializer: ExoMediaSourceFactory.getBandwidthMeter) to the track selector.
-        DefaultTrackSelector trackSelector = new RestoreTrackSelector(new AdaptiveTrackSelection.Factory(
-                3_000, 25_000, 25_000, 0.85f));
+        DefaultTrackSelector trackSelector = newTrackSelector();
         mExoPlayerController.setTrackSelector(trackSelector);
 
         DefaultRenderersFactory renderersFactory = new CustomOverridesRenderersFactory(getContext());
-        mPlayer = mPlayerInitializer.createPlayer(getContext(), renderersFactory, trackSelector);
+        // JoTube M3: built together with the preload manager (Shorts); its selector selects like the player's
+        mPlayer = mPlayerInitializer.createPlayer(getContext(), renderersFactory, trackSelector, ctx -> {
+            RestoreTrackSelector preloadSelector = newTrackSelector();
+            mExoPlayerController.setPreloadTrackSelector(preloadSelector);
+            return preloadSelector;
+        });
         mPlayer.addListener(mFirstFrameListener);
         mPlayer.addListener(mTransitionStateListener);
 
