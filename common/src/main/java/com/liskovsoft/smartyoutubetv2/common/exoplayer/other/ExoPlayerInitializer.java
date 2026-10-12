@@ -83,15 +83,20 @@ public class ExoPlayerInitializer {
                         }
                         return preloadSelectorFactory.createTrackSelector(ctx);
                     });
-            player = builder.buildExoPlayer(new ExoPlayer.Builder(context));
+            player = builder.buildExoPlayer(new ExoPlayer.Builder(context).setLivePlaybackSpeedControl(createFixedLiveSpeedControl()));
             mPreloadManager = builder.build();
         } else {
             player = new ExoPlayer.Builder(context, renderersFactory)
                     .setTrackSelector(trackSelector)
                     .setLoadControl(new FastStartLoadControl(loadControl, mMaxBufferBytes))
                     .setBandwidthMeter(ExoMediaSourceFactory.getBandwidthMeter(context))
+                    .setLivePlaybackSpeedControl(createFixedLiveSpeedControl())
                     .build();
         }
+
+        // JoTube M3: 2.10 never asked the display for a frame rate; the app's own AFR (UhdHelper) does it. Without this
+        // Media3 would also call Surface.setFrameRate on API 30+ (double mode switch, even with AFR switched off).
+        player.setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF);
 
         // New initializer
         //ExoPlayer player = ExoPlayerFactory.newSimpleInstance(
@@ -116,6 +121,17 @@ public class ExoPlayerInitializer {
         mPlayer = player;
 
         return player;
+    }
+
+    /**
+     * JoTube M3: Media3 adjusts the speed of live streams (0.97-1.03x) by itself; 2.10 never did.
+     * min = max = 1 makes the control a no-op.
+     */
+    private static androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl createFixedLiveSpeedControl() {
+        return new androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl.Builder()
+                .setFallbackMinPlaybackSpeed(1f)
+                .setFallbackMaxPlaybackSpeed(1f)
+                .build();
     }
 
     /**
