@@ -30,6 +30,23 @@ public final class ShortsPreloadControl implements TargetPreloadStatusControl<In
         mState = new State(keysInFeedOrder, currentIndex);
     }
 
+    /**
+     * Preload order (lower first): next, the one after, the previous one, then the rest by distance.
+     * Keys can't be compared directly: ties and midpoint inserts would give an arbitrary order.
+     */
+    int getPriority(int key) {
+        State state = mState;
+
+        for (int i = 0; i < state.keys.length; i++) {
+            if (state.keys[i] == key) {
+                int distance = i - state.current;
+                return distance > 0 ? distance : distance == 0 ? 0 : (distance == -1 ? 3 : 100 - distance);
+            }
+        }
+
+        return Integer.MAX_VALUE;
+    }
+
     @Override
     public PreloadStatus getTargetPreloadStatus(Integer key) {
         State state = mState;
@@ -52,6 +69,10 @@ public final class ShortsPreloadControl implements TargetPreloadStatusControl<In
                 return PreloadStatus.specifiedRangeLoaded(NEXT_PRELOAD_MS);
             case 2:
                 return PreloadStatus.specifiedRangeLoaded(NEXT_2_PRELOAD_MS);
+            case 0:
+                // The playing Short: anything but NOT_PRELOADED, which would clear what was preloaded for it
+                // before the player takes the period over (review: the switch updates this before setMediaSource)
+                return PreloadStatus.specifiedRangeLoaded(NEXT_PRELOAD_MS);
             case -1:
                 return PreloadStatus.specifiedRangeLoaded(PREVIOUS_PRELOAD_MS);
             default:

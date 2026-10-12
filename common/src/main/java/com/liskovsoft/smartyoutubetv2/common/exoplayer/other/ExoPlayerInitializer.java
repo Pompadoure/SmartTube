@@ -67,7 +67,12 @@ public class ExoPlayerInitializer {
             // control and bandwidth meter (DefaultPreloadManager.Builder.buildExoPlayer). The factory is called for the
             // player first, then for the preload manager.
             final boolean[] playerSelectorGiven = {false};
-            DefaultPreloadManager.Builder builder = new DefaultPreloadManager.Builder(context, mPreloadControl)
+            DefaultPreloadManager.Builder builder = new DefaultPreloadManager.Builder(context, new DefaultPreloadManager.SimpleRankingDataComparator() {
+                        @Override
+                        public int compare(Integer key1, Integer key2) {
+                            return Integer.compare(mPreloadControl.getPriority(key1), mPreloadControl.getPriority(key2));
+                        }
+                    }, mPreloadControl)
                     .setRenderersFactory(renderersFactory)
                     .setLoadControl(new FastStartLoadControl(loadControl, mMaxBufferBytes))
                     .setBandwidthMeter(ExoMediaSourceFactory.getBandwidthMeter(context))

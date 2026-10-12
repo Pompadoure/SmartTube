@@ -186,12 +186,12 @@ public class ExoPlayerController implements Player.Listener {
         mTrackSelectorManager.onQueuedSourceSwitch();
         mOnSourceChanged = true;
         mEventListener.onSourceChanged(getVideo());
-        queue.setCurrentIndex(index);
         sSourceGeneration++;
         cancelItemEnd();
         mPlayer.setMediaSource(source);
         mPlayer.prepare();
         mPlayer.setPlayWhenReady(true);
+        queue.setCurrentIndex(index); // after the player has the source: the manager re-ranks the others
 
         return SWITCH_DONE;
     }
