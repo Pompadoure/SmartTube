@@ -7,7 +7,6 @@ import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.RelativeSizeSpan;
 import android.text.style.StyleSpan;
-import android.text.style.TypefaceSpan;
 import android.content.Context;
 import android.text.TextUtils;
 
@@ -96,9 +95,6 @@ public class ChatItemMessage implements IMessage {
             text.setSpan(new ForegroundColorSpan(dim), start, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             text.setSpan(new RelativeSizeSpan(0.85f), start, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
-
-        // Overrides the condensed font of the message layout
-        text.setSpan(new TypefaceSpan("sans-serif"), 0, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
 
         return text;
     }

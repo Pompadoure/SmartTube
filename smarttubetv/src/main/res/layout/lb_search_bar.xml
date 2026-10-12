@@ -65,7 +65,7 @@
                     android:layout_toEndOf="@+id/lb_search_bar_badge"
                     android:editable="true"
                     android:background="@null"
-                    android:fontFamily="sans-serif"
+                    android:fontFamily="@font/roboto"
                     android:focusable="true"
                     android:focusableInTouchMode="true"
                     android:imeOptions="normal|flagNoExtractUi|actionSearch"

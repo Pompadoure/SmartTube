@@ -44,7 +44,7 @@
             android:layout_marginTop="@dimen/lb_preference_decor_title_margin_top"
             android:layout_marginStart="@dimen/lb_preference_decor_title_margin_start"
             android:layout_marginEnd="@dimen/lb_preference_decor_title_margin_end"
-            android:fontFamily="sans-serif"
+            android:fontFamily="@font/roboto"
             android:textStyle="bold"
             android:gravity="center_vertical"
             android:textSize="@dimen/lb_preference_decor_title_text_size"

@@ -416,10 +416,15 @@ public class MultiGridFragment extends Fragment implements BrowseSupportFragment
 
         @Override
         public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-            if (position == 0) {
-                ((FrameLayout) holder.itemView).addView(mGridViewHolder1.view);
-            } else if (position == 1) {
-                ((FrameLayout) holder.itemView).addView(mGridViewHolder2.view);
+            View gridView = position == 0 ? mGridViewHolder1.view : position == 1 ? mGridViewHolder2.view : null;
+
+            if (gridView != null) {
+                // JoTube M3: the dock lays out again when a grid is hidden/shown: the view may still sit in its old holder
+                if (gridView.getParent() instanceof ViewGroup) {
+                    ((ViewGroup) gridView.getParent()).removeView(gridView);
+                }
+
+                ((FrameLayout) holder.itemView).addView(gridView);
             }
         }
 

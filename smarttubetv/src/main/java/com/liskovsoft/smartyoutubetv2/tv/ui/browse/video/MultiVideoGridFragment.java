@@ -144,6 +144,18 @@ public class MultiVideoGridFragment extends MultiGridFragment implements VideoSe
         grid1.setVisibility(hidden ? View.GONE : View.VISIBLE);
         grid2.setNumColumns(Math.max(hidden ? mMaxColsNum : mMaxColsNum - 1, 1));
 
+        // The dock sizes its cells again: the second grid takes the room of the first one
+        grid2.requestLayout();
+
+        if (grid2.getParent() instanceof View) {
+            View cell = (View) grid2.getParent();
+            cell.requestLayout();
+
+            if (cell.getParent() instanceof View) {
+                ((View) cell.getParent()).requestLayout();
+            }
+        }
+
         if (grid1.getParent() instanceof View) {
             ((View) grid1.getParent()).requestLayout();
         }
