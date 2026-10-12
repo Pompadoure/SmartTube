@@ -1,69 +1,27 @@
-# Task: port the renderer/decoder group of JoTube to AndroidX Media3 1.11.1
+# Independent review of JoTube M3 stage 2c (Media3 port of the app's player path)
 
-Context: this repo (JoTube, an Android TV YouTube app, SmartTube fork) is being moved from a forked ExoPlayer 2.10.6
-(`exoplayer-amzn-2.10.6/`, kept only as a reference, no longer built) to AndroidX Media3 **1.11.1**
-(`androidx.media3:*`). The gradle swap and the mechanical import renames (`com.google.android.exoplayer2.X` ->
-`androidx.media3.*`) are already done; now each file has to be fixed by hand so it compiles against the real
-Media3 1.11.1 API. There is no Android SDK here, so you can't compile: work carefully from your knowledge of the
-Media3 1.11.1 API, and prefer APIs you are sure exist in 1.11.1. The old 2.10.6 sources in
-`exoplayer-amzn-2.10.6/library/core/src/main/java/com/google/android/exoplayer2/` show what each old call did.
+You are an independent reviewer. You did not write this code. Repo: JoTube (Johan's Android TV YouTube app, a
+SmartTube fork). This branch is `m3/stage2`: the app moved from a forked ExoPlayer 2.10.6 to AndroidX Media3 1.11.1
+plus a ported SABR module `:media3-sabr` (SABR = YouTube's streaming protocol; that module was reviewed already in 2b).
+CI is green (the APK builds, 20 SABR unit tests pass). Read `CLAUDE.md`, `docs/media3/PLAN.md`,
+`docs/media3/PROGRESS.md`, `docs/media3/INVENTORY.md` and the other files in `docs/media3/` first.
 
-## Files to port (ONLY these; under `common/src/main/java/com/liskovsoft/smartyoutubetv2/common/exoplayer/`)
-- `versions/renderer/CustomRenderersFactoryBase.java`
-- `versions/renderer/CustomOverridesRenderersFactory.java`
-- `versions/renderer/TweaksMediaCodecVideoRenderer.java`
-- `versions/renderer/DebugInfoMediaCodecVideoRenderer.java`
-- `versions/renderer/DelayMediaCodecAudioRenderer.java`
-- `versions/selector/BlacklistMediaCodecSelector.java`
-- `other/DebugInfoManager.java`
-- `other/VolumeBooster.java`
+Review the app-side changes of 2c: `git diff origin/media3...HEAD -- common smarttubetv doubletapplayerview` (use
+`git log origin/media3..HEAD --stat` to see the commits; if origin/media3 isn't available use `git log -15` and the
+commits starting with "M3 2c"). Do NOT edit any source file. Only write `.claude-task/REPORT.md`.
 
-## Errors the CI compiler reported in these files (javac, Media3 1.11.1)
-- TweaksMediaCodecVideoRenderer:51 `MediaCodec cannot be converted to MediaCodecAdapter`; :87 method does not
-  override a supertype method; :93 cannot find symbol
-- DebugInfoMediaCodecVideoRenderer: 9 errors (constructor/overrides/counters)
-- DelayMediaCodecAudioRenderer: 5 errors
-- CustomOverridesRenderersFactory: 11 errors (buildAudioRenderers/buildVideoRenderers signatures,
-  FrameworkMediaCrypto/DrmSessionManager gone, AmazonQuirks gone)
-- BlacklistMediaCodecSelector:80 no override, :82 cannot find symbol (MediaCodecSelector.getDecoderInfos now has
-  `(String mimeType, boolean requiresSecureDecoder, boolean requiresTunnelingDecoder)` and throws DecoderQueryException)
-- DebugInfoManager: 11 errors; VolumeBooster: 3 errors
+Look for, in this order:
+1. Behaviour lost or changed in the port (compare each changed method with its old ExoPlayer 2.10 version in the diff):
+   track selection, the SABR/DASH source setup in ExoMediaSourceFactory, load error handling/retry delays, renderers
+   (decoder reuse, tunneling off, frame rate), the player controller and listeners (first frame, errors ->
+   ErrorFixerController/TrackErrorFixer, onPlayEnd, position discontinuity), PlaybackFragment / leanback glue /
+   ForwardingPlayer replacing the queue navigator and control dispatcher, MediaSession, subtitles, the Shorts queue
+   (ShortsQueue, FastStartLoadControl, PlayedPeriodsPolicy) and anything stubbed out or turned into a no-op.
+2. Media3 API misuse you are sure about (wrong thread, listener never removed, Player methods called on a released
+   player, deprecated-and-changed semantics, e.g. ConcatenatingMediaSource vs playlist API, Player.Listener event order).
+3. Anything that could make video start slower than before, or break the rule "never fetch format info in parallel and
+   never cancel such a fetch half-way".
 
-## Target APIs (Media3 1.11.1)
-- `DefaultRenderersFactory.buildVideoRenderers(Context, @ExtensionRendererMode int, MediaCodecSelector,
-  boolean enableDecoderFallback, Handler, VideoRendererEventListener, long allowedVideoJoiningTimeMs,
-  ArrayList<Renderer>)` and `buildAudioRenderers(Context, int, MediaCodecSelector, boolean enableDecoderFallback,
-  AudioSink, Handler, AudioRendererEventListener, ArrayList<Renderer>)`. No DRM parameters any more.
-- Renderer constructors: `MediaCodecVideoRenderer(Context, MediaCodecAdapter.Factory, MediaCodecSelector,
-  long allowedJoiningTimeMs, boolean enableDecoderFallback, Handler, VideoRendererEventListener,
-  int maxDroppedFramesToNotify)` and `MediaCodecAudioRenderer(Context, MediaCodecAdapter.Factory,
-  MediaCodecSelector, boolean enableDecoderFallback, Handler, AudioRendererEventListener, AudioSink)`; use
-  `getCodecAdapterFactory()` of DefaultRenderersFactory where a factory is needed (or
-  `MediaCodecAdapter.Factory.getDefault(context)`).
-- Video renderer hooks now take `MediaCodecAdapter codec` instead of `MediaCodec codec` (e.g.
-  `renderOutputBuffer(MediaCodecAdapter, int, long)`, `renderOutputBufferV21(MediaCodecAdapter, int, long, long)`,
-  `skipOutputBuffer(MediaCodecAdapter, int, long)`, `dropOutputBuffer(...)`), `codecNeedsSetOutputSurfaceWorkaround(String)`
-  still exists (protected). Decoder counters: `decoderCounters` field / `DecoderCounters` in
-  `androidx.media3.exoplayer`. Check what each JoTube override really does and keep the same behaviour.
-- AudioSink: build with `new DefaultAudioSink.Builder(context).setAudioProcessorChain(...)/setAudioProcessors(...)
-  .build()`; `AudioCapabilities` now via `AudioCapabilities.getCapabilities(context)` if still needed; override
-  `buildAudioSink(Context, boolean enableFloatOutput, boolean enableAudioTrackPlaybackParams)` in the renderers
-  factory if JoTube adds processors.
-- Amazon-only code (`AmazonQuirks`, Fire TV quirks) has no Media3 counterpart: drop it with a short `// M3:` comment.
-- VolumeBooster: old `AudioListener`/`AudioRendererEventListener` usage -> `Player.Listener` /
-  `AnalyticsListener.onAudioSessionIdChanged(EventTime, int)`; `ExoPlayer.getAudioSessionId()` exists.
-- DebugInfoManager: `SimpleExoPlayer` -> `ExoPlayer`; `getVideoFormat()/getAudioFormat()`,
-  `getVideoDecoderCounters()/getAudioDecoderCounters()` exist on ExoPlayer; `Format.frameRate`, `Format.codecs`,
-  `Format.bitrate` stay fields; `ExoPlayerLibraryInfo.VERSION_SLASHY` -> `MediaLibraryInfo.VERSION_SLASHY`
-  (androidx.media3.common); playback state constants on `Player`.
-
-## Rules
-- Keep every JoTube behaviour (frame-drop tweaks, audio delay, codec blacklist, debug overlay values, volume
-  boost). If something truly can't be kept, leave a `// M3: <what and why>` comment and mention it in REPORT.md.
-- Most Media3 APIs are `@UnstableApi`: lint is configured to allow it, no annotations needed.
-- Do NOT touch any other file: not the old `exoplayer-amzn-2.10.6/`, not `media3-sabr/`, not gradle files, not
-  `MediaServiceCore`, not `.github/`. Other app files are being ported in parallel by someone else.
-- Public method names/signatures that other app files call (e.g. `new CustomOverridesRenderersFactory(context)`,
-  DebugInfoManager's public methods, VolumeBooster's public API) must stay the same.
-- The result must compile against Media3 1.11.1 (double-check every overridden method signature and constructor).
-- In REPORT.md list per file what changed and anything you are unsure about.
+Write `.claude-task/REPORT.md`: a list of findings, each with file:line, severity (BLOCKER / SHOULD-FIX / NIT), what
+breaks for the user (concrete scenario) and the suggested fix. Mark anything you are not sure about as "UNVERIFIED"
+(you cannot read the Media3 sources here). End with a short list of what you checked and found fine. Be concise.
