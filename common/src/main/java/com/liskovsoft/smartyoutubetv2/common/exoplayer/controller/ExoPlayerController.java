@@ -468,6 +468,13 @@ public class ExoPlayerController implements Player.Listener {
     public void setPlayer(ExoPlayer player) {
         mPlayer = player;
         player.addListener(this);
+        player.addAnalyticsListener(new androidx.media3.exoplayer.analytics.AnalyticsListener() {
+            @Override
+            public void onVideoDecoderInitialized(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime, String decoderName,
+                                                  long initializedTimestampMs, long initializationDurationMs) {
+                JoTubeTiming.mark("video decoder " + decoderName + " init " + initializationDurationMs + " ms");
+            }
+        });
         sCurrent = new WeakReference<>(this);
     }
 
@@ -564,9 +571,15 @@ public class ExoPlayerController implements Player.Listener {
         return ExoFormatItem.from(mTrackSelectorManager.getSelectedTrack(rendererIndex));
     }
 
+    @Override
+    public void onPlaybackStateChanged(int playbackState) {
+        JoTubeTiming.mark("player state " + playbackState); // 2 = buffering, 3 = ready
+    }
+
     @SuppressWarnings("deprecation")
     @Override
     public void onTracksChanged(Tracks tracks) {
+        JoTubeTiming.mark("tracks changed");
         // M3: the 2.10 callback got the renderer track groups and selections; ExoPlayer still exposes both
         // (deprecated getters), which keeps the per-renderer logic below unchanged.
         TrackGroupArray trackGroups = mPlayer != null ? mPlayer.getCurrentTrackGroups() : TrackGroupArray.EMPTY;

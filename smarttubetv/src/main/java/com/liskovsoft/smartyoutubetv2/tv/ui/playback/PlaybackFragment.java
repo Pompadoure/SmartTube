@@ -1365,6 +1365,12 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
     @Override
     public void setAspectRatio(float ratio) {
+        Video video = getVideo();
+
+        if (ratio > 0 && video != null && video.isShorts && !video.isLive) {
+            mShortsPanel.setVideoAspect(ratio); // the frame is shaped before the first frame
+        }
+
         setAspect(ratio);
     }
 

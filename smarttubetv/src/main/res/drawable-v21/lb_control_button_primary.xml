@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- JoTube M3: round, softly translucent buttons (like the official TV player); brighter when focused -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@color/lb_control_button_color" >
+
+    <item android:id="@android:id/background">
+        <selector android:constantSize="true" >
+            <item android:state_focused="true">
+                <shape android:shape="oval" >
+                    <solid android:color="#66FFFFFF" />
+                    <size
+                        android:height="@dimen/lb_control_button_diameter"
+                        android:width="@dimen/lb_control_button_diameter" />
+                    <stroke android:width="1dp" android:color="#00FFFFFF"/>
+                </shape>
+            </item>
+            <item>
+                <shape android:shape="oval" >
+                    <solid android:color="#26FFFFFF" />
+                    <size
+                        android:height="@dimen/lb_control_button_diameter"
+                        android:width="@dimen/lb_control_button_diameter" />
+                    <stroke android:width="1dp" android:color="#00FFFFFF"/>
+                </shape>
+            </item>
+        </selector>
+    </item>
+
+    <item android:id="@android:id/mask">
+        <shape android:shape="oval" >
+            <solid android:color="#000000" />
+            <size
+                android:height="@dimen/lb_control_button_diameter"
+                android:width="@dimen/lb_control_button_diameter" />
+            <stroke android:width="1dp" android:color="#00FFFFFF"/>
+        </shape>
+    </item>
+
+</ripple>

@@ -1282,6 +1282,18 @@ public class VideoLoaderController extends BasePlayerController {
             return;
         }
 
+        // JoTube M3: a Short's frame gets its shape from the format info (SABR too), not only when the first frame is
+        // decoded: switching between normal and wide Shorts doesn't wait for the decoder
+        if (!formatInfo.containsDashFormats() && getVideo() != null && getVideo().isShorts &&
+                formatInfo.getAdaptiveFormats() != null) {
+            for (MediaFormat format : formatInfo.getAdaptiveFormats()) {
+                if (format != null && format.getWidth() > 0 && format.getHeight() > 0) {
+                    getPlayer().setAspectRatio((float) format.getWidth() / format.getHeight());
+                    return;
+                }
+            }
+        }
+
         // Fix stretched video for a couple milliseconds (before the onVideoSizeChanged gets called)
         if (formatInfo.containsDashFormats()) {
             MediaFormat format = formatInfo.getAdaptiveFormats().get(0);

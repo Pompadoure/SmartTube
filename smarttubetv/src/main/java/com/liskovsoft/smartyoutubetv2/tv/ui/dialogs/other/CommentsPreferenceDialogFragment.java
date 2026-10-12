@@ -4,6 +4,7 @@ import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.widget.FrameLayout;
 import android.view.ViewGroup;
 import android.widget.TextView;
 import androidx.annotation.Nullable;
@@ -171,7 +172,35 @@ public class CommentsPreferenceDialogFragment extends LeanbackPreferenceDialogFr
             ViewUtil.enableLeftDialog(getActivity(), container);
         }
 
+        widenDialog(view);
+
         return view;
+    }
+
+    /**
+     * JoTube M3: a bigger comments field, it grows from the screen edge towards the middle of the screen.
+     */
+    private void widenDialog(View view) {
+        view.post(() -> {
+            if (getActivity() == null) {
+                return;
+            }
+
+            View container = getActivity().findViewById(R.id.settings_preference_fragment_container);
+
+            if (container == null || !(container.getLayoutParams() instanceof FrameLayout.LayoutParams)) {
+                return;
+            }
+
+            int screenWidth = getResources().getDisplayMetrics().widthPixels;
+            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) container.getLayoutParams();
+            int wanted = Math.round(screenWidth * 0.48f);
+
+            if (params.width < wanted) {
+                params.width = wanted;
+                container.setLayoutParams(params);
+            }
+        });
     }
 
     private void appendMessage(MessagesListAdapter<ChatItemMessage> adapter, ChatItemMessage message) {
