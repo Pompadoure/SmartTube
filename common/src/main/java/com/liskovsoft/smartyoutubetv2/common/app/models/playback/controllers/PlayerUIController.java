@@ -153,43 +153,73 @@ public class PlayerUIController extends BasePlayerController {
 
         boolean enabled = buttonState == PlayerUI.BUTTON_ON;
 
-        // First run
-        if (FormatItem.SUBTITLE_NONE.equals(getPlayerData().getLastSubtitleFormat())) {
-            onSubtitleLongClicked();
+        // JoTube: a short press only toggles (the long press opens the menu)
+        if (enabled) {
+            getPlayer().setFormat(FormatItem.SUBTITLE_NONE);
+            getPlayerData().setFormat(FormatItem.SUBTITLE_NONE);
+            getPlayer().setButtonState(R.id.lb_control_closed_captioning, PlayerUI.BUTTON_OFF);
+            enableSubtitleForChannel(false);
             return;
         }
 
-        // Only default in the list
-        if (getPlayer().getSubtitleFormats() == null || getPlayer().getSubtitleFormats().size() == 1) {
+        List<FormatItem> available = getPlayer().getSubtitleFormats();
+
+        // Only default in the list: nothing to turn on
+        if (available == null || available.size() <= 1) {
             return;
         }
 
-        FormatItem matchedFormat = null;
+        // Default: English, then auto-generated English, then the last used track/language
+        FormatItem matchedFormat = findEnglishSubtitle(available, false);
 
-        for (FormatItem item : getPlayerData().getLastSubtitleFormats()) {
-            if (getPlayer().getSubtitleFormats().contains(item)) {
-                matchedFormat = item;
-                break;
+        if (matchedFormat == null) {
+            matchedFormat = findEnglishSubtitle(available, true);
+        }
+
+        if (matchedFormat == null) {
+            for (FormatItem item : getPlayerData().getLastSubtitleFormats()) {
+                if (available.contains(item) && !item.isDefault()) {
+                    matchedFormat = item;
+                    break;
+                }
             }
         }
 
-        // JoTube: turning on without the exact track (e.g. only auto-generated here): the same language will do,
-        // instead of opening the menu every time
-        if (matchedFormat == null && !enabled) {
+        if (matchedFormat == null) {
             matchedFormat = findSubtitleByLanguage();
         }
 
-        // Match found
         if (matchedFormat != null) {
-            FormatItem format = enabled ? FormatItem.SUBTITLE_NONE : matchedFormat;
-            getPlayer().setFormat(format);
-            getPlayerData().setFormat(format);
-            getPlayer().setButtonState(R.id.lb_control_closed_captioning, !FormatItem.SUBTITLE_NONE.equals(matchedFormat) && !enabled ? PlayerUI.BUTTON_ON : PlayerUI.BUTTON_OFF);
-            enableSubtitleForChannel(!enabled);
+            getPlayer().setFormat(matchedFormat);
+            getPlayerData().setFormat(matchedFormat);
+            getPlayer().setButtonState(R.id.lb_control_closed_captioning, PlayerUI.BUTTON_ON);
+            enableSubtitleForChannel(true);
         } else {
-            // Match not found
+            // No usable track: let the user pick
             onSubtitleLongClicked();
         }
+    }
+
+    private FormatItem findEnglishSubtitle(List<FormatItem> formats, boolean auto) {
+        for (FormatItem item : formats) {
+            if (item == null || item.isDefault()) {
+                continue;
+            }
+
+            String language = item.getLanguage();
+
+            if (SubtitleTrack.isAuto(language) != auto) {
+                continue;
+            }
+
+            String code = getLanguageCode(item);
+
+            if ("en".equals(code) || "english".equals(code)) {
+                return item;
+            }
+        }
+
+        return null;
     }
 
     private FormatItem findSubtitleByLanguage() {
