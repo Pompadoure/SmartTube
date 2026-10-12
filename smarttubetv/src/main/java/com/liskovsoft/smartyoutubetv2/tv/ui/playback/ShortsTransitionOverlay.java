@@ -31,7 +31,7 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitio
  */
 public class ShortsTransitionOverlay {
     // The slide starts when the new video is already playing (its first frame came during the hold)
-    private static final int SWIPE_DURATION_MS = 260;
+    private static final int SWIPE_DURATION_MS = 200;
     private static final int REVEAL_DURATION_MS = 120; // the black cover over the moving video fades out
     private static final int FADE_OUT_DURATION_MS = 120;
     private static final int FAILSAFE_HIDE_MS = 10_000;

@@ -362,7 +362,22 @@ public class VideoLoaderController extends BasePlayerController {
                     if (now != null && videoId.equals(now.videoId) && getPlayer() != null) {
                         getPlayer().setVideo(now); // already on it: the panel gets the avatar now
                     }
+
+                    // JoTube M3: the Short after the next one too (swiping fast: its avatar is there as well)
+                    Video after = shortAfter(now, next);
+                    Utils.postDelayed(() -> prefetchMetadata(after), 100); // the running action is done by then
                 }, error -> Log.e(TAG, "Shorts: metadata prefetch failed for %s: %s", videoId, error.getMessage()));
+    }
+
+    private Video shortAfter(Video current, Video prefetched) {
+        if (current == null || prefetched == null) {
+            return null;
+        }
+
+        List<Video> ahead = getShortsLookahead(current);
+        int index = ahead.indexOf(prefetched);
+
+        return index >= 0 && index + 1 < ahead.size() ? ahead.get(index + 1) : null;
     }
 
     /**
