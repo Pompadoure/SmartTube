@@ -52,6 +52,7 @@ public class ShortsSidePanel {
     private static final int ITEM_COMMENTS = 3;
     private static final int ITEM_CC = 4;
     private static final int ITEM_LAST = ITEM_CC;
+    private static final float DEFAULT_ASPECT = 9f / 16f;
     private static final int FOCUS_TIMEOUT_MS = 10_000;
     private static final int MIN_WIDTH_DP = 180;
     private static final int MAX_WIDTH_DP = 460;
@@ -87,6 +88,7 @@ public class ShortsSidePanel {
     private ImageView mAvatar;
     private TextView mAuthor;
     private final ImageView[] mButtons = new ImageView[ITEM_LAST + 1]; // index = item (channel slot unused)
+    private float mVideoAspect = DEFAULT_ASPECT;
     private boolean mFrameEnabled; // a Short is playing: the video sits in a fixed 9:16 frame
     private TextView mLikeCount;
     private Callback mCallback;
@@ -662,10 +664,30 @@ public class ShortsSidePanel {
     }
 
     /**
-     * JoTube: the frame is square (1:1), a bit bigger than the old 9:16 one. 9:16 videos are fitted by height as before.
+     * JoTube: default frame is 9:16. A wider video (square, landscape) widens the frame to the left,
+     * as far as the video's own aspect (and the free room on the left) allows.
      */
+    public void setVideoAspect(float aspect) {
+        float newAspect = aspect > 0 ? aspect : DEFAULT_ASPECT;
+
+        if (Math.abs(newAspect - mVideoAspect) < 0.01f) {
+            return;
+        }
+
+        mVideoAspect = newAspect;
+        mHandler.post(mUpdatePosition);
+    }
+
     private int getFrameWidth(int rootHeight) {
-        return getFrameHeight(rootHeight);
+        int frameHeight = getFrameHeight(rootHeight);
+        int defaultWidth = Math.round(frameHeight * DEFAULT_ASPECT);
+        int wanted = Math.round(frameHeight * mVideoAspect);
+        int rootWidth = mRoot != null ? mRoot.getWidth() : 0;
+        // The right edge is fixed (see getFrameOffsetX), the left one keeps a margin to the screen edge
+        int rightEdge = rootWidth / 2 + defaultWidth / 2;
+        int maxWidth = rootWidth > 0 ? rightEdge - dp(FRAME_MARGIN_DP) : wanted;
+
+        return Math.max(defaultWidth, Math.min(wanted, maxWidth));
     }
 
     /**
