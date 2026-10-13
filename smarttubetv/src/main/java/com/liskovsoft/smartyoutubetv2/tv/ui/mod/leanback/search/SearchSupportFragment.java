@@ -934,6 +934,37 @@ public class SearchSupportFragment extends Fragment {
 
         fadeColumnView(mKeyboard, hidden, shift, true);
         fadeColumnView(mSuggestionGrid, hidden, shift, mSuggestionAdapter != null && mSuggestionAdapter.size() > 0);
+        slideResultsFrame(hidden);
+    }
+
+    /**
+     * The results take the whole screen while the keyboard is away: the frame slides over the keyboard's width, then
+     * its left margin is changed in one step (no per-frame relayout of the grid).
+     */
+    private void slideResultsFrame(boolean hidden) {
+        View frame = mFragmentRoot != null ? mFragmentRoot.findViewById(R.id.lb_results_frame) : null;
+
+        if (frame == null || !(frame.getLayoutParams() instanceof android.view.ViewGroup.MarginLayoutParams)) {
+            return;
+        }
+
+        android.view.ViewGroup.MarginLayoutParams params = (android.view.ViewGroup.MarginLayoutParams) frame.getLayoutParams();
+        int width = getResources().getDimensionPixelSize(com.liskovsoft.smartyoutubetv2.tv.R.dimen.search_keyboard_area_width);
+
+        frame.animate().cancel();
+
+        if (hidden) {
+            frame.animate().translationX(-width).setDuration(COLUMN_FADE_MS).withEndAction(() -> {
+                params.setMarginStart(0);
+                frame.setLayoutParams(params);
+                frame.setTranslationX(0f);
+            }).start();
+        } else {
+            params.setMarginStart(width);
+            frame.setLayoutParams(params);
+            frame.setTranslationX(-width);
+            frame.animate().translationX(0f).setDuration(COLUMN_FADE_MS).start();
+        }
     }
 
     private void fadeColumnView(View view, boolean hide, float shift, boolean visibleWhenShown) {
