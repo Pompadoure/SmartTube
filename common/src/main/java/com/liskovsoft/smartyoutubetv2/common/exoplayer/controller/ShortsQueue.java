@@ -29,6 +29,7 @@ public final class ShortsQueue {
     // Stream urls are valid for ~6 h, the poToken ~12 h. Stay well below.
     public static final long FORMAT_INFO_MAX_AGE_MS = 60 * 60 * 1000;
     private static volatile ShortsQueue sActive;
+    private static volatile Runnable sChangeListener; // JoTube: the preview player follows the queue
 
     private static final class Entry {
         final String videoId;
@@ -129,6 +130,7 @@ public final class ShortsQueue {
 
         if (!mReleased && index >= 0 && index < mEntries.size()) {
             publish();
+            notifyChanged();
             removeFarBehind(index);
             mPreloadManager.setCurrentPlayingIndex(mEntries.get(index).key);
             mPreloadManager.invalidate(); // preload around the new position
@@ -188,6 +190,7 @@ public final class ShortsQueue {
 
         mEntries.add(index, new Entry(formatInfo, source, key));
         publish();
+        notifyChanged();
         mPreloadManager.add(source, key);
 
         if (!mPreloadHeld) {
@@ -210,6 +213,33 @@ public final class ShortsQueue {
         if (!mReleased && mEntries.size() > 1) {
             mPreloadManager.invalidate();
         }
+    }
+
+    public static void setChangeListener(@Nullable Runnable listener) {
+        sChangeListener = listener;
+    }
+
+    private static void notifyChanged() {
+        Runnable listener = sChangeListener;
+
+        if (listener != null) {
+            listener.run();
+        }
+    }
+
+    /**
+     * JoTube: format info of the Short that plays after the current one (null if none or its urls are stale).
+     */
+    public static MediaItemFormatInfo getNextFormatInfo() {
+        ShortsQueue queue = sActive;
+
+        if (queue == null || queue.mReleased) {
+            return null;
+        }
+
+        int index = queue.mCurrentIndex + 1;
+
+        return queue.isActual(index) ? queue.mEntries.get(index).formatInfo : null;
     }
 
     private void publish() {

@@ -100,6 +100,7 @@ public class PlayerTweaksData implements ProfileChangeListener {
     private boolean mIsSyncRowButtonIndexEnabled;
     private boolean mIsUnsafeAudioFormatsEnabled;
     private boolean mIsLoopShortsEnabled;
+    private boolean mIsShortsPreviewPlayerEnabled; // JoTube media3: second player shows the next Short's first frame
     private boolean mIsQuickSkipShortsEnabled;
     private boolean mIsQuickSkipShortsAltEnabled;
     private boolean mIsQuickSkipVideosEnabled;
@@ -569,6 +570,15 @@ public class PlayerTweaksData implements ProfileChangeListener {
         persistData();
     }
 
+    public boolean isShortsPreviewPlayerEnabled() {
+        return mIsShortsPreviewPlayerEnabled;
+    }
+
+    public void setShortsPreviewPlayerEnabled(boolean enable) {
+        mIsShortsPreviewPlayerEnabled = enable;
+        persistData();
+    }
+
     public boolean isLoopShortsEnabled() {
         return mIsLoopShortsEnabled;
     }
@@ -764,6 +774,7 @@ public class PlayerTweaksData implements ProfileChangeListener {
         mIsQuickSkipVideosAltEnabled = Helpers.parseBoolean(split, 58, false);
         mIsAudioTimeStretchingEnabled = Helpers.parseBoolean(split, 59, true);
         mIsQueueRespectsPlaybackMode = Helpers.parseBoolean(split, 60, false);
+        mIsShortsPreviewPlayerEnabled = Helpers.parseBoolean(split, 61, false);
 
         updateDefaultValues();
     }
@@ -791,7 +802,8 @@ public class PlayerTweaksData implements ProfileChangeListener {
                 mIsUnsafeAudioFormatsEnabled, null, mIsLoopShortsEnabled, mIsQuickSkipShortsEnabled, mIsRememberPositionOfLiveVideosEnabled,
                 mIsOculusQuestFixEnabled, null, mIsExtraLongSpeedListEnabled, mIsQuickSkipVideosEnabled, mIsNetworkErrorFixingDisabled, mIsCommentsPlacedLeft,
                 null, mIsAudioFocusEnabled, mIsDontResizeVideoToFitDialogEnabled, mIsSuggestionsHorizontallyScrolled,
-                mIsQuickSkipShortsAltEnabled, mIsQuickSkipVideosAltEnabled, mIsAudioTimeStretchingEnabled, mIsQueueRespectsPlaybackMode
+                mIsQuickSkipShortsAltEnabled, mIsQuickSkipVideosAltEnabled, mIsAudioTimeStretchingEnabled, mIsQueueRespectsPlaybackMode,
+                mIsShortsPreviewPlayerEnabled
                 ));
     }
 

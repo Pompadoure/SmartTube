@@ -656,6 +656,7 @@
     <string name="auto_frame_rate_desc">This option removes jittering on scenes where the camera moves fast, e.g. sports streaming</string>
     <string name="channel_filter_hint">Filter channels</string>
     <string name="player_loop_shorts">Loop Shorts</string>
+    <string name="player_shorts_preview">Shorts: preview player for the next Short (beta)</string>
     <string name="player_quick_shorts_skip">Skip Shorts with left/right buttons</string>
     <string name="player_quick_shorts_skip_alt">Skip Shorts with up/down buttons</string>
     <string name="player_quick_skip_videos">Skip regular videos with left/right buttons</string>

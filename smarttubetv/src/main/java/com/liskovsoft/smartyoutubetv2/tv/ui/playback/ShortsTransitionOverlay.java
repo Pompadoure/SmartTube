@@ -71,6 +71,9 @@ public class ShortsTransitionOverlay {
     private int mFrameWidth;
     private int mFrameHeight;
     private int mFrameOffsetX;
+    private ShortsPreview mPreview; // JoTube: the real first frame of the next Short (second player), optional
+    private boolean mPreviewEnabled;
+    private boolean mPreviewActive; // the preview slides in with this swipe
     private Runnable mAtSlideStart; // the page (background, frame shape, panel) changes together with the slide
     private final Runnable mAtSlideStartTimeout = this::flushAtSlideStart;
     private boolean mOutFrozen; // a swipe is on: the outgoing picture keeps its shape
@@ -80,6 +83,11 @@ public class ShortsTransitionOverlay {
     private long mDiagLastFrameMs;
     private long mDiagMaxGapMs;
     private int mDiagFrames;
+
+    public void setPreview(ShortsPreview preview, boolean enabled) {
+        mPreview = preview;
+        mPreviewEnabled = enabled;
+    }
 
     /**
      * Place the overlay right above the video surface and below the player controls.
@@ -101,6 +109,10 @@ public class ShortsTransitionOverlay {
         int index = mSurfaceRoot != null ? root.indexOfChild(mSurfaceRoot) + 1 : Math.min(1, root.getChildCount());
         root.addView(mContainer, index, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        if (mPreview != null) {
+            mPreview.attach(root, index + 1, mPreviewEnabled);
+        }
     }
 
     private static ImageView createImage(FrameLayout container) {
@@ -117,6 +129,9 @@ public class ShortsTransitionOverlay {
      * JoTube: in the Shorts frame the images cover only the frame (0 = the whole screen).
      */
     public void setFrame(int width, int height, int offsetX) {
+        if (mPreview != null) {
+            mPreview.setFrame(width, height, offsetX);
+        }
         setImageSize(mIn, width, height);
         // JoTube: the frame is not in the middle (the right edge is fixed)
         if (mIn != null) {
@@ -174,6 +189,10 @@ public class ShortsTransitionOverlay {
         mHoldStart = null;
         mSnapshotTimeout = null;
         mAtSlideStart = null;
+        mPreviewActive = false;
+        if (mPreview != null) {
+            mPreview.detach();
+        }
         flushAfterSnapshot();
         mFirstFrameRendered = false;
         mSwipeId++;
@@ -488,6 +507,15 @@ public class ShortsTransitionOverlay {
         mIn.setTranslationY(inStart);
         setSurfaceOffset(inStart);
 
+        // The real first frame of the new Short (second player) slides in instead of the blurred cover
+        mPreviewActive = mPreview != null && !mFirstFrameRendered && mTargetVideo != null &&
+                mPreview.isReadyFor(mTargetVideo.videoId);
+        if (mPreviewActive) {
+            mPreview.setAlpha(1f);
+            mPreview.setOffsetY(inStart);
+        }
+        Log.d(TAG, "Preview frame used for this slide: %s", mPreviewActive);
+
         flushAtSlideStart();
         mDiagLastFrameMs = 0;
         mDiagMaxGapMs = 0;
@@ -512,6 +540,9 @@ public class ShortsTransitionOverlay {
             mOut.setTranslationY(outStart + (outEnd - outStart) * fraction);
             mIn.setTranslationY(inOffset);
             setSurfaceOffset(inOffset);
+            if (mPreviewActive) {
+                mPreview.setOffsetY(inOffset);
+            }
         });
         mSwipe.addListener(new AnimatorListenerAdapter() {
             private boolean mCancelled;
@@ -553,6 +584,11 @@ public class ShortsTransitionOverlay {
             // The new video is in place and playing
             mIsShown = false;
             mHandler.removeCallbacks(mFailsafeHide);
+
+            if (mPreviewActive) {
+                mPreviewActive = false;
+                mPreview.fadeOutAndConsume(REVEAL_DURATION_MS);
+            }
 
             if (mIn.getVisibility() == View.VISIBLE && mIn.getAlpha() > 0.01f) {
                 // The black cover is still fading out: let it finish (no black step)
@@ -649,6 +685,10 @@ public class ShortsTransitionOverlay {
             // In the middle of the swipe: uncover the new video, it keeps moving into place
             mIn.animate().cancel();
             mIn.animate().alpha(0f).setDuration(REVEAL_DURATION_MS).start();
+            if (mPreviewActive) {
+                mPreviewActive = false;
+                mPreview.fadeOutAndConsume(REVEAL_DURATION_MS);
+            }
             return;
         }
 
@@ -744,6 +784,10 @@ public class ShortsTransitionOverlay {
             return;
         }
 
+        if (mPreviewActive && mPreview != null) {
+            mPreview.consumed();
+            mPreviewActive = false;
+        }
         setSurfaceOffset(0);
         mContainer.setVisibility(View.GONE);
         mContainer.setAlpha(1f);

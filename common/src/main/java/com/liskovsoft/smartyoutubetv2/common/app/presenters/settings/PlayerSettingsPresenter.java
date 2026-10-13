@@ -391,6 +391,10 @@ public class PlayerSettingsPresenter extends BasePresenter<Void> {
                 option -> mPlayerTweaksData.setLoopShortsEnabled(option.isSelected()),
                 mPlayerTweaksData.isLoopShortsEnabled()));
 
+        options.add(UiOptionItem.from(getContext().getString(R.string.player_shorts_preview),
+                option -> mPlayerTweaksData.setShortsPreviewPlayerEnabled(option.isSelected()),
+                mPlayerTweaksData.isShortsPreviewPlayerEnabled()));
+
         options.add(UiOptionItem.from(getContext().getString(R.string.place_chat_left),
                 option -> mPlayerTweaksData.setChatPlacedLeft(option.isSelected()),
                 mPlayerTweaksData.isChatPlacedLeft()));

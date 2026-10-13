@@ -130,6 +130,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     private String mSelectedVideoId;
     private final ShortsTransitionOverlay mShortsTransition = new ShortsTransitionOverlay();
     private final ShortsBackground mShortsBackground = new ShortsBackground();
+    private final ShortsPreview mShortsPreview = new ShortsPreview();
     private final ShortsSidePanel mShortsPanel = new ShortsSidePanel();
     private Video mLastVideo; // the video before the current one (for the Shorts swipe)
     private int mCoverGeneration = -1; // the player's source when the transition cover was shown
@@ -151,6 +152,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             Log.d(TAG, "First frame rendered: %s", video != null ? video.videoId : null);
             JoTubeTiming.markFirstFrame();
             mShortsTransition.hide(true);
+            mShortsPreview.onMainFirstFrame();
             if (video != null && video.isShorts) {
                 // JoTube: the blurred backgrounds of the next Shorts, ready before the swipe
                 ShortsBackground.preload(getContext(), ShortsQueue.getUpcomingIds(3));
@@ -223,6 +225,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         getProgressBarManager().disableProgressBar();
 
         // Above the video surface, below the controls
+        mShortsTransition.setPreview(mShortsPreview, getPlayerTweaksData().isShortsPreviewPlayerEnabled());
         mShortsTransition.attach((ViewGroup) root);
         mShortsBackground.attach((ViewGroup) root);
         mShortsPanel.attach((ViewGroup) root, new ShortsSidePanel.Callback() {
@@ -1876,6 +1879,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                 direction != ShortsTransitionState.DIRECTION_NONE && !isInPIPMode() &&
                 !Helpers.equals(previous.videoId, video.videoId);
 
+        mShortsPreview.onMainStarting();
         if (video != null && ShortsQueue.getQueuedFormatInfo(video.videoId) != null) {
             // Preloaded Short: it's already in the player, keep everything as is (no black screen, no reset).
             // The swipe covers the moment until the new video's first frame is rendered.

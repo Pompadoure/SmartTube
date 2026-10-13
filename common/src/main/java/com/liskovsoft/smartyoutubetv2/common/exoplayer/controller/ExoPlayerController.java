@@ -199,6 +199,26 @@ public class ExoPlayerController implements Player.Listener {
     }
 
     /**
+     * JoTube: a separate source of the same Short for the preview player (it can't share the queued one: a source
+     * belongs to one player at a time).
+     */
+    public static MediaSource createPreviewSource(MediaItemFormatInfo formatInfo) {
+        ExoPlayerController controller = sCurrent != null ? sCurrent.get() : null;
+
+        if (controller == null || formatInfo == null) {
+            return null;
+        }
+
+        if (formatInfo.containsDashFormats()) {
+            return controller.mMediaSourceFactory.fromDashFormatInfo(formatInfo);
+        } else if (formatInfo.containsSabrFormats()) {
+            return controller.mMediaSourceFactory.fromSabrFormatInfo(formatInfo);
+        }
+
+        return null;
+    }
+
+    /**
      * Add the next Short to the queue. The preload manager starts loading it in the background.
      */
     public static boolean enqueueShort(MediaItemFormatInfo formatInfo) {
