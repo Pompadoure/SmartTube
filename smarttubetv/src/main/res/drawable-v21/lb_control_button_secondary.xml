@@ -32,7 +32,7 @@
             </item>
             <item>
                 <shape android:shape="oval" >
-                    <solid android:color="#1FFFFFFF" />
+                    <solid android:color="#00FFFFFF" />
                     <size
                         android:height="@dimen/lb_control_button_secondary_diameter"
                         android:width="@dimen/lb_control_button_secondary_diameter" />

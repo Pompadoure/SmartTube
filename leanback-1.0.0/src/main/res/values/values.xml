@@ -964,7 +964,7 @@
     <string name="orb_search_action">Search Action</string>
     <style name="TextAppearance.Leanback" parent="TextAppearance.LeanbackBase">
         <!-- Any text appearance overrides go here. -->
-        <item name="android:fontFamily">sans-serif-condensed</item>
+        <item name="android:fontFamily">@font/roboto</item>
     </style>
     <style name="TextAppearance.Leanback.DetailsActionButton">
         <item name="android:textSize">@dimen/lb_action_text_size</item>
@@ -974,22 +974,22 @@
     <style name="TextAppearance.Leanback.DetailsDescriptionBody">
         <item name="android:textSize">@dimen/lb_details_description_body_text_size</item>
         <item name="android:textColor">@color/lb_details_description_body_color</item>
-        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:fontFamily">@font/roboto</item>
     </style>
     <style name="TextAppearance.Leanback.DetailsDescriptionSubtitle">
         <item name="android:textSize">@dimen/lb_details_description_subtitle_text_size</item>
         <item name="android:textColor">@color/lb_details_description_color</item>
-        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:fontFamily">@font/roboto</item>
     </style>
     <style name="TextAppearance.Leanback.DetailsDescriptionTitle">
         <item name="android:textSize">@dimen/lb_details_description_title_text_size</item>
         <item name="android:textColor">@color/lb_details_description_color</item>
-        <item name="android:fontFamily">sans-serif-light</item>
+        <item name="android:fontFamily">@font/roboto</item>
     </style>
     <style name="TextAppearance.Leanback.ErrorMessage">
         <item name="android:textSize">@dimen/lb_error_message_text_size</item>
         <item name="android:textColor">@color/lb_error_message</item>
-        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:fontFamily">@font/roboto</item>
     </style>
     <style name="TextAppearance.Leanback.Header" parent="TextAppearance.Leanback">
         <item name="android:textSize">@dimen/lb_browse_header_text_size</item>
@@ -1012,32 +1012,32 @@
     <style name="TextAppearance.Leanback.PlaybackControlLabel">
         <item name="android:textSize">@dimen/lb_control_button_text_size</item>
         <item name="android:textColor">@color/lb_control_button_text</item>
-        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:fontFamily">@font/roboto</item>
     </style>
     <style name="TextAppearance.Leanback.PlaybackControlsTime">
         <item name="android:textSize">@dimen/lb_playback_controls_time_text_size</item>
         <item name="android:textColor">@color/lb_playback_controls_time_text_color</item>
-        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:fontFamily">@font/roboto</item>
     </style>
     <style name="TextAppearance.Leanback.PlaybackMediaItemDuration">
         <item name="android:textColor">#80FFFFFF</item>
         <item name="android:textSize">18sp</item>
-        <item name="android:fontFamily">sans-serif-regular</item>
+        <item name="android:fontFamily">@font/roboto</item>
     </style>
     <style name="TextAppearance.Leanback.PlaybackMediaItemName">
         <item name="android:textColor">#FFFFFF</item>
         <item name="android:textSize">18sp</item>
-        <item name="android:fontFamily">sans-serif-regular</item>
+        <item name="android:fontFamily">@font/roboto</item>
     </style>
     <style name="TextAppearance.Leanback.PlaybackMediaItemNumber">
         <item name="android:textColor">#FFFFFF</item>
         <item name="android:textSize">18sp</item>
-        <item name="android:fontFamily">sans-serif-regular</item>
+        <item name="android:fontFamily">@font/roboto</item>
     </style>
     <style name="TextAppearance.Leanback.PlaybackMediaListHeaderTitle">
         <item name="android:textColor">#80EEEEEE</item>
         <item name="android:textSize">18sp</item>
-        <item name="android:fontFamily">sans-serif-regular</item>
+        <item name="android:fontFamily">@font/roboto</item>
     </style>
     <style name="TextAppearance.Leanback.Row.Header" parent="TextAppearance.Leanback.Header">
     </style>
@@ -1055,7 +1055,7 @@
         <item name="android:textSize">@dimen/lb_search_bar_text_size</item>
     </style>
     <style name="TextAppearance.Leanback.Title" parent="TextAppearance.Leanback">
-        <item name="android:fontFamily">sans-serif-light</item>
+        <item name="android:fontFamily">@font/roboto</item>
         <item name="android:textSize">@dimen/lb_browse_title_text_size</item>
         <item name="android:textColor">@color/lb_browse_title_color</item>
     </style>
@@ -1295,7 +1295,7 @@
         <item name="android:layout_height">wrap_content</item>
         <item name="android:layout_toEndOf">@id/guidance_icon</item>
         <item name="android:ellipsize">end</item>
-        <item name="android:fontFamily">sans-serif-condensed</item>
+        <item name="android:fontFamily">@font/roboto</item>
         <item name="android:singleLine">true</item>
         <item name="android:textColor">#88F1F1F1</item>
         <item name="android:textSize">18sp</item>
@@ -1317,7 +1317,7 @@
         <item name="android:layout_height">wrap_content</item>
         <item name="android:layout_alignWithParentIfMissing">true</item>
         <item name="android:ellipsize">end</item>
-        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:fontFamily">@font/roboto</item>
         <item name="android:gravity">start</item>
         <item name="android:maxLines">6</item>
         <item name="android:textColor">#88F1F1F1</item>
@@ -1341,7 +1341,7 @@
         <item name="android:layout_height">wrap_content</item>
         <item name="android:layout_centerVertical">true</item>
         <item name="android:ellipsize">end</item>
-        <item name="android:fontFamily">sans-serif-light</item>
+        <item name="android:fontFamily">@font/roboto</item>
         <item name="android:gravity">start</item>
         <item name="android:maxLines">2</item>
         <item name="android:textColor">#FFF1F1F1</item>
@@ -1391,7 +1391,7 @@
         <item name="android:alpha">@dimen/lb_guidedactions_item_unselected_description_text_alpha</item>
         <item name="android:ellipsize">end</item>
         <item name="android:layout_marginTop">@dimen/lb_guidedactions_item_space_between_title_and_description</item>
-        <item name="android:fontFamily">sans-serif-condensed</item>
+        <item name="android:fontFamily">@font/roboto</item>
         <item name="android:maxLines">@integer/lb_guidedactions_item_description_min_lines</item>
         <item name="android:textColor">@color/lb_guidedactions_item_unselected_text_color</item>
         <item name="android:textSize">@dimen/lb_guidedactions_item_description_font_size</item>
@@ -1411,7 +1411,7 @@
         <item name="android:layout_height">wrap_content</item>
         <item name="android:alpha">@dimen/lb_guidedactions_item_unselected_text_alpha</item>
         <item name="android:ellipsize">end</item>
-        <item name="android:fontFamily">sans-serif-condensed</item>
+        <item name="android:fontFamily">@font/roboto</item>
         <item name="android:maxLines">@integer/lb_guidedactions_item_title_min_lines</item>
         <item name="android:textColor">@color/lb_guidedactions_item_unselected_text_color</item>
         <item name="android:textSize">@dimen/lb_guidedactions_item_title_font_size</item>
@@ -1528,7 +1528,7 @@
         <item name="android:layout_height">0dp</item>
         <item name="android:layout_weight">0.5</item>
         <item name="android:layout_marginTop">3dp</item>
-        <item name="android:fontFamily">sans-serif-light</item>
+        <item name="android:fontFamily">@font/roboto</item>
         <item name="android:gravity">center</item>
         <item name="android:textColor">#B3EEEEEE</item>
         <item name="android:textSize">14sp</item>
@@ -1585,7 +1585,7 @@
         <item name="android:layout_gravity">center_horizontal</item>
         <item name="android:layout_marginBottom">4dp</item>
         <item name="android:background">@drawable/lb_onboarding_start_button_background</item>
-        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:fontFamily">@font/roboto</item>
         <item name="android:gravity">center_vertical</item>
         <item name="android:paddingEnd">24dp</item>
         <item name="android:paddingStart">24dp</item>
@@ -1601,7 +1601,7 @@
         <item name="android:layout_height">0dp</item>
         <item name="android:layout_weight">0.5</item>
         <item name="android:layout_marginBottom">3dp</item>
-        <item name="android:fontFamily">sans-serif-light</item>
+        <item name="android:fontFamily">@font/roboto</item>
         <item name="android:gravity">center</item>
         <item name="android:textColor">#EEEEEE</item>
         <item name="android:textSize">34sp</item>

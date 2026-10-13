@@ -121,7 +121,7 @@ public class ShortsSidePanel {
         mTitle = new TextView(context);
         mTitle.setTextColor(Color.WHITE);
         mTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
-        mTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        mTitle.setTypeface(androidx.core.content.res.ResourcesCompat.getFont(context, R.font.roboto_bold));
         mTitle.setMaxLines(3);
         mTitle.setEllipsize(TextUtils.TruncateAt.END);
         mTitle.setShadowLayer(dp(4), 0, dp(1), Color.argb(160, 0, 0, 0));
