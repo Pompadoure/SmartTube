@@ -752,6 +752,13 @@ public class ExoPlayerController implements Player.Listener {
             return;
         }
 
+        // JoTube M3: rented/purchased movies are DRM protected: retrying never helps (it looped every ~2 s), say it once
+        if (isDrmError(playbackError)) {
+            com.liskovsoft.sharedutils.helpers.MessageHelpers.showLongMessage(mContext,
+                    "Skyddat innehåll (hyrd/köpt film) kan inte spelas i JoTube");
+            return;
+        }
+
         Throwable nested = playbackError.getCause() != null ? playbackError.getCause() : playbackError;
 
         // M3: Media3 no longer says "Unable to connect to"; map the network errors to the old message for ErrorFixerController
@@ -784,6 +791,21 @@ public class ExoPlayerController implements Player.Listener {
         }
 
         mEventListener.onEngineError(type, rendererIndex, nested);
+    }
+
+    private static boolean isDrmError(PlaybackException error) {
+        if (error.errorCode >= PlaybackException.ERROR_CODE_DRM_UNSPECIFIED && error.errorCode <= PlaybackException.ERROR_CODE_DRM_LICENSE_EXPIRED) {
+            return true;
+        }
+
+        for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+            if (cause instanceof androidx.media3.exoplayer.drm.DrmSession.DrmSessionException
+                    || cause instanceof androidx.media3.exoplayer.drm.UnsupportedDrmException) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
