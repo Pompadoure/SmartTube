@@ -290,6 +290,40 @@ public class ShortsTransitionOverlay {
      * @param videoView the view the current video is rendered on: its last frame is the outgoing picture.
      *                  Null if it's not on the surface anymore (the player was reset): the thumbnail is used.
      */
+    // Diagnostics: main thread messages that take long while a swipe runs (what makes the slide stutter)
+    private static final int WATCH_MS = 900;
+    private static final int WATCH_MIN_MS = 10;
+    private final android.os.Handler mWatchHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final android.util.Printer mWatchPrinter = new android.util.Printer() {
+        private long mStartMs;
+        private String mWhat;
+
+        @Override
+        public void println(String x) {
+            if (x == null) {
+                return;
+            }
+            if (x.startsWith(">>>>> Dispatching")) {
+                mStartMs = android.os.SystemClock.uptimeMillis();
+                mWhat = x;
+            } else if (x.startsWith("<<<<< Finished") && mWhat != null) {
+                long duration = android.os.SystemClock.uptimeMillis() - mStartMs;
+                if (duration >= WATCH_MIN_MS) {
+                    Log.d(TAG, "Slow main thread message %s ms (+%s ms after swipe): %s", duration,
+                            mStartMs - mDiagCallMs, mWhat.length() > 150 ? mWhat.substring(0, 150) : mWhat);
+                }
+                mWhat = null;
+            }
+        }
+    };
+    private final Runnable mStopWatch = () -> android.os.Looper.getMainLooper().setMessageLogging(null);
+
+    private void watchMainThread() {
+        mWatchHandler.removeCallbacks(mStopWatch);
+        android.os.Looper.getMainLooper().setMessageLogging(mWatchPrinter);
+        mWatchHandler.postDelayed(mStopWatch, WATCH_MS);
+    }
+
     public void swipe(Video from, Video to, int direction, View videoView) {
         if (mContainer == null || to == null) {
             return;
@@ -298,6 +332,7 @@ public class ShortsTransitionOverlay {
         Video previousTarget = mTargetVideo;
         mTargetVideo = to.isShorts ? to : null;
         mDiagCallMs = android.os.SystemClock.uptimeMillis();
+        watchMainThread();
 
         int frameHeight = mIn.getLayoutParams() != null ? mIn.getLayoutParams().height : 0;
         int height = frameHeight > 0 ? frameHeight : mContainer.getHeight() > 0 ? mContainer.getHeight() :
