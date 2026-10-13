@@ -6,12 +6,18 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01VSht85HgY1G1PxtjN6yRRv
 Workflow: worktree /tmp/claude-0/m3wt if present (else `git worktree add` from origin/media3). `git fetch -q origin media3:refs/remotes/origin/media3 && git rebase -q origin/media3` before `git push -q origin HEAD:media3`. Wait for CI green (`gh run list -R Pompadoure/SmartTube -b media3`). Files often CRLF: preserve. Append a dated log of what you did/learned at the bottom of this file every run (so the next run continues, not repeats). If a previous run left work half done, finish/verify it first.
 
-## Status till Johan (uppdateras av nattens körningar; senast 2026-10-13 00:50)
+## Status till Johan (uppdateras av nattens körningar; senast 2026-10-13 14:20)
 Bygget `latest-media3` publiceras av CI efter varje push (senast grönt: e4a3cb3).
 **Gjort:**
 - Subscriptions: rutnätet har nu ALLTID 3 kolumner (antalet kolumner ändras aldrig under körning = orsaken till kraschen i leanback är borta). Kanallistan tonas ut när fokus är i videorutnätet och tonas in igen när du går åt vänster. Med kanallistan synlig skärs tredje kolumnen av vid skärmkanten.
 - Shorts-start: orsaken till 4,3 s-gapet hittad i koden: första SABR-svaret lästes helt (inkl. ~10 s video som kastades) innan avkodaren fick formatet, och samma segment hämtades en gång till. Nu laddas första förfrågan som en vanlig media-chunk: avkodaren startar så fort init-segmentet är tolkat och inget laddas dubbelt. Förladdning av nästa Short startar först när den första är klar att spela.
 - Fler tidsstämplar i loggen (JoTubeTiming: video-/ljudavkodare, codec-återanvändning, videostorlek).
+**Tillkommit under dagen (allt grönt i CI, senast 9715031):**
+- Shorts-swipe: sidopanel, bakgrund och bildform byter synkat med sliden (inte efter). Snabbare ramomformning normal<->bred Short, tangent-hållning begränsad till 250 ms-steg, reselect av spår skjuten 1,5 s.
+- Ny inställning (AV som standard): "Shorts: preview player for the next Short (beta)" - en andra spelare visar nästa Shorts första bild under swipen. Testa gärna PÅ och jämför; stäng av om bilden flimrar.
+- Roboto i leanback-texter, spelarlayout som YouTube (tider + förloppsfält överst, knappar under).
+- Fler diagnoser: logg-taggar JoTubeTiming och ShortsTransition (snapshot-tid, slide-start, första bild).
+**Kvarstår/osäkert (kräver enhet):** Subscriptions visuellt, 4,3 s-fixens effekt, preview-spelarens z-ordning, PixelCopy-hoppa-över-idén. `latest-media3` publiceras av CI efter bygget.
 **Testa på TV:n:** (1) Subscriptions: 3 per rad, scrolla ner i videorutnätet utan krasch, vänster tillbaka visar kanallistan. (2) Första Short från Home: tid till första bild (mål < 1,5 s). (3) Swipe mellan Shorts: tid till bild. (4) Normal <-> bred Short. (5) Vanlig video: startar den, ingen frysning efter ~10 s, ljud i synk (viktigt, startflödet ändrades). Logg: `logcat -d | grep -E "JoTubeTiming|JoTubeSabr|DefaultSabrChunkSource"`.
 **Risker:** SABR-startändringen berör alla videor (kill switch: `START_WITH_MEDIA_CHUNK = false` i DefaultSabrChunkSource). Aspektbyte normal/bred Short är inte ändrat (inga mätdata).
 
@@ -54,3 +60,4 @@ Items A,B pushed, CI green, `latest-media3` release published after the last pus
 - 2026-10-13: Shorts preview player (steg 1 av tvåspelarlösning). Ny `ShortsPreview` (andra ExoPlayer, bara video, pausad på första bilden av nästa Short) bakom inställningen "Shorts: preview player for the next Short (beta)" (PlayerTweaksData index 61, default AV). Glider in med swipen, tonas ut när huvudspelaren visar sin första bild. Risker: andra dekodern, första segmentet laddas två gånger, SurfaceView z-order, ytans livslängd. Kräver enhetstest. Verifiera att CI är grön. Rollväxling av två huvudspelare = steg 2 efter mätningar.
 - 12:17 (session 3, scheduled run): CI green on 28940ca (HEAD, incl. Shorts preview player, setting off by default). No code change this run; remaining items need device data. Next: final check ~14:00.
 - 13:20 (scheduled run): CI green on 8229aaf (run 139; background reveal on cache hit + avatar cross-fade). No code change; remaining items need device data. Next: final check ~14:17 (Swedish status at top is current, add 8229aaf + preview-player setting note).
+- 14:20 (final scheduled run): CI green on 9715031 (run 141, Roboto leanback + YouTube-style player layout). Status till Johan updated at top (Swedish). No further code change: remaining items need device data.
