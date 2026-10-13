@@ -39,8 +39,45 @@ public class HQDialogController extends BasePlayerController {
     @Override
     public void onButtonClicked(int buttonId, int buttonState) {
         if (buttonId == R.id.lb_control_high_quality) {
+            onQuickQualityClicked();
+        }
+    }
+
+    @Override
+    public void onButtonLongClicked(int buttonId, int buttonState) {
+        if (buttonId == R.id.lb_control_high_quality) {
             onHighQualityClicked();
         }
+    }
+
+    /**
+     * Short press: small bubble with the video resolutions only. Long press opens the advanced menu.
+     */
+    private void onQuickQualityClicked() {
+        if (getPlayer() == null) {
+            return;
+        }
+
+        List<FormatItem> videoFormats = getPlayer().getVideoFormats();
+
+        if (videoFormats == null || videoFormats.isEmpty()) {
+            onHighQualityClicked();
+            return;
+        }
+
+        mCategoriesInt.clear();
+        mCategories.clear();
+        mAppDialogPresenter.enableTransparent(true);
+        mAppDialogPresenter.enableOverlay(true);
+        mAppDialogPresenter.appendCategory(OptionCategory.from(
+                VIDEO_FORMATS_ID,
+                OptionCategory.TYPE_RADIO_LIST,
+                getContext().getString(R.string.title_video_formats),
+                UiOptionItem.from(videoFormats, option -> {
+                    selectFormatOption(option);
+                    mAppDialogPresenter.closeDialog();
+                }, getContext().getString(R.string.option_disabled))));
+        mAppDialogPresenter.showDialog(this::onDialogHide);
     }
 
     private void onHighQualityClicked() {

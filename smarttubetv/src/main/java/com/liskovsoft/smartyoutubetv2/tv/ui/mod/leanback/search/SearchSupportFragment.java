@@ -851,7 +851,11 @@ public class SearchSupportFragment extends Fragment {
     };
 
     private static boolean isDescendantOf(View view, View parent) {
-        android.view.ViewParent current = view;
+        if (view == parent) {
+            return true;
+        }
+
+        android.view.ViewParent current = view.getParent();
 
         while (current != null) {
             if (current == parent) {
