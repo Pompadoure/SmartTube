@@ -66,6 +66,12 @@ public class ShortsTransitionOverlay {
     private int mSwipeId; // a newer swipe makes the callbacks of an older one void
     private boolean mIsShown;
     private boolean mFirstFrameRendered;
+    private boolean mFrameKnown;
+    private int mFrameWidth;
+    private int mFrameHeight;
+    private int mFrameOffsetX;
+    private boolean mOutFrozen; // a swipe is on: the outgoing picture keeps its shape
+    private boolean mOutFramePending; // the new frame shape waits until the outgoing picture is gone
     // JoTube: diagnostics of the swipe (tag ShortsTransition): where the time goes, and how smooth the slide is
     private long mDiagCallMs;
     private long mDiagLastFrameMs;
@@ -109,13 +115,36 @@ public class ShortsTransitionOverlay {
      */
     public void setFrame(int width, int height, int offsetX) {
         setImageSize(mIn, width, height);
-        setImageSize(mOut, width, height);
         // JoTube: the frame is not in the middle (the right edge is fixed)
         if (mIn != null) {
             mIn.setTranslationX(offsetX);
         }
+
+        // The outgoing picture keeps the shape of the old Short while it slides out (the new frame size arrives
+        // ~30-100 ms after the key press, i.e. in the middle of the slide)
+        mFrameKnown = true;
+        mFrameWidth = width;
+        mFrameHeight = height;
+        mFrameOffsetX = offsetX;
+
+        if (mOutFrozen) {
+            mOutFramePending = true;
+        } else {
+            applyOutFrame();
+        }
+    }
+
+    private void applyOutFrame() {
+        mOutFramePending = false;
+        mOutFrozen = false;
+
+        if (!mFrameKnown) {
+            return;
+        }
+
+        setImageSize(mOut, mFrameWidth, mFrameHeight);
         if (mOut != null) {
-            mOut.setTranslationX(offsetX);
+            mOut.setTranslationX(mFrameOffsetX);
         }
     }
 
@@ -144,6 +173,8 @@ public class ShortsTransitionOverlay {
         flushAfterSnapshot();
         mFirstFrameRendered = false;
         mSwipeId++;
+        mOutFrozen = false;
+        mOutFramePending = false;
 
         if (mContainer != null) {
             cancelAnimations();
@@ -224,6 +255,7 @@ public class ShortsTransitionOverlay {
             return;
         }
 
+        mOutFrozen = true;
         final float distance = height + GAP_DP * mContainer.getResources().getDisplayMetrics().density;
 
         if (mHoldStart != null) {
@@ -478,6 +510,9 @@ public class ShortsTransitionOverlay {
         clearImage(mOut);
         mOut.setTranslationY(0);
         mIn.setTranslationY(0);
+        if (mOutFramePending || mOutFrozen) {
+            applyOutFrame();
+        }
 
         if (mFirstFrameRendered) {
             // The new video is in place and playing
@@ -682,6 +717,9 @@ public class ShortsTransitionOverlay {
         mOut.setVisibility(View.GONE);
         clearImage(mIn);
         clearImage(mOut);
+        if (mOutFramePending || mOutFrozen) {
+            applyOutFrame();
+        }
     }
 
     private static void clearImage(ImageView image) {

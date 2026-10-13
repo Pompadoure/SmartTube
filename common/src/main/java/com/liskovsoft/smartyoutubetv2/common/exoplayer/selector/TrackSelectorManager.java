@@ -52,6 +52,10 @@ public class TrackSelectorManager implements TrackSelectorCallback {
     private final MediaTrack[] mSelectedTracks = new MediaTrack[3];
     private boolean mIsMergedSource;
     private boolean mIsQueuedSourceSwitch;
+    private final android.os.Handler mReselectHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private int mReselectGeneration;
+    // JoTube: after a queued Shorts switch the (invalidating) re-selection waits until the new Short is on screen
+    private static final long QUEUED_RESELECT_DELAY_MS = 1500;
 
     public TrackSelectorManager(Context context) {
         mContext = context.getApplicationContext();
@@ -496,7 +500,18 @@ public class TrackSelectorManager implements TrackSelectorCallback {
             mIsQueuedSourceSwitch = false;
         }
 
-        if (isSwitch || isCacheOutdated()) {
+        if (isSwitch) {
+            // The re-selection invalidates the track selector: that is work on the playback thread exactly while the
+            // new Short starts (the selection itself was already made when it was preloaded). The track lists only
+            // feed the quality menu, they can wait a moment.
+            final int generation = ++mReselectGeneration;
+            mReselectHandler.postDelayed(() -> {
+                if (generation == mReselectGeneration) {
+                    reselectTracks();
+                }
+            }, QUEUED_RESELECT_DELAY_MS);
+        } else if (isCacheOutdated()) {
+            mReselectGeneration++; // supersedes a pending delayed one
             reselectTracks();
         }
     }
