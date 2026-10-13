@@ -24,6 +24,9 @@ import androidx.fragment.app.Fragment;
 import androidx.leanback.R;
 import androidx.leanback.app.BrowseSupportFragment;
 import androidx.leanback.app.RowsSupportFragment;
+import androidx.leanback.widget.HorizontalGridView;
+import androidx.leanback.widget.ItemBridgeAdapter;
+import androidx.leanback.widget.ListRowPresenter;
 import androidx.leanback.widget.ObjectAdapter;
 import androidx.leanback.widget.ObjectAdapter.DataObserver;
 import androidx.leanback.widget.OnItemViewClickedListener;
@@ -458,6 +461,8 @@ public class SearchSupportFragment extends Fragment {
         if (null != mProvider) {
             onSetSearchResultProvider();
         }
+        setupSuggestionStrip(root);
+        setupLeftColumnAutoHide(root);
         return root;
     }
 
@@ -473,6 +478,7 @@ public class SearchSupportFragment extends Fragment {
         super.onStart();
 
         VerticalGridView list = mRowsSupportFragment.getVerticalGridView();
+        setupResultsLeftKey(list);
         int mContainerListAlignTop =
                 getResources().getDimensionPixelSize(R.dimen.lb_search_browse_rows_align_top);
         list.setItemAlignmentOffset(0);
@@ -510,6 +516,21 @@ public class SearchSupportFragment extends Fragment {
     public void onPause() {
         releaseRecognizer();
         super.onPause();
+    }
+
+    @Override
+    public void onDestroyView() {
+        if (mFragmentRoot != null) {
+            mFragmentRoot.getViewTreeObserver().removeOnGlobalFocusChangeListener(mColumnFocusListener);
+            mFragmentRoot = null;
+        }
+        if (mSuggestionAdapter != null) {
+            mSuggestionAdapter.unregisterObserver(mSuggestionObserver);
+            mSuggestionAdapter = null;
+        }
+        mSuggestionGrid = null;
+        mLeftColumnHidden = false;
+        super.onDestroyView();
     }
 
     @Override
@@ -788,6 +809,180 @@ public class SearchSupportFragment extends Fragment {
 
     private SearchKeyboardView mKeyboard;
 
+    // JoTube: suggestions above the keyboard; keyboard and suggestions fade away while the results have the focus
+    private static final int COLUMN_FADE_MS = 180;
+    private HorizontalGridView mSuggestionGrid;
+    private ObjectAdapter mSuggestionAdapter;
+    private View mFragmentRoot;
+    private boolean mLeftColumnHidden;
+    private final DataObserver mSuggestionObserver = new DataObserver() {
+        @Override
+        public void onChanged() {
+            updateSuggestionVisibility();
+        }
+
+        @Override
+        public void onItemRangeChanged(int positionStart, int itemCount) {
+            updateSuggestionVisibility();
+        }
+
+        @Override
+        public void onItemRangeInserted(int positionStart, int itemCount) {
+            updateSuggestionVisibility();
+        }
+
+        @Override
+        public void onItemRangeRemoved(int positionStart, int itemCount) {
+            updateSuggestionVisibility();
+        }
+
+        @Override
+        public void onItemMoved(int fromPosition, int toPosition) {
+            updateSuggestionVisibility();
+        }
+    };
+    private final android.view.ViewTreeObserver.OnGlobalFocusChangeListener mColumnFocusListener = (oldFocus, newFocus) -> {
+        if (newFocus == null || mFragmentRoot == null) {
+            return;
+        }
+
+        View results = mFragmentRoot.findViewById(R.id.lb_results_frame);
+        setLeftColumnHidden(results != null && isDescendantOf(newFocus, results));
+    };
+
+    private static boolean isDescendantOf(View view, View parent) {
+        android.view.ViewParent current = view;
+
+        while (current != null) {
+            if (current == parent) {
+                return true;
+            }
+            current = current.getParent();
+        }
+
+        return false;
+    }
+
+    /**
+     * A suggestion was clicked.
+     */
+    protected void onSuggestionClicked(Object item) {
+        // NOP
+    }
+
+    /**
+     * The suggestions (tags) are shown in a strip above the keyboard.
+     */
+    protected void setSuggestions(ObjectAdapter adapter) {
+        if (mSuggestionGrid == null || adapter == null) {
+            return;
+        }
+
+        if (mSuggestionAdapter != null) {
+            mSuggestionAdapter.unregisterObserver(mSuggestionObserver);
+        }
+
+        mSuggestionAdapter = adapter;
+        ItemBridgeAdapter bridge = new ItemBridgeAdapter(adapter);
+        bridge.setAdapterListener(new ItemBridgeAdapter.AdapterListener() {
+            @Override
+            public void onCreate(ItemBridgeAdapter.ViewHolder viewHolder) {
+                viewHolder.itemView.setOnClickListener(v -> onSuggestionClicked(viewHolder.getItem()));
+                viewHolder.itemView.setOnFocusChangeListener((v, focused) -> v.setSelected(focused));
+            }
+        });
+        mSuggestionGrid.setAdapter(bridge);
+        adapter.registerObserver(mSuggestionObserver);
+        updateSuggestionVisibility();
+    }
+
+    private void setupSuggestionStrip(View root) {
+        mFragmentRoot = root;
+        mSuggestionGrid = root.findViewById(com.liskovsoft.smartyoutubetv2.tv.R.id.search_suggestions);
+
+        if (mSuggestionGrid != null) {
+            mSuggestionGrid.setItemSpacing(Math.round(8 * getResources().getDisplayMetrics().density));
+            mSuggestionGrid.setWindowAlignment(HorizontalGridView.WINDOW_ALIGN_NO_EDGE);
+        }
+    }
+
+    private void updateSuggestionVisibility() {
+        if (mSuggestionGrid == null) {
+            return;
+        }
+
+        boolean has = mSuggestionAdapter != null && mSuggestionAdapter.size() > 0;
+        mSuggestionGrid.setVisibility(has && !mLeftColumnHidden ? View.VISIBLE : View.INVISIBLE);
+        updateSearchBarNextFocusId();
+    }
+
+    private void setupLeftColumnAutoHide(View root) {
+        root.getViewTreeObserver().addOnGlobalFocusChangeListener(mColumnFocusListener);
+    }
+
+    private void setLeftColumnHidden(boolean hidden) {
+        if (mLeftColumnHidden == hidden) {
+            return;
+        }
+
+        mLeftColumnHidden = hidden;
+        float shift = -24 * getResources().getDisplayMetrics().density;
+
+        fadeColumnView(mKeyboard, hidden, shift, true);
+        fadeColumnView(mSuggestionGrid, hidden, shift, mSuggestionAdapter != null && mSuggestionAdapter.size() > 0);
+    }
+
+    private void fadeColumnView(View view, boolean hide, float shift, boolean visibleWhenShown) {
+        if (view == null) {
+            return;
+        }
+
+        view.animate().cancel();
+
+        if (hide) {
+            view.animate().alpha(0f).translationX(shift).setDuration(COLUMN_FADE_MS)
+                    .withEndAction(() -> {
+                        if (mLeftColumnHidden) {
+                            view.setVisibility(View.INVISIBLE);
+                        }
+                    }).start();
+        } else if (visibleWhenShown) {
+            view.setVisibility(View.VISIBLE);
+            view.animate().alpha(1f).translationX(0f).setDuration(COLUMN_FADE_MS).start();
+        }
+    }
+
+    /**
+     * LEFT on the first card of a row brings the keyboard back (like the Subscriptions menu).
+     */
+    private void setupResultsLeftKey(VerticalGridView list) {
+        if (list == null) {
+            return;
+        }
+
+        list.setOnKeyInterceptListener(event -> {
+            if (!mLeftColumnHidden || event.getAction() != android.view.KeyEvent.ACTION_DOWN
+                    || event.getKeyCode() != android.view.KeyEvent.KEYCODE_DPAD_LEFT || mRowsSupportFragment == null) {
+                return false;
+            }
+
+            RowPresenter.ViewHolder rowViewHolder = mRowsSupportFragment.getRowViewHolder(mRowsSupportFragment.getSelectedPosition());
+
+            if (rowViewHolder instanceof ListRowPresenter.ViewHolder
+                    && ((ListRowPresenter.ViewHolder) rowViewHolder).getGridView().getSelectedPosition() == 0) {
+                setLeftColumnHidden(false);
+
+                if (mKeyboard != null) {
+                    mKeyboard.focusFirstKey();
+                }
+
+                return true;
+            }
+
+            return false;
+        });
+    }
+
     private void setupBuiltInKeyboard(View root) {
         mKeyboard = root.findViewById(com.liskovsoft.smartyoutubetv2.tv.R.id.search_keyboard);
 
@@ -956,7 +1151,8 @@ public class SearchSupportFragment extends Fragment {
         if (mSearchBar == null || mResultAdapter == null) {
             return;
         }
-        final int viewId = (mResultAdapter.size() == 0 || mRowsSupportFragment == null
+        final int viewId = (mSuggestionGrid != null && mSuggestionGrid.getVisibility() == View.VISIBLE) ? mSuggestionGrid.getId() :
+                (mResultAdapter.size() == 0 || mRowsSupportFragment == null
                 || mRowsSupportFragment.getVerticalGridView() == null)
                         ? 0 : mRowsSupportFragment.getVerticalGridView().getId();
         

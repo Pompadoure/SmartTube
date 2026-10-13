@@ -59,7 +59,8 @@
 
     <!-- JoTube: built-in search keyboard -->
     <dimen name="search_keyboard_area_width">480dp</dimen>
-    <dimen name="search_keyboard_margin_top">120dp</dimen>
+    <dimen name="search_suggestions_margin_top">92dp</dimen>
+    <dimen name="search_keyboard_margin_top">148dp</dimen>
     <dimen name="search_keyboard_margin_start">56dp</dimen>
 
     <!-- Increase player time text size -->

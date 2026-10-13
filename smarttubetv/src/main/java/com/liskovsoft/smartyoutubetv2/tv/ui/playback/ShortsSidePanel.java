@@ -266,52 +266,13 @@ public class ShortsSidePanel {
             return;
         }
 
+        // JoTube: everything on the panel stays where it is and the content is swapped in place (no fade, no motion):
+        // the avatar comes from the memory cache (preloaded), the texts are set at once
         mTitle.animate().cancel();
         mChannelRow.animate().cancel();
-
-        if (direction == 0 || mPanel.getVisibility() != View.VISIBLE || mTitle.getAlpha() < 0.5f && mPendingBind == null) {
-            mPendingBind = null;
-            resetTextMotion();
-            bind(video);
-            return;
-        }
-
-        // JoTube: the buttons stay where they are (nothing reloads): only the like count and the button states change at once
-        mLikeCount.setText(video.likeCount != null ? video.likeCount : "");
-        mLikeCount.setVisibility(video.likeCount != null && !video.likeCount.isEmpty() ? View.VISIBLE : View.GONE);
-        updateStyles();
-
-        mPendingBind = video;
-        final float shift = dp(18) * direction;
-
-        mChannelRow.animate()
-                .alpha(0f)
-                .translationY(-shift)
-                .setDuration(PANEL_OUT_MS)
-                .setInterpolator(new android.view.animation.AccelerateInterpolator())
-                .start();
-        mTitle.animate()
-                .alpha(0f)
-                .translationY(-shift)
-                .setDuration(PANEL_OUT_MS)
-                .setInterpolator(new android.view.animation.AccelerateInterpolator())
-                .withEndAction(() -> {
-                    Video latest = mPendingBind;
-                    mPendingBind = null;
-                    if (mPanel == null) {
-                        return;
-                    }
-                    if (latest != null) {
-                        bind(latest);
-                    }
-                    mTitle.setTranslationY(shift);
-                    mChannelRow.setTranslationY(shift);
-                    mTitle.animate().alpha(1f).translationY(0).setDuration(PANEL_IN_MS)
-                            .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
-                    mChannelRow.animate().alpha(1f).translationY(0).setDuration(PANEL_IN_MS)
-                            .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
-                })
-                .start();
+        mPendingBind = null;
+        resetTextMotion();
+        bind(video);
     }
 
     private void resetTextMotion() {
