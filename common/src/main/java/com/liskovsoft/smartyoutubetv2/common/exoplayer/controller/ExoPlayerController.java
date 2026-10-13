@@ -495,6 +495,53 @@ public class ExoPlayerController implements Player.Listener {
                                            androidx.media3.common.VideoSize videoSize) {
                 JoTubeTiming.mark("video size " + videoSize.width + "x" + videoSize.height);
             }
+
+            // JoTube: breakdown of a Shorts switch (what the playback thread does between setMediaSource and the first frame)
+            @Override
+            public void onVideoEnabled(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime,
+                                       androidx.media3.exoplayer.DecoderCounters counters) {
+                JoTubeTiming.mark("video renderer enabled");
+            }
+
+            @Override
+            public void onVideoDisabled(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime,
+                                        androidx.media3.exoplayer.DecoderCounters counters) {
+                JoTubeTiming.mark("video renderer disabled");
+            }
+
+            @Override
+            public void onAudioEnabled(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime,
+                                       androidx.media3.exoplayer.DecoderCounters counters) {
+                JoTubeTiming.mark("audio renderer enabled");
+            }
+
+            @Override
+            public void onAudioDisabled(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime,
+                                        androidx.media3.exoplayer.DecoderCounters counters) {
+                JoTubeTiming.mark("audio renderer disabled");
+            }
+
+            @Override
+            public void onVideoDecoderReleased(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime, String decoderName) {
+                JoTubeTiming.mark("video decoder released " + decoderName);
+            }
+
+            @Override
+            public void onTimelineChanged(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime, int reason) {
+                JoTubeTiming.mark("timeline changed (" + reason + ")");
+            }
+
+            @Override
+            public void onPositionDiscontinuity(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime,
+                                                androidx.media3.common.Player.PositionInfo oldPosition,
+                                                androidx.media3.common.Player.PositionInfo newPosition, int reason) {
+                JoTubeTiming.mark("position discontinuity (" + reason + ")");
+            }
+
+            @Override
+            public void onDroppedVideoFrames(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime, int droppedFrames, long elapsedMs) {
+                JoTubeTiming.mark("dropped video frames " + droppedFrames + " in " + elapsedMs + " ms");
+            }
         });
         sCurrent = new WeakReference<>(this);
     }
