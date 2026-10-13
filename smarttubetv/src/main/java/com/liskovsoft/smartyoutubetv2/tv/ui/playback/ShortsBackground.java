@@ -120,6 +120,9 @@ public class ShortsBackground {
         target.animate().cancel();
         target.setAlpha(0f);
 
+        // A memory cache hit (preloaded) is delivered inside into(): reveal at once, not a frame later
+        final boolean[] inInto = {true};
+        final boolean[] readySync = {false};
         RequestListener<Drawable> onReady = new RequestListener<Drawable>() {
             @Override
             public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Drawable> t, boolean isFirstResource) {
@@ -129,7 +132,11 @@ public class ShortsBackground {
             @Override
             public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> t, DataSource dataSource, boolean isFirstResource) {
                 // Set by Glide right after this returns: fade it in over the current one (posted: after the set)
-                target.post(() -> reveal(target, videoId));
+                if (inInto[0]) {
+                    readySync[0] = true;
+                } else {
+                    target.post(() -> reveal(target, videoId));
+                }
                 return false;
             }
         };
@@ -142,6 +149,14 @@ public class ShortsBackground {
                     .into(target); // no dontAnimate(): it's part of the cache key (into() has no transition anyway)
         } catch (IllegalArgumentException e) {
             // Activity is destroyed
+        }
+
+        inInto[0] = false;
+
+        if (readySync[0] && target.getDrawable() != null) {
+            reveal(target, videoId);
+        } else if (readySync[0]) {
+            target.post(() -> reveal(target, videoId));
         }
     }
 

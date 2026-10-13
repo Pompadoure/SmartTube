@@ -832,6 +832,7 @@ public class ShortsSidePanel {
                     .load(url)
                     .circleCrop()
                     .placeholder(R.drawable.action_channel)
+                    .transition(com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions.withCrossFade(120)) // late ones only: a cache hit has no transition
                     .into(mAvatar);
         } catch (IllegalArgumentException e) {
             // Activity destroyed
