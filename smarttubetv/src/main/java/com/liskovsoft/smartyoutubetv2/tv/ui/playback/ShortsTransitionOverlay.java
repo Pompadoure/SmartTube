@@ -66,6 +66,11 @@ public class ShortsTransitionOverlay {
     private int mSwipeId; // a newer swipe makes the callbacks of an older one void
     private boolean mIsShown;
     private boolean mFirstFrameRendered;
+    // JoTube: diagnostics of the swipe (tag ShortsTransition): where the time goes, and how smooth the slide is
+    private long mDiagCallMs;
+    private long mDiagLastFrameMs;
+    private long mDiagMaxGapMs;
+    private int mDiagFrames;
 
     /**
      * Place the overlay right above the video surface and below the player controls.
@@ -208,6 +213,7 @@ public class ShortsTransitionOverlay {
 
         Video previousTarget = mTargetVideo;
         mTargetVideo = to.isShorts ? to : null;
+        mDiagCallMs = android.os.SystemClock.uptimeMillis();
 
         int frameHeight = mIn.getLayoutParams() != null ? mIn.getLayoutParams().height : 0;
         int height = frameHeight > 0 ? frameHeight : mContainer.getHeight() > 0 ? mContainer.getHeight() :
@@ -294,6 +300,7 @@ public class ShortsTransitionOverlay {
                     mHandler.removeCallbacks(mSnapshotTimeout);
                     mSnapshotTimeout = null;
                     flushAfterSnapshot();
+                    Log.d(TAG, "Snapshot done (result %s): +%s ms", result, android.os.SystemClock.uptimeMillis() - mDiagCallMs);
                     setOutImage(result == PixelCopy.SUCCESS ? bitmap : null, from);
                     hold(swipeId, direction, distance);
                 }, mHandler);
@@ -415,6 +422,11 @@ public class ShortsTransitionOverlay {
         mIn.setTranslationY(inStart);
         setSurfaceOffset(inStart);
 
+        mDiagLastFrameMs = 0;
+        mDiagMaxGapMs = 0;
+        mDiagFrames = 0;
+        Log.d(TAG, "Slide starts: +%s ms after swipe(), first frame already rendered: %s",
+                android.os.SystemClock.uptimeMillis() - mDiagCallMs, mFirstFrameRendered);
         mSwipe = ValueAnimator.ofFloat(0f, 1f);
         mSwipe.setDuration(SWIPE_DURATION_MS);
         mSwipe.setInterpolator(SWIPE_INTERPOLATOR);
@@ -422,6 +434,12 @@ public class ShortsTransitionOverlay {
             if (mContainer == null) {
                 return;
             }
+            long now = android.os.SystemClock.uptimeMillis();
+            if (mDiagLastFrameMs != 0) {
+                mDiagMaxGapMs = Math.max(mDiagMaxGapMs, now - mDiagLastFrameMs);
+            }
+            mDiagLastFrameMs = now;
+            mDiagFrames++;
             float fraction = (float) animation.getAnimatedValue();
             float inOffset = inStart * (1f - fraction);
             mOut.setTranslationY(outStart + (outEnd - outStart) * fraction);
@@ -442,6 +460,8 @@ public class ShortsTransitionOverlay {
                     return;
                 }
                 mSwipe = null;
+                Log.d(TAG, "Slide ends: %s frames in %s ms, longest gap between frames %s ms, first frame rendered: %s",
+                        mDiagFrames, SWIPE_DURATION_MS, mDiagMaxGapMs, mFirstFrameRendered);
                 onSwipeEnd();
             }
         });
@@ -529,6 +549,9 @@ public class ShortsTransitionOverlay {
     public void hide(boolean animate) {
         if (animate) {
             mFirstFrameRendered = true;
+            if (mDiagCallMs != 0) {
+                Log.d(TAG, "First frame: +%s ms after swipe()", android.os.SystemClock.uptimeMillis() - mDiagCallMs);
+            }
         }
 
         cancelPendingShow();
