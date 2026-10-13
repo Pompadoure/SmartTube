@@ -83,6 +83,13 @@ public final class ShortsTransitionState {
     /**
      * Returns the pending direction and resets it, so it's applied only once.
      */
+    /**
+     * The direction of the pending swipe, without consuming it.
+     */
+    public static int peekDirection() {
+        return sDirection;
+    }
+
     public static int consumeDirection() {
         int direction = sDirection;
         sDirection = DIRECTION_NONE;

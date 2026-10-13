@@ -1002,7 +1002,12 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             mPlayerGlue.setVideo(video);
         }
 
-        if (video != null && video.isShorts) {
+        // A swipe to another Short: resetPlayerState() changes the panel together with the slide
+        boolean swipePending = video != null && mLastVideo != null && mLastVideo.isShorts && video.isShorts &&
+                ShortsTransitionState.peekDirection() != ShortsTransitionState.DIRECTION_NONE &&
+                !Helpers.equals(mLastVideo.videoId, video.videoId);
+
+        if (video != null && video.isShorts && !swipePending) {
             mShortsPanel.bind(video);
         }
         updateShortsPanel();
@@ -1054,14 +1059,31 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
      * Blurred thumbnail next to the vertical video (like the official app), only for Shorts.
      */
     private void updateShortsBackground(Video video) {
+        updateShortsBackground(video, ShortsTransitionState.DIRECTION_NONE);
+    }
+
+    /**
+     * @param direction the swipe direction: the background cross-fades as long as the slide, the panel content moves with it
+     */
+    private void updateShortsBackground(Video video, int direction) {
+        boolean animate = direction != ShortsTransitionState.DIRECTION_NONE;
+
         if (video != null && video.isShorts && !isInPIPMode()) {
-            mShortsBackground.show(video);
+            if (animate) {
+                mShortsBackground.show(video, ShortsTransitionOverlay.SWIPE_DURATION_MS);
+            } else {
+                mShortsBackground.show(video);
+            }
         } else {
             mShortsBackground.hide();
         }
 
         if (video != null && video.isShorts) {
-            mShortsPanel.bind(video);
+            if (animate) {
+                mShortsPanel.bindAnimated(video, direction);
+            } else {
+                mShortsPanel.bind(video);
+            }
         }
         updateShortsPanel();
     }
@@ -1860,13 +1882,23 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             if (swipe) {
                 // The old video is still on the surface: its last frame slides out
                 mShortsTransition.swipe(previous, video, direction, getSurfaceView());
+                // Background, frame shape and panel change together with the slide (the format info of a preloaded
+                // Short is known already, so its frame doesn't reshape in the middle of the slide)
+                final float queuedAspect = getQueuedAspect(video);
+                final int slideDirection = direction;
+                mShortsTransition.runAtSlideStart(() -> {
+                    if (queuedAspect > 0) {
+                        mShortsPanel.setVideoAspect(queuedAspect);
+                    }
+                    updateShortsBackground(video, slideDirection);
+                });
             } else {
                 mShortsTransition.hide(false);
                 if (!isInPIPMode()) {
                     mShortsTransition.showIfSlow(video, 250);
                 }
+                updateShortsBackground(video);
             }
-            updateShortsBackground(video);
             setChatReceiver(null);
             setSeekBarSegments(null);
             setSeekPreviewTitle(null);
@@ -1893,10 +1925,34 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                 showBackgroundColor(R.color.player_background);
             }
         });
-        updateShortsBackground(video);
+        if (swipe) {
+            final int slideDirection = direction;
+            mShortsTransition.runAtSlideStart(() -> updateShortsBackground(video, slideDirection));
+        } else {
+            updateShortsBackground(video);
+        }
         setChatReceiver(null);
         setSeekBarSegments(null);
         setSeekPreviewTitle(null);
+    }
+
+    /**
+     * JoTube: width / height of a preloaded Short from its format info (0 if unknown).
+     */
+    private static float getQueuedAspect(Video video) {
+        MediaItemFormatInfo info = video != null ? ShortsQueue.getQueuedFormatInfo(video.videoId) : null;
+
+        if (info == null || info.getAdaptiveFormats() == null) {
+            return 0;
+        }
+
+        for (com.liskovsoft.mediaserviceinterfaces.data.MediaFormat format : info.getAdaptiveFormats()) {
+            if (format != null && format.getWidth() > 0 && format.getHeight() > 0) {
+                return (float) format.getWidth() / format.getHeight();
+            }
+        }
+
+        return 0;
     }
 
     @Override

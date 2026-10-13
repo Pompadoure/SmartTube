@@ -43,6 +43,7 @@ public class ShortsBackground {
     private ImageView mFront; // shown
     private ImageView mBack; // the next one loads here
     private String mVideoId;
+    private int mFadeMs = FADE_DURATION_MS;
 
     /**
      * Placed behind the video surface (index 0 of the fragment root).
@@ -90,6 +91,15 @@ public class ShortsBackground {
     }
 
     public void show(Video video) {
+        show(video, FADE_DURATION_MS);
+    }
+
+    /**
+     * @param fadeMs how long the cross-fade to the new background takes (the Shorts swipe: the same as the slide)
+     */
+    public void show(Video video, int fadeMs) {
+        mFadeMs = fadeMs;
+
         if (mContainer == null || video == null || video.videoId == null) {
             return;
         }
@@ -148,7 +158,7 @@ public class ShortsBackground {
         old.setZ(0f);
         target.animate()
                 .alpha(1f)
-                .setDuration(old.getDrawable() != null ? FADE_DURATION_MS : 0)
+                .setDuration(old.getDrawable() != null ? mFadeMs : 0)
                 .withEndAction(() -> {
                     if (mBack == old && mContainer != null) {
                         clear(old); // behind the shown one now

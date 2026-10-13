@@ -80,6 +80,9 @@ public class ShortsSidePanel {
     private ValueAnimator mBorderAnimator;
     private int mBorderColor = BORDER_GREY;
     private String mBoundVideoId;
+    private Video mPendingBind; // waits for the old content to fade out
+    private static final int PANEL_OUT_MS = 70;
+    private static final int PANEL_IN_MS = 130;
     private final Set<Integer> mConsumedKeys = new HashSet<>();
     private ViewGroup mRoot;
     private View mSurface;
@@ -251,6 +254,56 @@ public class ShortsSidePanel {
     /**
      * Show the info of the current Short.
      */
+    /**
+     * JoTube: the text and buttons of the new Short replace the old ones in step with the slide: the old content moves
+     * a little with it and fades out, the new content comes from the other side (instead of everything popping in
+     * at the key press while the picture is still sliding).
+     *
+     * @param direction 1: next Short (content moves up), -1: previous, 0: no motion
+     */
+    public void bindAnimated(final Video video, int direction) {
+        if (mPanel == null || video == null) {
+            return;
+        }
+
+        mPanel.animate().cancel();
+
+        if (direction == 0 || mPanel.getVisibility() != View.VISIBLE || mPanel.getAlpha() < 0.5f && mPendingBind == null) {
+            mPendingBind = null;
+            mPanel.setAlpha(1f);
+            mPanel.setTranslationY(0);
+            bind(video);
+            return;
+        }
+
+        mPendingBind = video;
+        final float shift = dp(18) * direction;
+
+        mPanel.animate()
+                .alpha(0f)
+                .translationY(-shift)
+                .setDuration(PANEL_OUT_MS)
+                .setInterpolator(new android.view.animation.AccelerateInterpolator())
+                .withEndAction(() -> {
+                    Video latest = mPendingBind;
+                    mPendingBind = null;
+                    if (mPanel == null) {
+                        return;
+                    }
+                    if (latest != null) {
+                        bind(latest);
+                    }
+                    mPanel.setTranslationY(shift);
+                    mPanel.animate()
+                            .alpha(1f)
+                            .translationY(0)
+                            .setDuration(PANEL_IN_MS)
+                            .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                            .start();
+                })
+                .start();
+    }
+
     public void bind(Video video) {
         if (mPanel == null || video == null) {
             return;

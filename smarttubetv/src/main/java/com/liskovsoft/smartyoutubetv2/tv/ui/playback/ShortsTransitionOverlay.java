@@ -31,10 +31,11 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitio
  */
 public class ShortsTransitionOverlay {
     // The slide starts when the new video is already playing (its first frame came during the hold)
-    private static final int SWIPE_DURATION_MS = 200;
+    static final int SWIPE_DURATION_MS = 200;
     private static final int REVEAL_DURATION_MS = 120; // the black cover over the moving video fades out
     private static final int FADE_OUT_DURATION_MS = 120;
     private static final int FAILSAFE_HIDE_MS = 10_000;
+    private static final int AT_SLIDE_START_TIMEOUT_MS = 400;
     private static final int SNAPSHOT_TIMEOUT_MS = 150; // the main thread can be busy ~70 ms at the switch
     // JoTube: no hold: the slide starts at the key press (holding the old picture looked like a freeze). The new
     // Short (preloaded: first frame in 150-300 ms) moves in under a black cover that fades out when its frame comes,
@@ -70,6 +71,8 @@ public class ShortsTransitionOverlay {
     private int mFrameWidth;
     private int mFrameHeight;
     private int mFrameOffsetX;
+    private Runnable mAtSlideStart; // the page (background, frame shape, panel) changes together with the slide
+    private final Runnable mAtSlideStartTimeout = this::flushAtSlideStart;
     private boolean mOutFrozen; // a swipe is on: the outgoing picture keeps its shape
     private boolean mOutFramePending; // the new frame shape waits until the outgoing picture is gone
     // JoTube: diagnostics of the swipe (tag ShortsTransition): where the time goes, and how smooth the slide is
@@ -170,6 +173,7 @@ public class ShortsTransitionOverlay {
         mPendingVideo = null;
         mHoldStart = null;
         mSnapshotTimeout = null;
+        mAtSlideStart = null;
         flushAfterSnapshot();
         mFirstFrameRendered = false;
         mSwipeId++;
@@ -207,6 +211,34 @@ public class ShortsTransitionOverlay {
         mHandler.postDelayed(mPendingShow, delayMs);
     }
 
+    /**
+     * Runs when the slide starts (or at once if there is no slide: hide, a newer swipe, a timeout), so the background,
+     * the frame and the panel change at the same moment as the picture moves instead of at the key press.
+     */
+    public void runAtSlideStart(Runnable action) {
+        flushAtSlideStart(); // an older one first
+        if (action == null) {
+            return;
+        }
+        if (mContainer == null) {
+            action.run();
+            return;
+        }
+        mAtSlideStart = action;
+        mHandler.removeCallbacks(mAtSlideStartTimeout);
+        mHandler.postDelayed(mAtSlideStartTimeout, AT_SLIDE_START_TIMEOUT_MS);
+    }
+
+    private void flushAtSlideStart() {
+        mHandler.removeCallbacks(mAtSlideStartTimeout);
+        Runnable action = mAtSlideStart;
+        mAtSlideStart = null;
+
+        if (action != null) {
+            action.run();
+        }
+    }
+
     private void cancelPendingShow() {
         mHandler.removeCallbacks(mPendingShow);
         mPendingVideo = null;
@@ -216,6 +248,8 @@ public class ShortsTransitionOverlay {
      * A new video is about to load: its thumbnail covers the old picture (no animation).
      */
     public void show(Video video, int direction) {
+        flushAtSlideStart();
+
         if (mContainer == null || video == null) {
             return;
         }
@@ -454,6 +488,7 @@ public class ShortsTransitionOverlay {
         mIn.setTranslationY(inStart);
         setSurfaceOffset(inStart);
 
+        flushAtSlideStart();
         mDiagLastFrameMs = 0;
         mDiagMaxGapMs = 0;
         mDiagFrames = 0;
@@ -582,6 +617,8 @@ public class ShortsTransitionOverlay {
      * The first frame of the new video is on screen (animate = true), or the overlay isn't needed (false).
      */
     public void hide(boolean animate) {
+        flushAtSlideStart();
+
         if (animate) {
             mFirstFrameRendered = true;
             if (mDiagCallMs != 0) {
