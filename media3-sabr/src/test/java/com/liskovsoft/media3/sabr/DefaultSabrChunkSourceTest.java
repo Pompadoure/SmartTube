@@ -233,13 +233,13 @@ public class DefaultSabrChunkSourceTest {
     }
 
     @Test
-    public void startInTheMiddleStillLoadsTheInitializationChunkFirst() {
+    public void startInTheMiddleLoadsInitAndTheSegmentAtThePositionAsOneChunk() {
         SabrManifest manifest = createManifestWithInitRange();
         ChunkHolder out = new ChunkHolder();
 
         createSource(manifest).getNextChunk(loadingInfo(30_000_000), 30_000_000, Collections.emptyList(), out);
 
-        assertTrue(out.chunk instanceof InitializationChunk);
+        assertTrue(out.chunk instanceof ContainerMediaChunk);
         assertEquals(DataSpec.HTTP_METHOD_POST, out.chunk.dataSpec.httpMethod);
         assertEquals(SABR_URL + "&rn=0", out.chunk.dataSpec.uri.toString());
     }

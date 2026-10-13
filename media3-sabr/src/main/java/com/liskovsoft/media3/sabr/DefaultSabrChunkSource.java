@@ -69,8 +69,10 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
     // started, so the old order made the decoder wait for the complete download of the first segment (measured: Short
     // from Home, tracks selected +413 ms, decoder init +4726 ms) and downloaded that segment twice.
     private static final boolean START_WITH_MEDIA_CHUNK = true;
-    // Only for a start at (nearly) the beginning: the init request always asks for the segments at player time 0.
-    private static final long START_CHUNK_MAX_POSITION_US = 1_000_000L;
+    // A start further in (resume, seek before the first load) puts the position into the init request, so the response
+    // holds the init segment and the segment at the position (the old init request asked for time 0: a whole segment,
+    // 4K: ~0.9 s, downloaded and dropped before the real one).
+    private static final long START_CHUNK_AT_POSITION_MIN_US = 1_000_000L;
     public static final class Factory implements SabrChunkSource.Factory {
 
         private final DataSource.Factory dataSourceFactory;
@@ -385,11 +387,10 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
             //}
             //if (pendingInitializationUri != null || pendingIndexUri != null) {
             if (pendingInitializationUri != null) {
-                if (START_WITH_MEDIA_CHUNK && sabrStream != null && queue.isEmpty()
-                        && loadPositionUs <= START_CHUNK_MAX_POSITION_US) {
+                if (START_WITH_MEDIA_CHUNK && sabrStream != null && queue.isEmpty()) {
                     out.chunk = newStartChunk(representationHolder, dataSource,
                             trackSelection.getSelectedFormat(), trackSelection.getSelectionReason(),
-                            trackSelection.getSelectionData());
+                            trackSelection.getSelectionData(), loadPositionUs);
                     return;
                 }
                 // We have initialization and/or index requests to make.
@@ -650,15 +651,18 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
             DataSource dataSource,
             Format trackFormat,
             int trackSelectionReason,
-            Object trackSelectionData) {
+            Object trackSelectionData,
+            long positionUs) {
+        long requestPositionUs = positionUs > START_CHUNK_AT_POSITION_MIN_US ? positionUs : C.TIME_UNSET;
         DataSpec dataSpec = createSabrDataSpec(
                 manifest.getRequestUrl(trackType),
-                manifest.createVideoPlaybackAbrRequest(trackType, true).toByteArray(),
+                manifest.createVideoPlaybackAbrRequest(trackType, true, requestPositionUs).toByteArray(),
                 representationHolder.representation.getCacheKey());
         long sampleOffsetUs = -representationHolder.representation.presentationTimeOffsetUs;
         nexChunkIdx = 0; // the following chunk is a plain continuation
         startChunkRequestedMs = SystemClock.elapsedRealtime();
-        Log.e(TAG, "Load start chunk (init + media): track=" + trackType + ", rn=" + manifest.getSabrRequestNumber());
+        Log.e(TAG, "Load start chunk (init + media): track=" + trackType + ", rn=" + manifest.getSabrRequestNumber()
+                + ", positionUs=" + positionUs);
         // Times are unknown until the response is parsed: the chunk starts at 0 and is treated as empty until it is loaded
         // (the next getNextChunk() asks the SABR stream for the real end, see resolveStartChunkEndUs)
         startChunk = new ContainerMediaChunk(
