@@ -266,20 +266,31 @@ public class ShortsSidePanel {
             return;
         }
 
-        mPanel.animate().cancel();
+        mTitle.animate().cancel();
+        mChannelRow.animate().cancel();
 
-        if (direction == 0 || mPanel.getVisibility() != View.VISIBLE || mPanel.getAlpha() < 0.5f && mPendingBind == null) {
+        if (direction == 0 || mPanel.getVisibility() != View.VISIBLE || mTitle.getAlpha() < 0.5f && mPendingBind == null) {
             mPendingBind = null;
-            mPanel.setAlpha(1f);
-            mPanel.setTranslationY(0);
+            resetTextMotion();
             bind(video);
             return;
         }
 
+        // JoTube: the buttons stay where they are (nothing reloads): only the like count and the button states change at once
+        mLikeCount.setText(video.likeCount != null ? video.likeCount : "");
+        mLikeCount.setVisibility(video.likeCount != null && !video.likeCount.isEmpty() ? View.VISIBLE : View.GONE);
+        updateStyles();
+
         mPendingBind = video;
         final float shift = dp(18) * direction;
 
-        mPanel.animate()
+        mChannelRow.animate()
+                .alpha(0f)
+                .translationY(-shift)
+                .setDuration(PANEL_OUT_MS)
+                .setInterpolator(new android.view.animation.AccelerateInterpolator())
+                .start();
+        mTitle.animate()
                 .alpha(0f)
                 .translationY(-shift)
                 .setDuration(PANEL_OUT_MS)
@@ -293,15 +304,23 @@ public class ShortsSidePanel {
                     if (latest != null) {
                         bind(latest);
                     }
-                    mPanel.setTranslationY(shift);
-                    mPanel.animate()
-                            .alpha(1f)
-                            .translationY(0)
-                            .setDuration(PANEL_IN_MS)
-                            .setInterpolator(new android.view.animation.DecelerateInterpolator())
-                            .start();
+                    mTitle.setTranslationY(shift);
+                    mChannelRow.setTranslationY(shift);
+                    mTitle.animate().alpha(1f).translationY(0).setDuration(PANEL_IN_MS)
+                            .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+                    mChannelRow.animate().alpha(1f).translationY(0).setDuration(PANEL_IN_MS)
+                            .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
                 })
                 .start();
+    }
+
+    private void resetTextMotion() {
+        mPanel.setAlpha(1f);
+        mPanel.setTranslationY(0);
+        mTitle.setAlpha(1f);
+        mTitle.setTranslationY(0);
+        mChannelRow.setAlpha(1f);
+        mChannelRow.setTranslationY(0);
     }
 
     public void bind(Video video) {
