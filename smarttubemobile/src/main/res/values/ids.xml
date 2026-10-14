@@ -1,0 +1,8 @@
+<resources>
+    <item name="mobile_thumb" type="id"/>
+    <item name="mobile_thumb_box" type="id"/>
+    <item name="mobile_badge" type="id"/>
+    <item name="mobile_avatar" type="id"/>
+    <item name="mobile_title" type="id"/>
+    <item name="mobile_meta" type="id"/>
+</resources>

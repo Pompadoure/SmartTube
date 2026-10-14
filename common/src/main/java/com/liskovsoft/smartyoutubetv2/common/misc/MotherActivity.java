@@ -198,7 +198,7 @@ public class MotherActivity extends FragmentActivity {
 
         if (context != null) {
             // NOTE: Use only cached metrics. Because metrics creation involves using WindowManager, which isn't available at this stage.
-            contextWrapper = LocaleContextWrapper.wrap(context, LocaleUpdater.getSavedLocale(context), sCachedDisplayMetrics);
+            contextWrapper = LocaleContextWrapper.wrap(context, LocaleUpdater.getSavedLocale(context), isDpiScalingEnabled() ? sCachedDisplayMetrics : null);
         }
 
         super.attachBaseContext(contextWrapper);
@@ -257,7 +257,18 @@ public class MotherActivity extends FragmentActivity {
         }
     }
 
+    /**
+     * JoTube mobile: the TV build scales the UI as if the screen were 1920 px wide. A phone UI uses real dp.
+     */
+    protected boolean isDpiScalingEnabled() {
+        return true;
+    }
+
     private void initDpi() {
+        if (!isDpiScalingEnabled()) {
+            return;
+        }
+
         getResources().getDisplayMetrics().setTo(getDisplayMetrics(this));
     }
 

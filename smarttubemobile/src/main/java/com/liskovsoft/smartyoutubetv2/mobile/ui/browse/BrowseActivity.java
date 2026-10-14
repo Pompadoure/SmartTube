@@ -1,0 +1,489 @@
+package com.liskovsoft.smartyoutubetv2.mobile.ui.browse;
+
+import android.content.Intent;
+import android.graphics.Typeface;
+import android.os.Bundle;
+import android.text.TextUtils;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.ProgressBar;
+import android.widget.TextView;
+
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
+import com.liskovsoft.mediaserviceinterfaces.data.MediaGroup;
+import com.liskovsoft.smartyoutubetv2.common.app.models.data.BrowseSection;
+import com.liskovsoft.smartyoutubetv2.common.app.models.data.SettingsGroup;
+import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
+import com.liskovsoft.smartyoutubetv2.common.app.models.data.VideoGroup;
+import com.liskovsoft.smartyoutubetv2.common.app.models.errors.ErrorFragmentData;
+import com.liskovsoft.smartyoutubetv2.common.app.presenters.BrowsePresenter;
+import com.liskovsoft.smartyoutubetv2.common.app.presenters.SearchPresenter;
+import com.liskovsoft.smartyoutubetv2.common.app.views.BrowseView;
+import com.liskovsoft.smartyoutubetv2.mobile.R;
+import com.liskovsoft.smartyoutubetv2.mobile.ui.main.MobileActivity;
+import com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.Ui;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * The phone home screen, laid out like the YouTube app: top bar with the search button, a row of chips (the
+ * sections of the presenter), the feed and a bottom bar (Home, Shorts, Subscriptions, You).
+ */
+public class BrowseActivity extends MobileActivity implements BrowseView {
+    private BrowsePresenter mPresenter;
+    private final List<BrowseSection> mSections = new ArrayList<>();
+    private final List<TextView> mChips = new ArrayList<>();
+    private final List<TextView> mTabs = new ArrayList<>();
+    private int mSelectedIndex = -1;
+    private boolean mSelecting;
+    private LinearLayout mChipRow;
+    private RecyclerView mList;
+    private GridLayoutManager mLayoutManager;
+    private VideoAdapter mAdapter;
+    private ProgressBar mProgress;
+    private LinearLayout mErrorBox;
+    private TextView mErrorText;
+    private Button mErrorButton;
+
+    private static final int[] TAB_SECTION_IDS = {
+            MediaGroup.TYPE_HOME, MediaGroup.TYPE_SHORTS, MediaGroup.TYPE_CHANNEL_UPLOADS, MediaGroup.TYPE_HISTORY
+    };
+    private static final int[] TAB_ICONS = {R.drawable.ic_home, R.drawable.ic_shorts, R.drawable.ic_subs, R.drawable.ic_you};
+    private static final int[] TAB_TITLES = {R.string.tab_home, R.string.tab_shorts, R.string.tab_subscriptions, R.string.tab_you};
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        setContentView(createContent());
+
+        mPresenter = BrowsePresenter.instance(this);
+        mPresenter.setView(this);
+        mPresenter.onViewInitialized();
+    }
+
+    private View createContent() {
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(getColor(R.color.yt_bg));
+        root.setFitsSystemWindows(true);
+
+        root.addView(createTopBar());
+        root.addView(createChips());
+
+        FrameLayout content = new FrameLayout(this);
+        mAdapter = new VideoAdapter(new VideoAdapter.Listener() {
+            @Override
+            public void onClick(Video video) {
+                mPresenter.onVideoItemClicked(video);
+            }
+
+            @Override
+            public void onLongClick(Video video) {
+                mPresenter.onVideoItemLongClicked(video);
+            }
+        });
+        mList = new RecyclerView(this);
+        mLayoutManager = new GridLayoutManager(this, 1);
+        mLayoutManager.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
+            @Override
+            public int getSpanSize(int position) {
+                return mAdapter.isHeader(position) || !isShortsSelected() ? mLayoutManager.getSpanCount() : 1;
+            }
+        });
+        mList.setLayoutManager(mLayoutManager);
+        mList.setAdapter(mAdapter);
+        mList.setItemAnimator(null);
+        mList.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override
+            public void onScrolled(RecyclerView recyclerView, int dx, int dy) {
+                if (dy <= 0 || mAdapter.size() == 0) {
+                    return;
+                }
+
+                if (mLayoutManager.findLastVisibleItemPosition() >= mAdapter.size() - 6) {
+                    Video last = mAdapter.lastVideo();
+                    if (last != null) {
+                        mPresenter.onScrollEnd(last);
+                    }
+                }
+            }
+        });
+        content.addView(mList, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        mProgress = new ProgressBar(this);
+        mProgress.setVisibility(View.GONE);
+        content.addView(mProgress, new FrameLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40), Gravity.CENTER));
+
+        mErrorBox = new LinearLayout(this);
+        mErrorBox.setOrientation(LinearLayout.VERTICAL);
+        mErrorBox.setGravity(Gravity.CENTER);
+        mErrorBox.setVisibility(View.GONE);
+        mErrorText = new TextView(this);
+        mErrorText.setTextColor(getColor(R.color.yt_text));
+        mErrorText.setGravity(Gravity.CENTER);
+        mErrorText.setPadding(Ui.dp(this, 32), 0, Ui.dp(this, 32), Ui.dp(this, 16));
+        mErrorBox.addView(mErrorText);
+        mErrorButton = new Button(this);
+        mErrorBox.addView(mErrorButton);
+        content.addView(mErrorBox, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+
+        root.addView(content, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        root.addView(createBottomBar());
+
+        return root;
+    }
+
+    private View createTopBar() {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(Ui.dp(this, 16), 0, Ui.dp(this, 4), 0);
+
+        TextView logo = new TextView(this);
+        logo.setText("JoTube");
+        logo.setTextColor(getColor(R.color.yt_text));
+        logo.setTextSize(22);
+        logo.setTypeface(Typeface.DEFAULT_BOLD);
+        bar.addView(logo, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        ImageView search = new ImageView(this);
+        search.setImageResource(R.drawable.ic_search);
+        search.setPadding(Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12));
+        search.setOnClickListener(v -> SearchPresenter.instance(this).startSearch(null));
+        bar.addView(search, new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48)));
+
+        bar.setMinimumHeight(Ui.dp(this, 52));
+        return bar;
+    }
+
+    private View createChips() {
+        HorizontalScrollView scroll = new HorizontalScrollView(this);
+        scroll.setHorizontalScrollBarEnabled(false);
+        scroll.setPadding(Ui.dp(this, 12), Ui.dp(this, 4), Ui.dp(this, 12), Ui.dp(this, 8));
+        scroll.setClipToPadding(false);
+        mChipRow = new LinearLayout(this);
+        mChipRow.setOrientation(LinearLayout.HORIZONTAL);
+        scroll.addView(mChipRow);
+        return scroll;
+    }
+
+    private View createBottomBar() {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setBackgroundColor(getColor(R.color.yt_bg));
+
+        for (int i = 0; i < TAB_SECTION_IDS.length; i++) {
+            final int sectionId = TAB_SECTION_IDS[i];
+            TextView tab = new TextView(this);
+            tab.setText(TAB_TITLES[i]);
+            tab.setTextSize(10);
+            tab.setGravity(Gravity.CENTER);
+            tab.setCompoundDrawablesWithIntrinsicBounds(0, TAB_ICONS[i], 0, 0);
+            tab.setCompoundDrawablePadding(Ui.dp(this, 2));
+            tab.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+            tab.setOnClickListener(v -> selectSectionById(sectionId));
+            bar.addView(tab, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            mTabs.add(tab);
+        }
+
+        updateTabs();
+        return bar;
+    }
+
+    private void selectSectionById(int sectionId) {
+        for (int i = 0; i < mSections.size(); i++) {
+            if (mSections.get(i).getId() == sectionId) {
+                selectUserSection(i);
+                return;
+            }
+        }
+    }
+
+    private void selectUserSection(int index) {
+        if (index == mSelectedIndex) {
+            // second tap = refresh / back to top
+            mList.scrollToPosition(0);
+            mPresenter.onSectionClicked(mSections.get(index).getId());
+            return;
+        }
+
+        selectSection(index, false);
+    }
+
+    private boolean isShortsSelected() {
+        return mSelectedIndex >= 0 && mSelectedIndex < mSections.size() && mSections.get(mSelectedIndex).getId() == MediaGroup.TYPE_SHORTS;
+    }
+
+    private void rebuildChips() {
+        mChipRow.removeAllViews();
+        mChips.clear();
+
+        for (int i = 0; i < mSections.size(); i++) {
+            final int index = i;
+            TextView chip = new TextView(this);
+            chip.setText(mSections.get(i).getTitle());
+            chip.setTextSize(14);
+            chip.setTypeface(Typeface.DEFAULT_BOLD);
+            chip.setPadding(Ui.dp(this, 12), Ui.dp(this, 7), Ui.dp(this, 12), Ui.dp(this, 7));
+            chip.setOnClickListener(v -> selectUserSection(index));
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            params.setMarginEnd(Ui.dp(this, 8));
+            mChipRow.addView(chip, params);
+            mChips.add(chip);
+        }
+
+        updateChips();
+    }
+
+    private void updateChips() {
+        for (int i = 0; i < mChips.size(); i++) {
+            boolean selected = i == mSelectedIndex;
+            TextView chip = mChips.get(i);
+            chip.setBackgroundResource(selected ? R.drawable.bg_chip_selected : R.drawable.bg_chip);
+            chip.setTextColor(getColor(selected ? R.color.yt_bg : R.color.yt_text));
+        }
+    }
+
+    private void updateTabs() {
+        int selectedId = mSelectedIndex >= 0 && mSelectedIndex < mSections.size() ? mSections.get(mSelectedIndex).getId() : -1;
+
+        for (int i = 0; i < mTabs.size(); i++) {
+            boolean selected = TAB_SECTION_IDS[i] == selectedId;
+            TextView tab = mTabs.get(i);
+            int color = getColor(selected ? R.color.yt_text : R.color.yt_text_secondary);
+            tab.setTextColor(color);
+            tab.setCompoundDrawableTintList(android.content.res.ColorStateList.valueOf(color));
+        }
+    }
+
+    private void applySpanCount() {
+        boolean wide = getResources().getConfiguration().screenWidthDp >= 600;
+        mLayoutManager.setSpanCount(isShortsSelected() ? (wide ? 4 : 2) : (wide ? 2 : 1));
+    }
+
+    ///////////////////// BrowseView
+
+    @Override
+    public void addSection(int index, BrowseSection section) {
+        if (section == null || mSections.contains(section)) {
+            return;
+        }
+
+        mSections.add(Math.min(Math.max(index, 0), mSections.size()), section);
+        rebuildChips();
+        updateTabs();
+    }
+
+    @Override
+    public void removeSection(BrowseSection section) {
+        mSections.remove(section);
+        if (mSelectedIndex >= mSections.size()) {
+            mSelectedIndex = mSections.size() - 1;
+        }
+        rebuildChips();
+        updateTabs();
+    }
+
+    @Override
+    public void removeAllSections() {
+        mSections.clear();
+        mSelectedIndex = -1;
+        rebuildChips();
+        updateTabs();
+    }
+
+    @Override
+    public void selectSection(int index, boolean focusOnContent) {
+        if (index < 0 || mSections.isEmpty()) {
+            return;
+        }
+
+        index = Math.min(index, mSections.size() - 1);
+
+        if (mSelecting) {
+            return;
+        }
+
+        mSelecting = true;
+        try {
+            boolean changed = index != mSelectedIndex;
+            mSelectedIndex = index;
+            updateChips();
+            updateTabs();
+            applySpanCount();
+
+            if (changed) {
+                mAdapter.clear();
+                hideError();
+            }
+
+            mPresenter.onSectionFocused(mSections.get(index).getId());
+        } finally {
+            mSelecting = false;
+        }
+    }
+
+    @Override
+    public void updateSection(VideoGroup group) {
+        if (group == null || mSelectedIndex < 0 || mSelectedIndex >= mSections.size()) {
+            return;
+        }
+
+        BrowseSection section = group.getSection();
+        if (section != null && section.getId() != mSections.get(mSelectedIndex).getId()) {
+            return;
+        }
+
+        hideError();
+
+        switch (group.getAction()) {
+            case VideoGroup.ACTION_REPLACE:
+                mAdapter.clear();
+                appendGroup(group);
+                break;
+            case VideoGroup.ACTION_REMOVE:
+                for (Video video : group.getVideos()) {
+                    mAdapter.removeVideo(video);
+                }
+                break;
+            case VideoGroup.ACTION_SYNC:
+                break;
+            default:
+                appendGroup(group);
+        }
+    }
+
+    private void appendGroup(VideoGroup group) {
+        BrowseSection section = group.getSection();
+        // The TV home feed is a column of rows: here a row is a titled run of cards
+        if (section != null && section.getType() == BrowseSection.TYPE_ROW && group.getPosition() >= 0) {
+            mAdapter.addHeader(group.getTitle());
+        }
+        mAdapter.addVideos(group.getVideos());
+    }
+
+    @Override
+    public void updateSection(SettingsGroup group) {
+        if (group == null || group.getItems() == null) {
+            return;
+        }
+
+        mAdapter.clear();
+        mAdapter.addSettings(group.getItems());
+    }
+
+    @Override
+    public void clearSection(BrowseSection section) {
+        mAdapter.clear();
+    }
+
+    @Override
+    public void selectSectionItem(int index) {
+        mList.scrollToPosition(Math.max(index, 0));
+    }
+
+    @Override
+    public void selectSectionItem(Video item) {
+        // no focus on a phone
+    }
+
+    @Override
+    public void showError(ErrorFragmentData data) {
+        if (data == null) {
+            hideError();
+            return;
+        }
+
+        mErrorText.setText(data.getMessage());
+        String action = data.getActionText();
+        mErrorButton.setVisibility(TextUtils.isEmpty(action) ? View.GONE : View.VISIBLE);
+        mErrorButton.setText(action);
+        mErrorButton.setOnClickListener(v -> data.onAction());
+        mErrorBox.setVisibility(View.VISIBLE);
+    }
+
+    private void hideError() {
+        mErrorBox.setVisibility(View.GONE);
+    }
+
+    @Override
+    public void showProgressBar(boolean show) {
+        mProgress.setVisibility(show ? View.VISIBLE : View.GONE);
+    }
+
+    @Override
+    public boolean isProgressBarShowing() {
+        return mProgress.getVisibility() == View.VISIBLE;
+    }
+
+    @Override
+    public void focusOnContent() {
+        // no focus on a phone
+    }
+
+    @Override
+    public void showHeaders() {
+        // no sidebar on a phone
+    }
+
+    @Override
+    public void setContentHidden(boolean hidden) {
+        mList.setVisibility(hidden ? View.INVISIBLE : View.VISIBLE);
+    }
+
+    @Override
+    public void preloadCardThumbnails(List<Video> videos) {
+        // Glide loads on bind
+    }
+
+    @Override
+    public void preloadShorts(List<Video> videos) {
+        // the Shorts player has its own preloading
+    }
+
+    @Override
+    public boolean isEmpty() {
+        return mAdapter.size() == 0;
+    }
+
+    @Override
+    public void updateBadge() {
+        // no badge on a phone
+    }
+
+    ///////////////////// lifecycle
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        mPresenter.onViewResumed();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        mPresenter.onViewPaused();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        mPresenter.onViewDestroyed();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+    }
+}

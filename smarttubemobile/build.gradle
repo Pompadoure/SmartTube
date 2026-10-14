@@ -1,0 +1,116 @@
+apply from: gradle.ext.sharedModulesConstants
+
+apply plugin: 'com.android.application'
+
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+// JoTube mobile (branch media3-mobile): phone UI on top of :common (presenters, player, API). The TV module is untouched.
+android {
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    compileSdkVersion project.properties.compileSdkVersion
+    buildToolsVersion project.properties.buildToolsVersion
+
+    defaultConfig {
+        applicationId "org.smarttube.johan.mobile"
+        minSdkVersion 23
+        targetSdkVersion 34
+        versionCode 1
+        versionName "0.1"
+        multiDexEnabled = true
+        multiDexKeepProguard file("../smarttubetv/multidex-keep.pro")
+        ndk {
+            abiFilters 'armeabi-v7a', 'arm64-v8a'
+        }
+    }
+
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'armeabi-v7a', 'arm64-v8a'
+            universalApk true
+        }
+    }
+
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                storeFile = file(keystoreProperties['storeFile'])
+                storePassword = keystoreProperties['storePassword']
+                keyAlias = keystoreProperties['keyAlias']
+                keyPassword = keystoreProperties['keyPassword']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                signingConfig signingConfigs.release
+            }
+        }
+        debug {
+            if (keystorePropertiesFile.exists()) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            def arch = output.getFilter(com.android.build.OutputFile.ABI)
+            arch = arch != null ? arch : "universal"
+            output.outputFileName = new File(sprintf("JoTubeMobile_%s_%s.apk", [variant.versionName, arch]))
+        }
+    }
+
+    lintOptions {
+        abortOnError false
+        disable 'UnsafeOptInUsageError'
+    }
+
+    flavorDimensions "default"
+
+    productFlavors {
+        // Library modules don't know this flavor, so they use their stable variant (same as the TV module).
+        stjohan {
+            matchingFallbacks = ['ststable']
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.annotation:annotation:' + annotationXVersion
+    implementation 'androidx.recyclerview:recyclerview:' + recyclerviewXVersion
+    implementation 'androidx.media:media:' + mediaXVersion
+    implementation 'androidx.multidex:multidex:' + multiDexVersion
+
+    implementation 'com.github.bumptech.glide:glide:' + glideVersion
+    implementation 'com.github.bumptech.glide:annotations:' + glideVersion
+    annotationProcessor 'com.github.bumptech.glide:compiler:' + glideVersion
+
+    implementation project(':media3-sabr')
+    implementation "androidx.media3:media3-exoplayer:$m3Media3Version"
+    implementation "androidx.media3:media3-exoplayer-dash:$m3Media3Version"
+    implementation "androidx.media3:media3-ui:$m3Media3Version"
+    implementation "androidx.media3:media3-session:$m3Media3Version"
+
+    implementation project(':fragment-1.1.0')
+    implementation project(':common')
+    implementation project(':sharedutils')
+    implementation project(':mediaserviceinterfaces')
+    implementation project(':youtubeapi')
+
+    implementation 'io.reactivex.rxjava2:rxandroid:' + rxAndroidVersion
+    implementation 'io.reactivex.rxjava2:rxjava:' + rxJavaVersion
+
+    implementation 'org.conscrypt:conscrypt-android:' + conscryptVersion
+}

@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">JoTube Mobile</string>
+    <string name="tab_home">Hem</string>
+    <string name="tab_shorts">Shorts</string>
+    <string name="tab_subscriptions">Prenumerationer</string>
+    <string name="tab_you">Du</string>
+    <string name="search_hint">Sök på JoTube</string>
+    <string name="sign_in_title">Logga in</string>
+    <string name="sign_in_hint">Öppna länken och ange koden</string>
+    <string name="sign_in_open">Öppna länk</string>
+</resources>
