@@ -38,6 +38,8 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
     private static final int TYPE_VIDEO = 1;
     private static final int TYPE_SHORT = 2;
     private static final int TYPE_SETTING = 3;
+    private static final int TYPE_VIEW = 4;
+    private boolean mShortsAsWide;
     private final List<Object> mItems = new ArrayList<>();
     private final Listener mListener;
 
@@ -50,6 +52,17 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
         int size = mItems.size();
         mItems.clear();
         notifyItemRangeRemoved(0, size);
+    }
+
+    /** Watch page: Shorts among the suggestions are shown like ordinary 16:9 cards. */
+    public void setShortsAsWide(boolean wide) {
+        mShortsAsWide = wide;
+    }
+
+    /** A ready made view (the watch page info block) as the first row. */
+    public void addView(View view) {
+        mItems.add(view);
+        notifyItemInserted(mItems.size() - 1);
     }
 
     public void addHeader(String title) {
@@ -138,11 +151,15 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
             return TYPE_HEADER;
         }
 
+        if (item instanceof View) {
+            return TYPE_VIEW;
+        }
+
         if (item instanceof SettingsItem) {
             return TYPE_SETTING;
         }
 
-        return ((Video) item).isShorts ? TYPE_SHORT : TYPE_VIDEO;
+        return ((Video) item).isShorts && !mShortsAsWide ? TYPE_SHORT : TYPE_VIDEO;
     }
 
     @Override
@@ -157,6 +174,13 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
             header.setTypeface(Typeface.DEFAULT_BOLD);
             header.setPadding(Ui.dp(context, 16), Ui.dp(context, 20), Ui.dp(context, 16), Ui.dp(context, 8));
             return new RecyclerView.ViewHolder(header) {
+            };
+        }
+
+        if (viewType == TYPE_VIEW) {
+            FrameLayout holder = new FrameLayout(context);
+            holder.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            return new RecyclerView.ViewHolder(holder) {
             };
         }
 
@@ -248,6 +272,19 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
 
         if (item instanceof String) {
             ((TextView) holder.itemView).setText((String) item);
+            return;
+        }
+
+        if (item instanceof View) {
+            View view = (View) item;
+            FrameLayout frame = (FrameLayout) holder.itemView;
+            if (view.getParent() != frame) {
+                if (view.getParent() instanceof ViewGroup) {
+                    ((ViewGroup) view.getParent()).removeView(view);
+                }
+                frame.removeAllViews();
+                frame.addView(view, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            }
             return;
         }
 

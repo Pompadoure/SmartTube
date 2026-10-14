@@ -46,6 +46,8 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
     private int mSelectedIndex = -1;
     private boolean mSelecting;
     private LinearLayout mChipRow;
+    private HorizontalScrollView mStripScroll;
+    private LinearLayout mStrip;
     private RecyclerView mList;
     private GridLayoutManager mLayoutManager;
     private VideoAdapter mAdapter;
@@ -79,6 +81,7 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
 
         root.addView(createTopBar());
         root.addView(createChips());
+        root.addView(createChannelStrip());
 
         FrameLayout content = new FrameLayout(this);
         mAdapter = new VideoAdapter(new VideoAdapter.Listener() {
@@ -156,6 +159,12 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         logo.setTypeface(Typeface.DEFAULT_BOLD);
         bar.addView(logo, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
+        ImageView settings = new ImageView(this);
+        settings.setImageResource(R.drawable.ic_settings);
+        settings.setPadding(Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12));
+        settings.setOnClickListener(v -> selectSectionById(MediaGroup.TYPE_SETTINGS));
+        bar.addView(settings, new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48)));
+
         ImageView search = new ImageView(this);
         search.setImageResource(R.drawable.ic_search);
         search.setPadding(Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12));
@@ -175,6 +184,64 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         mChipRow.setOrientation(LinearLayout.HORIZONTAL);
         scroll.addView(mChipRow);
         return scroll;
+    }
+
+    /** Subscriptions: the round channel avatars above the feed, like the YouTube app. */
+    private View createChannelStrip() {
+        mStripScroll = new HorizontalScrollView(this);
+        mStripScroll.setHorizontalScrollBarEnabled(false);
+        mStripScroll.setVisibility(View.GONE);
+        mStripScroll.setPadding(Ui.dp(this, 8), Ui.dp(this, 4), Ui.dp(this, 8), Ui.dp(this, 8));
+        mStrip = new LinearLayout(this);
+        mStrip.setOrientation(LinearLayout.HORIZONTAL);
+        mStripScroll.addView(mStrip);
+        return mStripScroll;
+    }
+
+    private void addChannels(VideoGroup group, boolean replace) {
+        if (replace) {
+            mStrip.removeAllViews();
+        }
+
+        for (Video channel : group.getVideos()) {
+            LinearLayout item = new LinearLayout(this);
+            item.setOrientation(LinearLayout.VERTICAL);
+            item.setGravity(Gravity.CENTER_HORIZONTAL);
+            item.setPadding(Ui.dp(this, 6), 0, Ui.dp(this, 6), 0);
+
+            ImageView avatar = new ImageView(this);
+            avatar.setBackgroundResource(R.drawable.bg_avatar);
+            avatar.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            Ui.makeCircle(avatar);
+            item.addView(avatar, new LinearLayout.LayoutParams(Ui.dp(this, 64), Ui.dp(this, 64)));
+            String image = channel.getCardImageUrl() != null ? channel.getCardImageUrl() : channel.authorImageUrl;
+            if (image != null) {
+                com.bumptech.glide.Glide.with(avatar).load(image).into(avatar);
+            }
+
+            TextView name = new TextView(this);
+            name.setText(channel.getTitle());
+            name.setTextColor(getColor(R.color.yt_text));
+            name.setTextSize(12);
+            name.setMaxLines(1);
+            name.setEllipsize(TextUtils.TruncateAt.END);
+            name.setGravity(Gravity.CENTER);
+            name.setPadding(0, Ui.dp(this, 4), 0, 0);
+            item.addView(name, new LinearLayout.LayoutParams(Ui.dp(this, 72), ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            item.setOnClickListener(v -> mPresenter.onVideoItemClicked(channel));
+            item.setOnLongClickListener(v -> {
+                mPresenter.onVideoItemLongClicked(channel);
+                return true;
+            });
+            mStrip.addView(item);
+        }
+
+        mStripScroll.setVisibility(mStrip.getChildCount() > 0 ? View.VISIBLE : View.GONE);
+    }
+
+    private boolean isMultiGrid(BrowseSection section) {
+        return section != null && section.getType() == BrowseSection.TYPE_MULTI_GRID;
     }
 
     private View createBottomBar() {
@@ -323,6 +390,8 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
             applySpanCount();
 
             if (changed) {
+                mStrip.removeAllViews();
+                mStripScroll.setVisibility(View.GONE);
                 mAdapter.clear();
                 hideError();
             }
@@ -345,6 +414,12 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         }
 
         hideError();
+
+        // Subscriptions (multi grid): position 0 = channels (the avatar strip), position 1 = the uploads feed (the grid)
+        if (isMultiGrid(section != null ? section : mSections.get(mSelectedIndex)) && group.getPosition() == 0) {
+            addChannels(group, group.getAction() == VideoGroup.ACTION_REPLACE);
+            return;
+        }
 
         switch (group.getAction()) {
             case VideoGroup.ACTION_REPLACE:

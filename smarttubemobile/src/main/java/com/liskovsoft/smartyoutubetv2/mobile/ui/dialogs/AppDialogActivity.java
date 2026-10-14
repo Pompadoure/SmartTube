@@ -19,6 +19,12 @@ import com.liskovsoft.smartyoutubetv2.mobile.R;
 import com.liskovsoft.smartyoutubetv2.mobile.ui.main.MobileActivity;
 import com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.Ui;
 
+import com.bumptech.glide.Glide;
+import com.liskovsoft.mediaserviceinterfaces.data.CommentGroup;
+import com.liskovsoft.mediaserviceinterfaces.data.CommentItem;
+import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.CommentsReceiver;
+import android.widget.ImageView;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -40,6 +46,9 @@ public class AppDialogActivity extends MobileActivity implements AppDialogView {
     private boolean mShown;
     private boolean mFinished;
     private int mId;
+    private CommentsReceiver mComments;
+    private final List<CommentGroup> mCommentGroups = new ArrayList<>();
+    private TextView mCommentsStatus;
     private boolean mExpandable = true;
 
     @Override
@@ -159,6 +168,11 @@ public class AppDialogActivity extends MobileActivity implements AppDialogView {
     private void renderCategory(OptionCategory category) {
         mContent.removeAllViews();
 
+        if (category.type == OptionCategory.TYPE_COMMENTS && !category.options.isEmpty() && category.options.get(0).getCommentsReceiver() != null) {
+            startComments(category.options.get(0).getCommentsReceiver());
+            return;
+        }
+
         if (category.type == OptionCategory.TYPE_LONG_TEXT || category.type == OptionCategory.TYPE_CHAT || category.type == OptionCategory.TYPE_COMMENTS) {
             for (OptionItem item : category.options) {
                 TextView text = new TextView(this);
@@ -208,6 +222,154 @@ public class AppDialogActivity extends MobileActivity implements AppDialogView {
         }
     }
 
+    private static final class CommentsBackup implements CommentsReceiver.Backup {
+        final List<CommentGroup> groups;
+
+        CommentsBackup(List<CommentGroup> groups) {
+            this.groups = new ArrayList<>(groups);
+        }
+    }
+
+    private void startComments(CommentsReceiver receiver) {
+        mComments = receiver;
+        mCommentGroups.clear();
+        mCommentsStatus = new TextView(this);
+        mCommentsStatus.setText(receiver.getLoadingMessage());
+        mCommentsStatus.setTextColor(getColor(R.color.yt_text_secondary));
+        mCommentsStatus.setPadding(Ui.dp(this, 20), Ui.dp(this, 16), Ui.dp(this, 20), Ui.dp(this, 16));
+        mContent.addView(mCommentsStatus);
+
+        receiver.setCallback(new CommentsReceiver.Callback() {
+            @Override
+            public void onCommentGroup(CommentGroup group) {
+                runOnUiThread(() -> {
+                    if (group != null) {
+                        mCommentGroups.add(group);
+                    }
+                    renderComments();
+                });
+            }
+
+            @Override
+            public void onBackup(CommentsReceiver.Backup backup) {
+                runOnUiThread(() -> {
+                    if (backup instanceof CommentsBackup) {
+                        mCommentGroups.clear();
+                        mCommentGroups.addAll(((CommentsBackup) backup).groups);
+                    }
+                    renderComments();
+                });
+            }
+
+            @Override
+            public void onSync(CommentItem commentItem) {
+                runOnUiThread(AppDialogActivity.this::renderComments);
+            }
+        });
+        receiver.onStart();
+    }
+
+    private void renderComments() {
+        if (mComments == null) {
+            return;
+        }
+
+        mContent.removeAllViews();
+        int count = 0;
+        CommentGroup last = null;
+
+        for (CommentGroup group : mCommentGroups) {
+            last = group;
+            if (group.getComments() == null) {
+                continue;
+            }
+
+            for (CommentItem item : group.getComments()) {
+                mContent.addView(createCommentRow(item));
+                count++;
+            }
+        }
+
+        if (count == 0) {
+            TextView empty = new TextView(this);
+            empty.setText(mComments.getErrorMessage());
+            empty.setTextColor(getColor(R.color.yt_text_secondary));
+            empty.setPadding(Ui.dp(this, 20), Ui.dp(this, 16), Ui.dp(this, 20), Ui.dp(this, 16));
+            mContent.addView(empty);
+            return;
+        }
+
+        if (last != null && last.getNextCommentsKey() != null) {
+            final CommentGroup more = last;
+            TextView button = new TextView(this);
+            button.setText("Visa fler kommentarer");
+            button.setTextColor(0xFF3EA6FF);
+            button.setPadding(Ui.dp(this, 20), Ui.dp(this, 16), Ui.dp(this, 20), Ui.dp(this, 24));
+            button.setOnClickListener(v -> {
+                button.setText(mComments.getLoadingMessage());
+                mComments.onLoadMore(more);
+            });
+            mContent.addView(button);
+        }
+    }
+
+    private View createCommentRow(CommentItem item) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(Ui.dp(this, 16), Ui.dp(this, 10), Ui.dp(this, 16), Ui.dp(this, 10));
+
+        ImageView avatar = new ImageView(this);
+        avatar.setBackgroundResource(R.drawable.bg_avatar);
+        avatar.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        Ui.makeCircle(avatar);
+        LinearLayout.LayoutParams avatarParams = new LinearLayout.LayoutParams(Ui.dp(this, 32), Ui.dp(this, 32));
+        avatarParams.setMarginEnd(Ui.dp(this, 12));
+        row.addView(avatar, avatarParams);
+        if (item.getAuthorPhoto() != null) {
+            Glide.with(avatar).load(item.getAuthorPhoto()).into(avatar);
+        }
+
+        LinearLayout texts = new LinearLayout(this);
+        texts.setOrientation(LinearLayout.VERTICAL);
+
+        TextView header = new TextView(this);
+        header.setTextColor(getColor(R.color.yt_text_secondary));
+        header.setTextSize(12);
+        String date = item.getPublishedDate();
+        header.setText((item.getAuthorName() != null ? item.getAuthorName() : "") + (date != null ? " • " + date : ""));
+        texts.addView(header);
+
+        TextView message = new TextView(this);
+        message.setTextColor(getColor(R.color.yt_text));
+        message.setTextSize(14);
+        message.setText(item.getMessage());
+        message.setPadding(0, Ui.dp(this, 2), 0, Ui.dp(this, 4));
+        texts.addView(message);
+
+        StringBuilder footer = new StringBuilder();
+        footer.append(item.isLiked() ? "♥ " : "♡ ");
+        if (item.getLikeCount() != null) {
+            footer.append(item.getLikeCount());
+        }
+        if (item.getReplyCount() != null && !item.getReplyCount().isEmpty()) {
+            footer.append("     💬 ").append(item.getReplyCount());
+        }
+        TextView footerView = new TextView(this);
+        footerView.setTextColor(getColor(R.color.yt_text_secondary));
+        footerView.setTextSize(12);
+        footerView.setText(footer);
+        texts.addView(footerView);
+
+        row.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        row.setOnClickListener(v -> mComments.onCommentClicked(item)); // replies
+        row.setOnLongClickListener(v -> {
+            mComments.onCommentLongClicked(item); // like
+            return true;
+        });
+        return row;
+    }
+
     private void renderRadio(OptionCategory category, int selected) {
         mContent.removeAllViews();
 
@@ -248,6 +410,10 @@ public class AppDialogActivity extends MobileActivity implements AppDialogView {
     public void finish() {
         if (!mFinished) {
             mFinished = true;
+            if (mComments != null) {
+                mComments.onFinish(new CommentsBackup(mCommentGroups));
+                mComments = null;
+            }
             mShown = false;
             if (mPresenter != null) {
                 mPresenter.onFinish();
