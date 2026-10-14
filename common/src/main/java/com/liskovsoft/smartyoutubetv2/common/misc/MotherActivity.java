@@ -74,13 +74,13 @@ public class MotherActivity extends FragmentActivity {
         Log.d(TAG, "Starting %s...", this.getClass().getSimpleName());
 
         mIsOculusQuestFixEnabled = PlayerTweaksData.instance(this).isOculusQuestFixEnabled();
-        mIsFullscreenModeEnabled = GeneralData.instance(this).isFullscreenModeEnabled();
+        mIsFullscreenModeEnabled = isTvFullscreenModeAllowed() && GeneralData.instance(this).isFullscreenModeEnabled();
 
         initDpi();
         initTheme();
 
         // Search Fullscreen routine inside onPause() method
-        if (!mIsFullscreenModeEnabled) {
+        if (!mIsFullscreenModeEnabled && isTvFullscreenModeAllowed()) {
             // There's no way to do this programmatically!
             setTheme(R.style.FitSystemWindows);
 
@@ -302,6 +302,14 @@ public class MotherActivity extends FragmentActivity {
         // Fix sudden dpi change.
         // Could happen when screen goes off or after PIP mode.
         initDpi();
+    }
+
+    /**
+     * The TV "fullscreen mode" (status/navigation bars hidden, fit-system-windows theme). The phone app handles its
+     * system bars itself.
+     */
+    protected boolean isTvFullscreenModeAllowed() {
+        return true;
     }
 
     private void applyFullscreenModeIfNeeded() {

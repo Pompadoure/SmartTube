@@ -13,6 +13,11 @@ public class MobileActivity extends MotherActivity {
     }
 
     @Override
+    protected boolean isTvFullscreenModeAllowed() {
+        return false;
+    }
+
+    @Override
     protected void initTheme() {
         // the theme comes from the manifest
     }
