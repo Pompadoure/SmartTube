@@ -73,6 +73,8 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     private android.widget.SeekBar mSeekBar;
     private boolean mSeeking;
     private boolean mInPip;
+    private boolean mFastForward;
+    private float mSpeedBeforeFastForward = 1f;
     private TextView mSeekHint;
     private final Runnable mHideSeekHint = () -> mSeekHint.setVisibility(View.GONE);
     private final Runnable mHideControls = () -> showControls(false);
@@ -494,6 +496,26 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
             }
 
             @Override
+            public void onLongPress(MotionEvent e) {
+                // Hold the right half: fast forward (2x) until the finger is lifted
+                if (mShortsMode || mInPip || e.getX() <= mPlayerBox.getWidth() / 2f) {
+                    return;
+                }
+
+                mFastForward = true;
+                mSpeedBeforeFastForward = mExoPlayerController.getSpeed();
+                mExoPlayerController.setSpeed(2.0f);
+                mHandler.removeCallbacks(mHideSeekHint);
+                mSeekHint.setText("2x  Snabbspolning");
+                FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) mSeekHint.getLayoutParams();
+                params.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+                params.topMargin = Ui.dp(PlaybackActivity.this, 48);
+                mSeekHint.setLayoutParams(params);
+                mSeekHint.setVisibility(View.VISIBLE);
+                mPlayerBox.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+            }
+
+            @Override
             public boolean onDoubleTap(MotionEvent e) {
                 if (mShortsMode) {
                     return false;
@@ -519,7 +541,16 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
                 return false;
             }
         });
-        return (v, event) -> detector.onTouchEvent(event);
+        return (v, event) -> {
+            int action = event.getActionMasked();
+            if ((action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) && mFastForward) {
+                mFastForward = false;
+                mExoPlayerController.setSpeed(mSpeedBeforeFastForward);
+                mSeekHint.setVisibility(View.GONE);
+                ((FrameLayout.LayoutParams) mSeekHint.getLayoutParams()).topMargin = 0;
+            }
+            return detector.onTouchEvent(event);
+        };
     }
 
     private void seekBy(long deltaMs, boolean forward) {
