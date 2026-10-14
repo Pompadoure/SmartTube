@@ -346,19 +346,31 @@ public class AppDialogActivity extends MobileActivity implements AppDialogView {
         message.setPadding(0, Ui.dp(this, 2), 0, Ui.dp(this, 4));
         texts.addView(message);
 
-        StringBuilder footer = new StringBuilder();
-        footer.append(item.isLiked() ? "♥ " : "♡ ");
-        if (item.getLikeCount() != null) {
-            footer.append(item.getLikeCount());
-        }
+        LinearLayout footer = new LinearLayout(this);
+        footer.setGravity(Gravity.CENTER_VERTICAL);
+        ImageView likeIcon = new ImageView(this);
+        likeIcon.setImageResource(R.drawable.ic_like);
+        likeIcon.setColorFilter(item.isLiked() ? 0xFF3EA6FF : 0xFFAAAAAA);
+        footer.addView(likeIcon, new LinearLayout.LayoutParams(Ui.dp(this, 16), Ui.dp(this, 16)));
+        TextView likes = new TextView(this);
+        likes.setTextColor(getColor(R.color.yt_text_secondary));
+        likes.setTextSize(12);
+        likes.setText(item.getLikeCount() != null ? " " + item.getLikeCount() : "");
+        footer.addView(likes);
         if (item.getReplyCount() != null && !item.getReplyCount().isEmpty()) {
-            footer.append("     💬 ").append(item.getReplyCount());
+            ImageView replyIcon = new ImageView(this);
+            replyIcon.setImageResource(R.drawable.ic_comment);
+            replyIcon.setColorFilter(0xFFAAAAAA);
+            LinearLayout.LayoutParams replyParams = new LinearLayout.LayoutParams(Ui.dp(this, 16), Ui.dp(this, 16));
+            replyParams.setMarginStart(Ui.dp(this, 20));
+            footer.addView(replyIcon, replyParams);
+            TextView replies = new TextView(this);
+            replies.setTextColor(getColor(R.color.yt_text_secondary));
+            replies.setTextSize(12);
+            replies.setText(" " + item.getReplyCount());
+            footer.addView(replies);
         }
-        TextView footerView = new TextView(this);
-        footerView.setTextColor(getColor(R.color.yt_text_secondary));
-        footerView.setTextSize(12);
-        footerView.setText(footer);
-        texts.addView(footerView);
+        texts.addView(footer);
 
         row.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 

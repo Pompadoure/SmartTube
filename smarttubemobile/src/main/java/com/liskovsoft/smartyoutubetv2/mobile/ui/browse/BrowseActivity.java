@@ -466,7 +466,26 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         if (section != null && section.getType() == BrowseSection.TYPE_ROW && group.getPosition() >= 0) {
             mAdapter.addHeader(group.getTitle());
         }
+        if (!isShortsSelected() && isAllShorts(group.getVideos())) {
+            mAdapter.addShortsRow(group.getVideos());
+            return;
+        }
+
         mAdapter.addVideos(group.getVideos());
+    }
+
+    private static boolean isAllShorts(List<Video> videos) {
+        if (videos == null || videos.isEmpty()) {
+            return false;
+        }
+
+        for (Video video : videos) {
+            if (!video.isShorts) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     @Override

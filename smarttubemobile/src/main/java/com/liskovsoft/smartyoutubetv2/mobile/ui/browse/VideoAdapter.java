@@ -39,6 +39,7 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
     private static final int TYPE_SHORT = 2;
     private static final int TYPE_SETTING = 3;
     private static final int TYPE_VIEW = 4;
+    private static final int TYPE_SHORTS_ROW = 5;
     private boolean mShortsAsWide;
     private final List<Object> mItems = new ArrayList<>();
     private final Listener mListener;
@@ -62,6 +63,16 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
     /** A ready made view (the watch page info block) as the first row. */
     public void addView(View view) {
         mItems.add(view);
+        notifyItemInserted(mItems.size() - 1);
+    }
+
+    /** Home feed: Shorts as one small horizontally scrolling row. */
+    public void addShortsRow(List<Video> videos) {
+        if (videos == null || videos.isEmpty()) {
+            return;
+        }
+
+        mItems.add(new ArrayList<>(videos));
         notifyItemInserted(mItems.size() - 1);
     }
 
@@ -129,6 +140,11 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
             if (mItems.get(i) instanceof Video) {
                 return (Video) mItems.get(i);
             }
+
+            if (mItems.get(i) instanceof List && !((List<?>) mItems.get(i)).isEmpty()) {
+                List<?> row = (List<?>) mItems.get(i);
+                return (Video) row.get(row.size() - 1);
+            }
         }
 
         return null;
@@ -155,6 +171,10 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
             return TYPE_VIEW;
         }
 
+        if (item instanceof List) {
+            return TYPE_SHORTS_ROW;
+        }
+
         if (item instanceof SettingsItem) {
             return TYPE_SETTING;
         }
@@ -174,6 +194,17 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
             header.setTypeface(Typeface.DEFAULT_BOLD);
             header.setPadding(Ui.dp(context, 16), Ui.dp(context, 20), Ui.dp(context, 16), Ui.dp(context, 8));
             return new RecyclerView.ViewHolder(header) {
+            };
+        }
+
+        if (viewType == TYPE_SHORTS_ROW) {
+            RecyclerView row = new RecyclerView(context);
+            row.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            row.setLayoutManager(new androidx.recyclerview.widget.LinearLayoutManager(context, androidx.recyclerview.widget.LinearLayoutManager.HORIZONTAL, false));
+            row.setPadding(Ui.dp(context, 12), 0, Ui.dp(context, 12), Ui.dp(context, 8));
+            row.setClipToPadding(false);
+            row.setNestedScrollingEnabled(false);
+            return new RecyclerView.ViewHolder(row) {
             };
         }
 
@@ -275,6 +306,32 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
             return;
         }
 
+        if (item instanceof List) {
+            @SuppressWarnings("unchecked")
+            final List<Video> shorts = (List<Video>) item;
+            ((RecyclerView) holder.itemView).setAdapter(new RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+                @Override
+                public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+                    View card = createCard(parent.getContext(), true);
+                    RecyclerView.LayoutParams params = new RecyclerView.LayoutParams(Ui.dp(parent.getContext(), 128), ViewGroup.LayoutParams.WRAP_CONTENT);
+                    params.setMarginEnd(Ui.dp(parent.getContext(), 8));
+                    card.setLayoutParams(params);
+                    return new CardHolder(card);
+                }
+
+                @Override
+                public void onBindViewHolder(RecyclerView.ViewHolder h, int pos) {
+                    bindCard(h.itemView, shorts.get(pos));
+                }
+
+                @Override
+                public int getItemCount() {
+                    return shorts.size();
+                }
+            });
+            return;
+        }
+
         if (item instanceof View) {
             View view = (View) item;
             FrameLayout frame = (FrameLayout) holder.itemView;
@@ -299,8 +356,10 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
             return;
         }
 
-        Video video = (Video) item;
-        View root = holder.itemView;
+        bindCard(holder.itemView, (Video) item);
+    }
+
+    private void bindCard(View root, Video video) {
         ImageView thumb = root.findViewById(R.id.mobile_thumb);
         ImageView avatar = root.findViewById(R.id.mobile_avatar);
         TextView badge = root.findViewById(R.id.mobile_badge);

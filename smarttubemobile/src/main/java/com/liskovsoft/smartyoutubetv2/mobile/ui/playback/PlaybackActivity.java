@@ -601,12 +601,12 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         LinearLayout column = new LinearLayout(this);
         column.setOrientation(LinearLayout.VERTICAL);
         column.setGravity(Gravity.CENTER_HORIZONTAL);
-        mShortLikeIcon = shortAction(column, R.drawable.ic_heart, "Gilla", ID_LIKE);
+        mShortLikeIcon = shortAction(column, R.drawable.ic_heart, "", ID_LIKE);
         mShortLikeLabel = (TextView) mShortLikeIcon.getTag();
-        shortAction(column, R.drawable.ic_dislike, "Ogilla", ID_DISLIKE);
-        shortAction(column, R.drawable.ic_comment, "Kommentarer", ID_COMMENTS);
-        shortAction(column, R.drawable.ic_save, "Spara", ID_SAVE);
-        ImageView shareIcon = shortAction(column, R.drawable.ic_share, "Dela", 0);
+        shortAction(column, R.drawable.ic_dislike, "", ID_DISLIKE);
+        shortAction(column, R.drawable.ic_comment, "", ID_COMMENTS);
+        shortAction(column, R.drawable.ic_save, "", ID_SAVE);
+        ImageView shareIcon = shortAction(column, R.drawable.ic_share, "", 0);
         shareIcon.setOnClickListener(v -> shareVideo());
         ((View) shareIcon.getParent()).setOnClickListener(v -> shareVideo());
         FrameLayout.LayoutParams columnParams = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.END | Gravity.BOTTOM);
@@ -656,10 +656,11 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         item.setPadding(Ui.dp(this, 8), Ui.dp(this, 10), Ui.dp(this, 8), Ui.dp(this, 6));
         ImageView icon = new ImageView(this);
         icon.setImageResource(iconRes);
-        item.addView(icon, new LinearLayout.LayoutParams(Ui.dp(this, 30), Ui.dp(this, 30)));
+        item.addView(icon, new LinearLayout.LayoutParams(Ui.dp(this, 32), Ui.dp(this, 32)));
         TextView text = text(12, R.color.yt_text, false);
         text.setText(label);
         text.setShadowLayer(4, 0, 0, 0xFF000000);
+        text.setVisibility(TextUtils.isEmpty(label) ? View.GONE : View.VISIBLE);
         item.addView(text);
         icon.setTag(text);
         if (buttonId != 0) {
@@ -680,6 +681,9 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
         mShortsMode = on;
         mShortsLayer.setVisibility(on ? View.VISIBLE : View.GONE);
+        if (mPlayer != null) {
+            applyShortsResize(mPlayer.getVideoSize());
+        }
         if (on) {
             mControls.setVisibility(View.GONE);
         }
@@ -710,6 +714,17 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         }
     };
 
+    /** A Short fills the screen (zoom); an ordinary wide video that is opened in this mode keeps its edges. */
+    private void applyShortsResize(androidx.media3.common.VideoSize size) {
+        if (!mShortsMode) {
+            mPlayerView.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT);
+            return;
+        }
+
+        boolean portrait = size == null || size.width == 0 || size.height >= size.width;
+        mPlayerView.setResizeMode(portrait ? androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM : androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT);
+    }
+
     private void refreshButtons() {
         boolean subscribed = getButtonState(ID_SUBSCRIBE) == BUTTON_ON;
         for (TextView pill : new TextView[]{mSubscribeButton, mShortSubscribe}) {
@@ -727,7 +742,8 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         setChipLabel(mLikeChip, likes);
         setChipActive(mLikeChip, liked);
         setChipActive(mDislikeChip, disliked);
-        mShortLikeLabel.setText(likes.isEmpty() ? "Gilla" : likes);
+        mShortLikeLabel.setText(likes);
+        mShortLikeLabel.setVisibility(likes.isEmpty() ? View.GONE : View.VISIBLE);
         mShortLikeIcon.setColorFilter(liked ? 0xFFFF4E45 : 0xFFFFFFFF);
     }
 
@@ -743,7 +759,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         mControlsActions.setVisibility(landscape ? View.VISIBLE : View.GONE);
         mFullscreenButton.setImageResource(landscape ? R.drawable.ic_fullscreen_exit : R.drawable.ic_fullscreen);
 
-        if (landscape) {
+        if (fullscreen) {
             decor.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                     | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
         } else {
@@ -843,6 +859,12 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
             }
         });
         mPlayerView.setPlayer(mPlayer);
+        mPlayer.addListener(new androidx.media3.common.Player.Listener() {
+            @Override
+            public void onVideoSizeChanged(androidx.media3.common.VideoSize videoSize) {
+                applyShortsResize(videoSize);
+            }
+        });
 
         mPlaybackPresenter.setView(this);
         mPlaybackPresenter.onEngineInitialized();
