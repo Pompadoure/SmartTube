@@ -72,6 +72,9 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     private ImageView mPlayPauseButton, mFullscreenButton;
     private android.widget.SeekBar mSeekBar;
     private boolean mSeeking;
+    private boolean mInPip;
+    private TextView mSeekHint;
+    private final Runnable mHideSeekHint = () -> mSeekHint.setVisibility(View.GONE);
     private final Runnable mHideControls = () -> showControls(false);
     private TextView mAuthorView, mSubsCountView, mDescView, mSubscribeButton;
     private LinearLayout mLikeChip, mDislikeChip;
@@ -134,9 +137,16 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         mShortsLayer = createShortsLayer();
         mPlayerBox.addView(mShortsLayer, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
+        mSeekHint = text(18, R.color.yt_text, true);
+        mSeekHint.setVisibility(View.GONE);
+        mSeekHint.setGravity(Gravity.CENTER);
+        mSeekHint.setShadowLayer(6, 0, 0, 0xFF000000);
+        mSeekHint.setPadding(Ui.dp(this, 36), Ui.dp(this, 12), Ui.dp(this, 36), Ui.dp(this, 12));
+
         mControls = createControls();
         mPlayerBox.addView(mControls, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        mPlayerBox.setOnClickListener(v -> toggleControls());
+        mPlayerBox.addView(mSeekHint, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL | Gravity.END));
+        mPlayerBox.setOnTouchListener(createPlayerGestures());
 
         mRoot.addView(mPlayerBox, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -292,6 +302,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         ImageView view = new ImageView(this);
         view.setImageResource(res);
         view.setPadding(Ui.dp(this, padDp), Ui.dp(this, padDp), Ui.dp(this, padDp), Ui.dp(this, padDp));
+        view.setBackground(null);
         view.setLayoutParams(new LinearLayout.LayoutParams(Ui.dp(this, sizeDp), Ui.dp(this, sizeDp)));
         return view;
     }
@@ -350,7 +361,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
         ImageView collapse = icon(R.drawable.ic_chevron_down, 48, 10);
-        collapse.setOnClickListener(v -> finish());
+        collapse.setOnClickListener(v -> enterMiniPlayer());
         top.addView(collapse);
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
@@ -381,8 +392,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         ImageView prev = icon(R.drawable.ic_prev, 56, 12);
         prev.setOnClickListener(v -> mPlaybackPresenter.onPreviousClicked());
         center.addView(prev);
-        mPlayPauseButton = icon(R.drawable.ic_pause, 72, 16);
-        mPlayPauseButton.setBackgroundResource(R.drawable.bg_badge);
+        mPlayPauseButton = icon(R.drawable.ic_pause, 72, 12);
         mPlayPauseButton.setOnClickListener(v -> {
             mExoPlayerController.setPlayWhenReady(!mExoPlayerController.getPlayWhenReady());
             scheduleHide();
@@ -468,6 +478,102 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
             return true;
         });
         row.addView(view);
+    }
+
+    private View.OnTouchListener createPlayerGestures() {
+        final GestureDetector detector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+            @Override
+            public boolean onDown(MotionEvent e) {
+                return true;
+            }
+
+            @Override
+            public boolean onSingleTapConfirmed(MotionEvent e) {
+                toggleControls();
+                return true;
+            }
+
+            @Override
+            public boolean onDoubleTap(MotionEvent e) {
+                if (mShortsMode) {
+                    return false;
+                }
+
+                boolean forward = e.getX() > mPlayerBox.getWidth() / 2f;
+                seekBy(forward ? 10_000 : -10_000, forward);
+                return true;
+            }
+
+            @Override
+            public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
+                if (e1 == null || e2 == null || mShortsMode) {
+                    return false;
+                }
+
+                float dy = e2.getY() - e1.getY();
+                if (dy > Ui.dp(PlaybackActivity.this, 80) && Math.abs(dy) > Math.abs(e2.getX() - e1.getX())) {
+                    enterMiniPlayer();
+                    return true;
+                }
+
+                return false;
+            }
+        });
+        return (v, event) -> detector.onTouchEvent(event);
+    }
+
+    private void seekBy(long deltaMs, boolean forward) {
+        long duration = mExoPlayerController.getDurationMs();
+        long target = mExoPlayerController.getPositionMs() + deltaMs;
+        target = Math.max(0, duration > 0 && duration < Video.MAX_LIVE_DURATION_MS ? Math.min(target, duration) : target);
+        mExoPlayerController.setPositionMs(target);
+
+        mSeekHint.setText((forward ? "+" : "-") + "10 s");
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) mSeekHint.getLayoutParams();
+        params.gravity = Gravity.CENTER_VERTICAL | (forward ? Gravity.END : Gravity.START);
+        mSeekHint.setLayoutParams(params);
+        mSeekHint.setVisibility(View.VISIBLE);
+        mHandler.removeCallbacks(mHideSeekHint);
+        mHandler.postDelayed(mHideSeekHint, 700);
+    }
+
+    /** Swipe down / chevron: the video goes to a small floating window and the grid behind it can be scrolled. */
+    private void enterMiniPlayer() {
+        if (android.os.Build.VERSION.SDK_INT < 26 || mShortsMode) {
+            finish();
+            return;
+        }
+
+        try {
+            enterPictureInPictureMode(new android.app.PictureInPictureParams.Builder()
+                    .setAspectRatio(new android.util.Rational(16, 9))
+                    .build());
+        } catch (RuntimeException e) {
+            Log.e(TAG, "Can't enter PiP: " + e.getMessage());
+            finish();
+        }
+    }
+
+    @Override
+    protected void onUserLeaveHint() {
+        super.onUserLeaveHint();
+
+        if (!mShortsMode && mPlayer != null && mPlayer.isPlaying() && android.os.Build.VERSION.SDK_INT >= 26) {
+            enterMiniPlayer();
+        }
+    }
+
+    @Override
+    public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode, Configuration newConfig) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
+        mInPip = isInPictureInPictureMode;
+
+        if (mInPip) {
+            showControls(false);
+            mSeekHint.setVisibility(View.GONE);
+        }
+
+        applyOrientation(newConfig);
     }
 
     private void toggleControls() {
@@ -721,8 +827,8 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
             return;
         }
 
-        boolean portrait = size == null || size.width == 0 || size.height >= size.width;
-        mPlayerView.setResizeMode(portrait ? androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM : androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT);
+        // fit: the whole picture, full width (zoom cut the on-screen texts at the edges)
+        mPlayerView.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT);
     }
 
     private void refreshButtons() {
@@ -749,10 +855,11 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
     private void applyOrientation(Configuration config) {
         boolean landscape = config.orientation == Configuration.ORIENTATION_LANDSCAPE;
-        boolean fullscreen = landscape || mShortsMode;
+        boolean fullscreen = landscape || mShortsMode || mInPip;
         View decor = getWindow().getDecorView();
 
         mPlayerBox.setFullscreen(fullscreen);
+        mShortsLayer.setVisibility(mShortsMode && !mInPip ? View.VISIBLE : View.GONE);
         mPlayerBox.setHeightPerWidth(9f / 16f);
         mSuggestionsList.setVisibility(fullscreen ? View.GONE : View.VISIBLE);
         mControlsTop.setVisibility(landscape ? View.VISIBLE : View.INVISIBLE);
@@ -1333,7 +1440,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
     @Override
     public void showControls(boolean show) {
-        if (show && mShortsMode) {
+        if (show && (mShortsMode || mInPip)) {
             return;
         }
 
