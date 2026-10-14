@@ -66,9 +66,17 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     private RatioFrameLayout mPlayerBox;
     private View mHeader;
     private View mShortsLayer;
-    private ImageView mHqButton;
-    private TextView mAuthorView, mSubsCountView, mDescView, mSubscribeButton, mLikeChip, mDislikeChip;
-    private TextView mShortLikeCount, mShortAuthor, mShortTitle, mShortSubscribe;
+    private View mControls;
+    private View mControlsTop, mControlsActions;
+    private TextView mControlsTitle, mControlsAuthor, mTimeView;
+    private ImageView mPlayPauseButton, mFullscreenButton;
+    private android.widget.SeekBar mSeekBar;
+    private boolean mSeeking;
+    private final Runnable mHideControls = () -> showControls(false);
+    private TextView mAuthorView, mSubsCountView, mDescView, mSubscribeButton;
+    private LinearLayout mLikeChip, mDislikeChip;
+    private TextView mShortLikeLabel, mShortAuthor, mShortTitle, mShortSubscribe;
+    private ImageView mShortLikeIcon;
     private ImageView mShortAvatar;
     private android.widget.ProgressBar mShortProgress;
     private boolean mShortsMode;
@@ -99,6 +107,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         mExoPlayerController = new ExoPlayerController(this, mPlaybackPresenter);
 
         mPlaybackPresenter.onViewInitialized();
+        mHandler.post(mShortsTick);
 
         applyOrientation(getResources().getConfiguration());
     }
@@ -117,32 +126,17 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         mPlayerBox = new RatioFrameLayout(this);
         mPlayerBox.setBackgroundColor(0xFF000000);
         mPlayerView = new PlayerView(this);
-        mPlayerView.setUseController(true);
+        mPlayerView.setUseController(false);
         mPlayerView.setControllerShowTimeoutMs(3000);
         mPlayerView.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING);
-        mPlayerView.setShowNextButton(false);
-        mPlayerView.setShowPreviousButton(false);
         mPlayerBox.addView(mPlayerView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         mShortsLayer = createShortsLayer();
         mPlayerBox.addView(mShortsLayer, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        ImageView back = new ImageView(this);
-        back.setImageResource(R.drawable.ic_back);
-        back.setPadding(Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12));
-        back.setOnClickListener(v -> finish());
-        mPlayerBox.addView(back, new FrameLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48), Gravity.TOP | Gravity.START));
-
-        mHqButton = new ImageView(this);
-        mHqButton.setImageResource(R.drawable.ic_hq);
-        mHqButton.setPadding(Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12));
-        // short press: resolution bubble, long press: the advanced video menu (same as the TV button)
-        mHqButton.setOnClickListener(v -> mPlaybackPresenter.onButtonClicked(com.liskovsoft.smartyoutubetv2.common.R.id.lb_control_high_quality, 0));
-        mHqButton.setOnLongClickListener(v -> {
-            mPlaybackPresenter.onButtonLongClicked(com.liskovsoft.smartyoutubetv2.common.R.id.lb_control_high_quality, 0);
-            return true;
-        });
-        mPlayerBox.addView(mHqButton, new FrameLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48), Gravity.TOP | Gravity.END));
+        mControls = createControls();
+        mPlayerBox.addView(mControls, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        mPlayerBox.setOnClickListener(v -> toggleControls());
 
         mRoot.addView(mPlayerBox, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -265,9 +259,10 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
         mActionRow = new LinearLayout(this);
         mActionRow.setOrientation(LinearLayout.HORIZONTAL);
-        mLikeChip = addAction("👍", ID_LIKE);
-        mDislikeChip = addAction("👎", ID_DISLIKE);
-        addAction("Spara", ID_SAVE);
+        mLikeChip = addAction(R.drawable.ic_like, "", ID_LIKE);
+        mDislikeChip = addAction(R.drawable.ic_dislike, "", ID_DISLIKE);
+        addActionWith(R.drawable.ic_share, "Dela", v -> shareVideo());
+        addAction(R.drawable.ic_save, "Spara", ID_SAVE);
         android.widget.HorizontalScrollView actionScroll = new android.widget.HorizontalScrollView(this);
         actionScroll.setHorizontalScrollBarEnabled(false);
         actionScroll.addView(mActionRow);
@@ -292,6 +287,219 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         return box;
     }
 
+
+    private ImageView icon(int res, int sizeDp, int padDp) {
+        ImageView view = new ImageView(this);
+        view.setImageResource(res);
+        view.setPadding(Ui.dp(this, padDp), Ui.dp(this, padDp), Ui.dp(this, padDp), Ui.dp(this, padDp));
+        view.setLayoutParams(new LinearLayout.LayoutParams(Ui.dp(this, sizeDp), Ui.dp(this, sizeDp)));
+        return view;
+    }
+
+    /** Pill with an icon and a short label (the YouTube action row). */
+    private LinearLayout iconChip(int iconRes, String label) {
+        LinearLayout chip = new LinearLayout(this);
+        chip.setOrientation(LinearLayout.HORIZONTAL);
+        chip.setGravity(Gravity.CENTER_VERTICAL);
+        chip.setBackgroundResource(R.drawable.bg_chip);
+        chip.setPadding(Ui.dp(this, 14), Ui.dp(this, 8), Ui.dp(this, 14), Ui.dp(this, 8));
+        ImageView image = new ImageView(this);
+        image.setImageResource(iconRes);
+        chip.addView(image, new LinearLayout.LayoutParams(Ui.dp(this, 20), Ui.dp(this, 20)));
+        TextView text = text(14, R.color.yt_text, false);
+        text.setText(label);
+        text.setPadding(Ui.dp(this, 6), 0, 0, 0);
+        text.setVisibility(TextUtils.isEmpty(label) ? View.GONE : View.VISIBLE);
+        chip.addView(text);
+        chip.setTag(text);
+        return chip;
+    }
+
+    private void setChipLabel(LinearLayout chip, String label) {
+        TextView text = (TextView) chip.getTag();
+        text.setText(label);
+        text.setVisibility(TextUtils.isEmpty(label) ? View.GONE : View.VISIBLE);
+    }
+
+    private void setChipActive(LinearLayout chip, boolean active) {
+        chip.setBackgroundResource(active ? R.drawable.bg_chip_selected : R.drawable.bg_chip);
+        ((ImageView) chip.getChildAt(0)).setColorFilter(active ? 0xFF0F0F0F : 0xFFFFFFFF);
+        ((TextView) chip.getTag()).setTextColor(active ? 0xFF0F0F0F : 0xFFF1F1F1);
+    }
+
+    private void shareVideo() {
+        Video video = getVideo();
+        if (video == null || video.videoId == null) {
+            return;
+        }
+
+        android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_SEND);
+        intent.setType("text/plain");
+        intent.putExtra(android.content.Intent.EXTRA_TEXT, "https://www.youtube.com/watch?v=" + video.videoId);
+        startActivity(android.content.Intent.createChooser(intent, null));
+    }
+
+    ///////////////////// player controls (YouTube style overlay)
+
+    private View createControls() {
+        FrameLayout box = new FrameLayout(this);
+        box.setBackgroundColor(0x66000000);
+        box.setVisibility(View.GONE);
+
+        // top: collapse, title + channel, CC, settings
+        LinearLayout top = new LinearLayout(this);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        ImageView collapse = icon(R.drawable.ic_chevron_down, 48, 10);
+        collapse.setOnClickListener(v -> finish());
+        top.addView(collapse);
+        LinearLayout titles = new LinearLayout(this);
+        titles.setOrientation(LinearLayout.VERTICAL);
+        mControlsTitle = text(15, R.color.yt_text, true);
+        mControlsTitle.setMaxLines(1);
+        mControlsTitle.setEllipsize(TextUtils.TruncateAt.END);
+        titles.addView(mControlsTitle);
+        mControlsAuthor = text(12, R.color.yt_text_secondary, false);
+        mControlsAuthor.setMaxLines(1);
+        titles.addView(mControlsAuthor);
+        mControlsTop = titles;
+        top.addView(titles, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        ImageView cc = icon(R.drawable.ic_cc, 48, 12);
+        cc.setOnClickListener(v -> mPlaybackPresenter.onButtonClicked(com.liskovsoft.smartyoutubetv2.common.R.id.lb_control_closed_captioning, 0));
+        top.addView(cc);
+        ImageView gear = icon(R.drawable.ic_settings, 48, 12);
+        gear.setOnClickListener(v -> mPlaybackPresenter.onButtonClicked(com.liskovsoft.smartyoutubetv2.common.R.id.lb_control_high_quality, 0));
+        gear.setOnLongClickListener(v -> {
+            mPlaybackPresenter.onButtonLongClicked(com.liskovsoft.smartyoutubetv2.common.R.id.lb_control_high_quality, 0);
+            return true;
+        });
+        top.addView(gear);
+        box.addView(top, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
+
+        // center: previous, play/pause, next
+        LinearLayout center = new LinearLayout(this);
+        center.setGravity(Gravity.CENTER);
+        ImageView prev = icon(R.drawable.ic_prev, 56, 12);
+        prev.setOnClickListener(v -> mPlaybackPresenter.onPreviousClicked());
+        center.addView(prev);
+        mPlayPauseButton = icon(R.drawable.ic_pause, 72, 16);
+        mPlayPauseButton.setBackgroundResource(R.drawable.bg_badge);
+        mPlayPauseButton.setOnClickListener(v -> {
+            mExoPlayerController.setPlayWhenReady(!mExoPlayerController.getPlayWhenReady());
+            scheduleHide();
+        });
+        LinearLayout.LayoutParams ppParams = (LinearLayout.LayoutParams) mPlayPauseButton.getLayoutParams();
+        ppParams.setMargins(Ui.dp(this, 28), 0, Ui.dp(this, 28), 0);
+        center.addView(mPlayPauseButton);
+        ImageView next = icon(R.drawable.ic_next, 56, 12);
+        next.setOnClickListener(v -> mPlaybackPresenter.onNextClicked());
+        center.addView(next);
+        box.addView(center, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+
+        // bottom: time + fullscreen, seek bar, action icons
+        LinearLayout bottom = new LinearLayout(this);
+        bottom.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout timeRow = new LinearLayout(this);
+        timeRow.setGravity(Gravity.CENTER_VERTICAL);
+        timeRow.setPadding(Ui.dp(this, 14), 0, Ui.dp(this, 4), 0);
+        mTimeView = text(12, R.color.yt_text, false);
+        timeRow.addView(mTimeView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        mFullscreenButton = icon(R.drawable.ic_fullscreen, 40, 8);
+        mFullscreenButton.setOnClickListener(v -> toggleFullscreen());
+        timeRow.addView(mFullscreenButton);
+        bottom.addView(timeRow);
+
+        mSeekBar = new android.widget.SeekBar(this);
+        mSeekBar.setMax(1000);
+        mSeekBar.setProgressTintList(android.content.res.ColorStateList.valueOf(0xFFFF0000));
+        mSeekBar.setThumbTintList(android.content.res.ColorStateList.valueOf(0xFFFF0000));
+        mSeekBar.setSecondaryProgressTintList(android.content.res.ColorStateList.valueOf(0x66FFFFFF));
+        mSeekBar.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(android.widget.SeekBar seekBar, int progress, boolean fromUser) {
+                if (fromUser) {
+                    long duration = mExoPlayerController.getDurationMs();
+                    mTimeView.setText(formatTime(duration * progress / 1000) + " / " + formatTime(duration));
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(android.widget.SeekBar seekBar) {
+                mSeeking = true;
+                mHandler.removeCallbacks(mHideControls);
+            }
+
+            @Override
+            public void onStopTrackingTouch(android.widget.SeekBar seekBar) {
+                long duration = mExoPlayerController.getDurationMs();
+                if (duration > 0) {
+                    mExoPlayerController.setPositionMs(duration * seekBar.getProgress() / 1000);
+                }
+                mSeeking = false;
+                scheduleHide();
+            }
+        });
+        bottom.addView(mSeekBar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        actions.setPadding(Ui.dp(this, 8), 0, Ui.dp(this, 8), Ui.dp(this, 4));
+        addControlAction(actions, R.drawable.ic_like, ID_LIKE);
+        addControlAction(actions, R.drawable.ic_dislike, ID_DISLIKE);
+        addControlAction(actions, R.drawable.ic_comment, ID_COMMENTS);
+        addControlAction(actions, R.drawable.ic_save, ID_SAVE);
+        ImageView share = icon(R.drawable.ic_share, 48, 12);
+        share.setOnClickListener(v -> shareVideo());
+        actions.addView(share);
+        ImageView more = icon(R.drawable.ic_more, 48, 12);
+        more.setOnClickListener(v -> mPlaybackPresenter.onButtonLongClicked(com.liskovsoft.smartyoutubetv2.common.R.id.lb_control_high_quality, 0));
+        actions.addView(more);
+        mControlsActions = actions;
+        bottom.addView(actions);
+        box.addView(bottom, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
+
+        return box;
+    }
+
+    private void addControlAction(LinearLayout row, int iconRes, int buttonId) {
+        ImageView view = icon(iconRes, 48, 12);
+        view.setOnClickListener(v -> mPlaybackPresenter.onButtonClicked(buttonId, getButtonState(buttonId)));
+        view.setOnLongClickListener(v -> {
+            mPlaybackPresenter.onButtonLongClicked(buttonId, getButtonState(buttonId));
+            return true;
+        });
+        row.addView(view);
+    }
+
+    private void toggleControls() {
+        if (mShortsMode) {
+            return;
+        }
+
+        showControls(mControls.getVisibility() != View.VISIBLE);
+    }
+
+    private void scheduleHide() {
+        mHandler.removeCallbacks(mHideControls);
+        if (mControls.getVisibility() == View.VISIBLE) {
+            mHandler.postDelayed(mHideControls, 3500);
+        }
+    }
+
+    private void toggleFullscreen() {
+        boolean landscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        setRequestedOrientation(landscape ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT : android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        // hand the rotation back to the sensor once it happened
+        mHandler.postDelayed(() -> setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED), 2500);
+    }
+
+    private static String formatTime(long ms) {
+        long total = Math.max(ms, 0) / 1000;
+        long h = total / 3600;
+        long m = (total / 60) % 60;
+        long sec = total % 60;
+        return h > 0 ? String.format(java.util.Locale.US, "%d:%02d:%02d", h, m, sec) : String.format(java.util.Locale.US, "%d:%02d", m, sec);
+    }
+
     private void toggleDescription() {
         mDescExpanded = !mDescExpanded;
         updateDescription();
@@ -306,20 +514,22 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         mTitleView.setMaxLines(mDescExpanded ? 6 : 2);
     }
 
-    private TextView addAction(String title, int buttonId) {
-        TextView button = text(14, R.color.yt_text, false);
-        button.setText(title);
-        button.setBackgroundResource(R.drawable.bg_chip);
-        button.setPadding(Ui.dp(this, 16), Ui.dp(this, 8), Ui.dp(this, 16), Ui.dp(this, 8));
-        button.setOnClickListener(v -> mPlaybackPresenter.onButtonClicked(buttonId, getButtonState(buttonId)));
-        button.setOnLongClickListener(v -> {
+    private LinearLayout addAction(int iconRes, String title, int buttonId) {
+        LinearLayout chip = addActionWith(iconRes, title, v -> mPlaybackPresenter.onButtonClicked(buttonId, getButtonState(buttonId)));
+        chip.setOnLongClickListener(v -> {
             mPlaybackPresenter.onButtonLongClicked(buttonId, getButtonState(buttonId));
             return true;
         });
+        return chip;
+    }
+
+    private LinearLayout addActionWith(int iconRes, String title, View.OnClickListener click) {
+        LinearLayout chip = iconChip(iconRes, title);
+        chip.setOnClickListener(click);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         params.setMarginEnd(Ui.dp(this, 8));
-        mActionRow.addView(button, params);
-        return button;
+        mActionRow.addView(chip, params);
+        return chip;
     }
 
     ///////////////////// Shorts
@@ -372,14 +582,33 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         touch.setOnTouchListener((v, event) -> detector.onTouchEvent(event));
         layer.addView(touch, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        // right column: like, dislike, comments, save
+        // top: back, search, more
+        LinearLayout shortsTop = new LinearLayout(this);
+        shortsTop.setGravity(Gravity.CENTER_VERTICAL);
+        ImageView shortsBack = icon(R.drawable.ic_back, 48, 12);
+        shortsBack.setOnClickListener(v -> finish());
+        shortsTop.addView(shortsBack, new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48)));
+        shortsTop.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1f));
+        ImageView shortsSearch = icon(R.drawable.ic_search, 48, 12);
+        shortsSearch.setOnClickListener(v -> com.liskovsoft.smartyoutubetv2.common.app.presenters.SearchPresenter.instance(this).startSearch(null));
+        shortsTop.addView(shortsSearch);
+        ImageView shortsMore = icon(R.drawable.ic_more, 48, 12);
+        shortsMore.setOnClickListener(v -> mPlaybackPresenter.onButtonLongClicked(com.liskovsoft.smartyoutubetv2.common.R.id.lb_control_high_quality, 0));
+        shortsTop.addView(shortsMore);
+        layer.addView(shortsTop, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
+
+        // right column: like, dislike, comments, save, share
         LinearLayout column = new LinearLayout(this);
         column.setOrientation(LinearLayout.VERTICAL);
         column.setGravity(Gravity.CENTER_HORIZONTAL);
-        mShortLikeCount = shortAction(column, "♥", "", ID_LIKE);
-        shortAction(column, "👎", "Ogilla", ID_DISLIKE);
-        shortAction(column, "💬", "Kommentarer", ID_COMMENTS);
-        shortAction(column, "🔖", "Spara", ID_SAVE);
+        mShortLikeIcon = shortAction(column, R.drawable.ic_heart, "Gilla", ID_LIKE);
+        mShortLikeLabel = (TextView) mShortLikeIcon.getTag();
+        shortAction(column, R.drawable.ic_dislike, "Ogilla", ID_DISLIKE);
+        shortAction(column, R.drawable.ic_comment, "Kommentarer", ID_COMMENTS);
+        shortAction(column, R.drawable.ic_save, "Spara", ID_SAVE);
+        ImageView shareIcon = shortAction(column, R.drawable.ic_share, "Dela", 0);
+        shareIcon.setOnClickListener(v -> shareVideo());
+        ((View) shareIcon.getParent()).setOnClickListener(v -> shareVideo());
         FrameLayout.LayoutParams columnParams = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.END | Gravity.BOTTOM);
         columnParams.setMargins(0, 0, Ui.dp(this, 8), Ui.dp(this, 100));
         layer.addView(column, columnParams);
@@ -420,20 +649,28 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         return layer;
     }
 
-    private TextView shortAction(LinearLayout column, String icon, String label, int buttonId) {
-        TextView view = text(12, R.color.yt_text, false);
-        view.setGravity(Gravity.CENTER_HORIZONTAL);
-        view.setText(icon + "\n" + label);
-        view.setLineSpacing(0, 1.1f);
-        view.setShadowLayer(4, 0, 0, 0xFF000000);
-        view.setPadding(Ui.dp(this, 8), Ui.dp(this, 8), Ui.dp(this, 8), Ui.dp(this, 8));
-        view.setOnClickListener(v -> mPlaybackPresenter.onButtonClicked(buttonId, getButtonState(buttonId)));
-        view.setOnLongClickListener(v -> {
-            mPlaybackPresenter.onButtonLongClicked(buttonId, getButtonState(buttonId));
-            return true;
-        });
-        column.addView(view);
-        return view;
+    private ImageView shortAction(LinearLayout column, int iconRes, String label, int buttonId) {
+        LinearLayout item = new LinearLayout(this);
+        item.setOrientation(LinearLayout.VERTICAL);
+        item.setGravity(Gravity.CENTER_HORIZONTAL);
+        item.setPadding(Ui.dp(this, 8), Ui.dp(this, 10), Ui.dp(this, 8), Ui.dp(this, 6));
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(iconRes);
+        item.addView(icon, new LinearLayout.LayoutParams(Ui.dp(this, 30), Ui.dp(this, 30)));
+        TextView text = text(12, R.color.yt_text, false);
+        text.setText(label);
+        text.setShadowLayer(4, 0, 0, 0xFF000000);
+        item.addView(text);
+        icon.setTag(text);
+        if (buttonId != 0) {
+            item.setOnClickListener(v -> mPlaybackPresenter.onButtonClicked(buttonId, getButtonState(buttonId)));
+            item.setOnLongClickListener(v -> {
+                mPlaybackPresenter.onButtonLongClicked(buttonId, getButtonState(buttonId));
+                return true;
+            });
+        }
+        column.addView(item);
+        return icon;
     }
 
     private void setShortsMode(boolean on) {
@@ -442,27 +679,32 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         }
 
         mShortsMode = on;
-        mPlayerView.setUseController(!on);
         mShortsLayer.setVisibility(on ? View.VISIBLE : View.GONE);
-        mHqButton.setVisibility(on ? View.GONE : View.VISIBLE);
+        if (on) {
+            mControls.setVisibility(View.GONE);
+        }
         applyOrientation(getResources().getConfiguration());
 
-        mHandler.removeCallbacks(mShortsTick);
-        if (on) {
-            mHandler.post(mShortsTick);
-        }
+
     }
 
     private final Runnable mShortsTick = new Runnable() {
         @Override
         public void run() {
-            if (!mShortsMode) {
-                return;
-            }
+            if (mExoPlayerController != null && mPlayer != null) {
+                long duration = mExoPlayerController.getDurationMs();
+                long position = mExoPlayerController.getPositionMs();
+                boolean known = duration > 0 && duration < Video.MAX_LIVE_DURATION_MS;
+                int progress = known ? (int) (1000L * position / duration) : 0;
 
-            long duration = mExoPlayerController != null ? mExoPlayerController.getDurationMs() : 0;
-            if (duration > 0 && duration < Video.MAX_LIVE_DURATION_MS) {
-                mShortProgress.setProgress((int) (1000L * mExoPlayerController.getPositionMs() / duration));
+                if (mShortsMode) {
+                    mShortProgress.setProgress(progress);
+                } else if (mControls.getVisibility() == View.VISIBLE && !mSeeking) {
+                    mSeekBar.setProgress(progress);
+                    mSeekBar.setSecondaryProgress(known ? (int) (1000L * mPlayer.getBufferedPosition() / duration) : 0);
+                    mTimeView.setText(formatTime(position) + " / " + formatTime(known ? duration : position));
+                    mPlayPauseButton.setImageResource(mExoPlayerController.getPlayWhenReady() ? R.drawable.ic_pause : R.drawable.ic_play);
+                }
             }
             mHandler.postDelayed(this, 250);
         }
@@ -481,14 +723,12 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         boolean liked = getButtonState(ID_LIKE) == BUTTON_ON;
         boolean disliked = getButtonState(ID_DISLIKE) == BUTTON_ON;
         Video video = getVideo();
-        String likes = video != null && video.likeCount != null ? " " + video.likeCount : "";
-        mLikeChip.setText("👍" + likes);
-        mLikeChip.setBackgroundResource(liked ? R.drawable.bg_chip_selected : R.drawable.bg_chip);
-        mLikeChip.setTextColor(getColor(liked ? R.color.yt_bg : R.color.yt_text));
-        mDislikeChip.setBackgroundResource(disliked ? R.drawable.bg_chip_selected : R.drawable.bg_chip);
-        mDislikeChip.setTextColor(getColor(disliked ? R.color.yt_bg : R.color.yt_text));
-        mShortLikeCount.setText("♥\n" + (video != null && video.likeCount != null ? video.likeCount : "Gilla"));
-        mShortLikeCount.setTextColor(liked ? 0xFFFF4E45 : getColor(R.color.yt_text));
+        String likes = video != null && video.likeCount != null ? video.likeCount : "";
+        setChipLabel(mLikeChip, likes);
+        setChipActive(mLikeChip, liked);
+        setChipActive(mDislikeChip, disliked);
+        mShortLikeLabel.setText(likes.isEmpty() ? "Gilla" : likes);
+        mShortLikeIcon.setColorFilter(liked ? 0xFFFF4E45 : 0xFFFFFFFF);
     }
 
     private void applyOrientation(Configuration config) {
@@ -499,6 +739,9 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         mPlayerBox.setFullscreen(fullscreen);
         mPlayerBox.setHeightPerWidth(9f / 16f);
         mSuggestionsList.setVisibility(fullscreen ? View.GONE : View.VISIBLE);
+        mControlsTop.setVisibility(landscape ? View.VISIBLE : View.INVISIBLE);
+        mControlsActions.setVisibility(landscape ? View.VISIBLE : View.GONE);
+        mFullscreenButton.setImageResource(landscape ? R.drawable.ic_fullscreen_exit : R.drawable.ic_fullscreen);
 
         if (landscape) {
             decor.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
@@ -562,6 +805,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         super.onDestroy();
 
         mHandler.removeCallbacks(mShortsTick);
+        mHandler.removeCallbacks(mHideControls);
 
         releasePlayer();
 
@@ -638,6 +882,8 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         String author = video.getAuthor();
         mTitleView.setText(title);
         mShortTitle.setText(title);
+        mControlsTitle.setText(title);
+        mControlsAuthor.setText(author);
 
         // "author • views • date": the author has its own row, don't repeat it
         String second = video.getSecondTitleFull() != null ? video.getSecondTitleFull().toString() : "";
@@ -1047,7 +1293,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
     @Override
     public boolean isOverlayShown() {
-        return mPlayerView.isControllerFullyVisible();
+        return mControls.getVisibility() == View.VISIBLE;
     }
 
     @Override
@@ -1065,16 +1311,21 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
     @Override
     public void showControls(boolean show) {
+        if (show && mShortsMode) {
+            return;
+        }
+
+        mControls.setVisibility(show ? View.VISIBLE : View.GONE);
         if (show) {
-            mPlayerView.showController();
+            scheduleHide();
         } else {
-            mPlayerView.hideController();
+            mHandler.removeCallbacks(mHideControls);
         }
     }
 
     @Override
     public boolean isControlsShown() {
-        return mPlayerView.isControllerFullyVisible();
+        return mControls.getVisibility() == View.VISIBLE;
     }
 
     @Override
@@ -1114,7 +1365,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
     @Override
     public void showSubtitles(boolean show) {
-        mPlayerView.setShowSubtitleButton(show);
+        // CC button of the controls handles subtitles
     }
 
     @Override

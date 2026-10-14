@@ -48,6 +48,7 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
     private LinearLayout mChipRow;
     private HorizontalScrollView mStripScroll;
     private LinearLayout mStrip;
+    private boolean mFeedPicked;
     private RecyclerView mList;
     private GridLayoutManager mLayoutManager;
     private VideoAdapter mAdapter;
@@ -215,7 +216,12 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
             Ui.makeCircle(avatar);
             item.addView(avatar, new LinearLayout.LayoutParams(Ui.dp(this, 64), Ui.dp(this, 64)));
             String image = channel.getCardImageUrl() != null ? channel.getCardImageUrl() : channel.authorImageUrl;
-            if (image != null) {
+            if (channel.isSubscriptionsFeed) {
+                // "All subscriptions"
+                avatar.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+                avatar.setPadding(Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16));
+                avatar.setImageResource(R.drawable.ic_subs);
+            } else if (image != null) {
                 com.bumptech.glide.Glide.with(avatar).load(image).into(avatar);
             }
 
@@ -238,6 +244,15 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         }
 
         mStripScroll.setVisibility(mStrip.getChildCount() > 0 ? View.VISIBLE : View.GONE);
+
+        // Open the "all subscriptions" feed right away, otherwise the grid stays empty
+        if (!mFeedPicked && !group.isEmpty()) {
+            Video first = group.getVideos().get(0);
+            if (first.isSubscriptionsFeed) {
+                mFeedPicked = true;
+                mPresenter.onVideoItemClicked(first);
+            }
+        }
     }
 
     private boolean isMultiGrid(BrowseSection section) {
@@ -390,6 +405,7 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
             applySpanCount();
 
             if (changed) {
+                mFeedPicked = false;
                 mStrip.removeAllViews();
                 mStripScroll.setVisibility(View.GONE);
                 mAdapter.clear();

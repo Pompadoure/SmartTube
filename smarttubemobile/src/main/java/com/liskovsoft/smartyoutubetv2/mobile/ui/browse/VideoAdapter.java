@@ -311,6 +311,10 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
 
         CharSequence second = video.getSecondTitle();
         String author = video.getAuthor();
+        // the second line often starts with the author already
+        if (author != null && second != null && second.toString().startsWith(author)) {
+            second = second.toString().substring(author.length()).replaceFirst("^\\s*[•·-]\\s*", "");
+        }
         if (author != null && !TextUtils.isEmpty(second)) {
             meta.setText(author + " • " + second);
         } else {
