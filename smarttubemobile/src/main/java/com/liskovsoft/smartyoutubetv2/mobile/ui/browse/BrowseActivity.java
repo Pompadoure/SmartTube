@@ -153,6 +153,12 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         bar.setGravity(Gravity.CENTER_VERTICAL);
         bar.setPadding(Ui.dp(this, 16), 0, Ui.dp(this, 4), 0);
 
+        ImageView logoIcon = new ImageView(this);
+        logoIcon.setImageResource(R.mipmap.app_icon);
+        LinearLayout.LayoutParams logoIconParams = new LinearLayout.LayoutParams(Ui.dp(this, 32), Ui.dp(this, 32));
+        logoIconParams.setMarginEnd(Ui.dp(this, 8));
+        bar.addView(logoIcon, logoIconParams);
+
         TextView logo = new TextView(this);
         logo.setText("JoTube");
         logo.setTextColor(getColor(R.color.yt_text));
