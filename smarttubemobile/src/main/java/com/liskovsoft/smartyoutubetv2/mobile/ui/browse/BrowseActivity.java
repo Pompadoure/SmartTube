@@ -302,10 +302,18 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
             // second tap = refresh / back to top
             mList.scrollToPosition(0);
             mPresenter.onSectionClicked(mSections.get(index).getId());
+            startShortsIfSelected(true);
             return;
         }
 
         selectSection(index, false);
+    }
+
+    /** The Shorts chip/tab plays right away, no grid (the presenter starts the player once the feed is there). */
+    private void startShortsIfSelected(boolean entered) {
+        if (entered && isShortsSelected()) {
+            mPresenter.onContentEntered(true);
+        }
     }
 
     private boolean isShortsSelected() {
@@ -419,6 +427,7 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
             }
 
             mPresenter.onSectionFocused(mSections.get(index).getId());
+            startShortsIfSelected(changed);
         } finally {
             mSelecting = false;
         }
@@ -549,7 +558,10 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
 
     @Override
     public void showHeaders() {
-        // no sidebar on a phone
+        // The Shorts player was closed: back to Home instead of an (unwanted) Shorts grid
+        if (isShortsSelected()) {
+            selectSectionById(MediaGroup.TYPE_HOME);
+        }
     }
 
     @Override
