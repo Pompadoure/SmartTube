@@ -8,4 +8,5 @@
     <color name="yt_red">#FF0000</color>
     <color name="yt_divider">#303030</color>
     <color name="yt_badge">#CC000000</color>
+    <color name="jotube_icon_bg">#000000</color>
 </resources>

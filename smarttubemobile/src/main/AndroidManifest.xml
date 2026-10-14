@@ -18,6 +18,7 @@
         android:hardwareAccelerated="true"
         android:largeHeap="true"
         android:icon="@mipmap/app_icon"
+        android:roundIcon="@mipmap/app_icon"
         android:label="@string/app_name"
         android:theme="@style/Mobile.Theme"
         tools:node="merge"
