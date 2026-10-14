@@ -48,6 +48,7 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
     private LinearLayout mChipRow;
     private HorizontalScrollView mStripScroll;
     private LinearLayout mStrip;
+    private LinearLayout mHeader;
     private boolean mFeedPicked;
     private RecyclerView mList;
     private GridLayoutManager mLayoutManager;
@@ -78,11 +79,20 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(getColor(R.color.yt_bg));
-        root.setFitsSystemWindows(true);
 
-        root.addView(createTopBar());
-        root.addView(createChips());
-        root.addView(createChannelStrip());
+        // Edge to edge: the feed scrolls under the (transparent) status bar; the top bar and the chips are the
+        // first row of the feed and scroll away like in the YouTube app.
+        android.view.Window window = getWindow();
+        window.setStatusBarColor(0x00000000);
+        window.setNavigationBarColor(getColor(R.color.yt_bg));
+        root.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
+
+        mHeader = new LinearLayout(this);
+        mHeader.setOrientation(LinearLayout.VERTICAL);
+        mHeader.setBackgroundColor(getColor(R.color.yt_bg));
+        mHeader.addView(createTopBar());
+        mHeader.addView(createChips());
+        mHeader.addView(createChannelStrip());
 
         FrameLayout content = new FrameLayout(this);
         mAdapter = new VideoAdapter(new VideoAdapter.Listener() {
@@ -96,6 +106,7 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
                 mPresenter.onVideoItemLongClicked(video);
             }
         });
+        mAdapter.setFixedHeader(mHeader);
         mList = new RecyclerView(this);
         mLayoutManager = new GridLayoutManager(this, 1);
         mLayoutManager.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
@@ -142,7 +153,15 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         content.addView(mErrorBox, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
 
         root.addView(content, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        root.addView(createBottomBar());
+        View bottomBar = createBottomBar();
+        root.addView(bottomBar);
+
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            mHeader.setPadding(0, insets.getSystemWindowInsetTop(), 0, 0);
+            bottomBar.setPadding(0, 0, 0, insets.getSystemWindowInsetBottom());
+            mErrorBox.setPadding(0, insets.getSystemWindowInsetTop(), 0, 0);
+            return insets;
+        });
 
         return root;
     }

@@ -41,6 +41,7 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
     private static final int TYPE_VIEW = 4;
     private static final int TYPE_SHORTS_ROW = 5;
     private boolean mShortsAsWide;
+    private View mFixedHeader;
     private final List<Object> mItems = new ArrayList<>();
     private final Listener mListener;
 
@@ -49,10 +50,22 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
         setHasStableIds(false);
     }
 
+    /** The feed's own header (top bar, chips): the first row, scrolls away with the feed, survives clear(). */
+    public void setFixedHeader(View header) {
+        mFixedHeader = header;
+        clear();
+    }
+
     public void clear() {
         int size = mItems.size();
         mItems.clear();
+        if (mFixedHeader != null) {
+            mItems.add(mFixedHeader);
+        }
         notifyItemRangeRemoved(0, size);
+        if (mFixedHeader != null) {
+            notifyItemInserted(0);
+        }
     }
 
     /** Watch page: Shorts among the suggestions are shown like ordinary 16:9 cards. */
@@ -132,7 +145,7 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
     }
 
     public int size() {
-        return mItems.size();
+        return mItems.size() - (mFixedHeader != null ? 1 : 0);
     }
 
     public Video lastVideo() {

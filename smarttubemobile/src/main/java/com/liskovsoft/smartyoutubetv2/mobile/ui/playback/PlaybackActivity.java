@@ -856,8 +856,6 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     private void applyOrientation(Configuration config) {
         boolean landscape = config.orientation == Configuration.ORIENTATION_LANDSCAPE;
         boolean fullscreen = landscape || mShortsMode || mInPip;
-        View decor = getWindow().getDecorView();
-
         mPlayerBox.setFullscreen(fullscreen);
         mShortsLayer.setVisibility(mShortsMode && !mInPip ? View.VISIBLE : View.GONE);
         mPlayerBox.setHeightPerWidth(9f / 16f);
@@ -866,11 +864,50 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         mControlsActions.setVisibility(landscape ? View.VISIBLE : View.GONE);
         mFullscreenButton.setImageResource(landscape ? R.drawable.ic_fullscreen_exit : R.drawable.ic_fullscreen);
 
-        if (fullscreen) {
-            decor.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+        // Only the landscape player hides the phone's status/navigation bars. A Short keeps them (the video
+        // doesn't play behind the status bar), the watch page too.
+        mImmersive = landscape;
+        applySystemUi();
+    }
+
+    private boolean mImmersive;
+
+    private void applySystemUi() {
+        android.view.Window window = getWindow();
+        View decor = window.getDecorView();
+        window.setStatusBarColor(0xFF0F0F0F);
+        window.setNavigationBarColor(0xFF0F0F0F);
+
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            android.view.WindowManager.LayoutParams params = window.getAttributes();
+            params.layoutInDisplayCutoutMode = mImmersive
+                    ? android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                    : android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT;
+            window.setAttributes(params);
+        }
+
+        if (mImmersive) {
+            decor.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                     | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+            if (android.os.Build.VERSION.SDK_INT >= 30 && window.getInsetsController() != null) {
+                window.getInsetsController().setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                window.getInsetsController().hide(android.view.WindowInsets.Type.systemBars());
+            }
         } else {
             decor.setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
+            if (android.os.Build.VERSION.SDK_INT >= 30 && window.getInsetsController() != null) {
+                window.getInsetsController().show(android.view.WindowInsets.Type.systemBars());
+            }
+        }
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+
+        if (hasFocus) {
+            applySystemUi(); // the bars come back after a dialog / gesture: hide them again in landscape
         }
     }
 
