@@ -57,7 +57,7 @@
             android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
 
-        <activity android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.music.MusicSearchActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.music.MusicSearchActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" android:windowSoftInputMode="adjustResize" />
 
         <activity android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.channel.ChannelActivity" android:exported="false" android:launchMode="singleTop" android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
 

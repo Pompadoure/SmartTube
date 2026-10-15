@@ -187,7 +187,8 @@ public class MusicSearchActivity extends MobileActivity {
         mTitle.setVisibility(View.GONE);
         mLastQuery = query.trim();
         final MusicApi.Filter filter = FILTERS[mFilterIndex];
-        load(() -> MusicApi.search(mLastQuery, filter), "Inga träffar");
+        final String text = mLastQuery;
+        load(() -> MusicApi.search(text, filter), "Inga träffar");
     }
 
     private void openTracks(MusicApi.Item album) {
@@ -238,6 +239,10 @@ public class MusicSearchActivity extends MobileActivity {
         hideKeyboard();
         switch (item.type) {
             case MusicApi.ARTIST:
+                if (item.browseId == null || !item.browseId.startsWith("UC")) {
+                    android.widget.Toast.makeText(this, "Artistsidan finns inte som kanal", android.widget.Toast.LENGTH_SHORT).show();
+                    break;
+                }
                 ChannelPresenter.instance(this).openChannel(item.browseId);
                 break;
             case MusicApi.ALBUM:

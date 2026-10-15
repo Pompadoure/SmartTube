@@ -15,8 +15,8 @@ import java.util.List;
 
 /**
  * Minimal YouTube Music search/browse, written from the public protocol (the same requests the YouTube Music web app
- * sends). Anonymous: no account, no cookies, nothing of the user's is sent. Written from scratch (no code taken from
- * other projects).
+ * sends). Anonymous: no account, no cookies, nothing of the user's is sent. The code is our own; the endpoint, the
+ * client name and the search filter values are protocol constants the web app itself sends.
  */
 public final class MusicApi {
     public enum Filter {
@@ -100,6 +100,7 @@ public final class MusicApi {
                 out.write(body.toString().getBytes(StandardCharsets.UTF_8));
             }
             if (c.getResponseCode() != 200) {
+                android.util.Log.e("MusicApi", "HTTP " + c.getResponseCode() + " for " + method);
                 throw new IllegalStateException("HTTP " + c.getResponseCode());
             }
             try (InputStream in = c.getInputStream()) {
