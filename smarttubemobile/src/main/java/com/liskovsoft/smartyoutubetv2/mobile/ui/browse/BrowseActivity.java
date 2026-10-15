@@ -51,6 +51,7 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
     private LinearLayout mHeader;
     private View mTopBar, mChipsView;
     private TextView mLogoText;
+    private ImageView mLibraryIcon;
     private LinearLayout mVideoBar, mMusicBar;
     private boolean mMusicMode;
     private boolean mFeedPicked;
@@ -111,6 +112,10 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
 
             @Override
             public void onLongClick(Video video) {
+                if (isMusicSelected() && video != null && video.videoId != null && !video.isShorts) {
+                    com.liskovsoft.smartyoutubetv2.mobile.ui.music.MusicMenu.show(BrowseActivity.this, video, null, null);
+                    return;
+                }
                 mPresenter.onVideoItemLongClicked(video);
             }
         });
@@ -217,6 +222,13 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         settings.setPadding(Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12));
         settings.setOnClickListener(v -> selectSectionById(MediaGroup.TYPE_SETTINGS));
         bar.addView(settings, new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48)));
+
+        mLibraryIcon = new ImageView(this);
+        mLibraryIcon.setImageResource(R.drawable.ic_save);
+        mLibraryIcon.setPadding(Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12));
+        mLibraryIcon.setVisibility(View.GONE);
+        mLibraryIcon.setOnClickListener(v -> startActivity(new android.content.Intent(this, com.liskovsoft.smartyoutubetv2.mobile.ui.music.MusicPlaylistsActivity.class)));
+        bar.addView(mLibraryIcon, new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48)));
 
         ImageView search = new ImageView(this);
         search.setImageResource(R.drawable.ic_search);
@@ -538,7 +550,7 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
 
     /** Music mode: no video chips, Hem / Musik / Poddar at the bottom (like YouTube Music). */
     private void applyMode() {
-        if (mVideoBar == null || mMusicBar == null || mChipsView == null) {
+        if (mVideoBar == null || mMusicBar == null || mChipsView == null || mLibraryIcon == null) {
             return; // still building the screen
         }
 
@@ -547,6 +559,7 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity.setMusicContext(music);
         mChipsView.setVisibility(music ? View.GONE : View.VISIBLE);
         mLogoText.setText(music ? getString(R.string.tab_music) : "JoTube");
+        mLibraryIcon.setVisibility(music ? View.VISIBLE : View.GONE);
         mVideoBar.setVisibility(music ? View.GONE : View.VISIBLE);
         mMusicBar.setVisibility(music ? View.VISIBLE : View.GONE);
     }

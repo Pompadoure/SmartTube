@@ -20,13 +20,10 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
-import com.liskovsoft.smartyoutubetv2.common.app.models.data.Playlist;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
 import com.liskovsoft.smartyoutubetv2.common.app.presenters.ChannelPresenter;
-import com.liskovsoft.smartyoutubetv2.common.app.presenters.PlaybackPresenter;
 import com.liskovsoft.smartyoutubetv2.mobile.R;
 import com.liskovsoft.smartyoutubetv2.mobile.ui.main.MobileActivity;
-import com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity;
 import com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.Ui;
 
 import java.util.ArrayList;
@@ -254,36 +251,29 @@ public class MusicSearchActivity extends MobileActivity {
         }
     }
 
+    private Video toVideo(MusicApi.Item item) {
+        Video video = Video.from(item.videoId);
+        video.title = item.title;
+        video.author = item.author;
+        video.secondTitle = item.subtitle;
+        video.cardImageUrl = item.thumb;
+        return video;
+    }
+
     /** The song plays as sound, the songs after it in the list become the queue (music only). */
     private void play(MusicApi.Item clicked) {
         List<Video> queue = new ArrayList<>();
-        Video start = null;
+        int start = -1;
         for (MusicApi.Item item : mItems) {
             if (item.type != MusicApi.SONG || item.videoId == null) {
                 continue;
             }
-            Video video = Video.from(item.videoId);
-            video.title = item.title;
-            video.author = item.author;
-            video.secondTitle = item.subtitle;
-            video.cardImageUrl = item.thumb;
-            queue.add(video);
             if (item == clicked) {
-                start = video;
+                start = queue.size();
             }
+            queue.add(toVideo(item));
         }
-        if (start == null) {
-            return;
-        }
-
-        Playlist playlist = Playlist.instance();
-        playlist.clear();
-        playlist.addAll(queue);
-        playlist.setCurrent(start);
-
-        PlaybackActivity.setMusicContext(true);
-        PlaybackActivity.setAudioModeForNextPlayback(true);
-        PlaybackPresenter.instance(this).openVideo(start);
+        MusicMenu.playQueue(this, queue, start);
     }
 
     private void hideKeyboard() {
@@ -362,6 +352,13 @@ public class MusicSearchActivity extends MobileActivity {
                 cover.setImageDrawable(null);
             }
             row.setOnClickListener(v -> onItemClicked(item));
+            row.setOnLongClickListener(v -> {
+                if (item.type != MusicApi.SONG || item.videoId == null) {
+                    return false;
+                }
+                MusicMenu.show(MusicSearchActivity.this, toVideo(item), null, null);
+                return true;
+            });
         }
 
         @Override

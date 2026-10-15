@@ -106,6 +106,15 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     private static boolean sAskedNotifications;
     private static Boolean sPendingAudioMode; // set by the feed on a click, consumed by the screen
     private static PlaybackActivity sOrphan;
+    private static java.lang.ref.WeakReference<PlaybackActivity> sActive;
+
+    /** The queue changed (play next / add to queue): update the list of what comes next. */
+    public static void refreshQueue() {
+        PlaybackActivity active = sActive != null ? sActive.get() : null;
+        if (active != null && !active.isDestroyed() && active.mSuggestionsAdapter != null) {
+            active.rebuildSuggestions();
+        }
+    }
     private boolean mAudioMode;
     private boolean mFinishRequested;
     private Player.Listener mPlayerListener;
@@ -159,6 +168,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
         setContentView(createContent());
 
+        sActive = new java.lang.ref.WeakReference<>(this);
         mAudioMode = consumePendingAudioMode(false);
         mPlaybackPresenter = PlaybackPresenter.instance(this);
 
@@ -1343,6 +1353,9 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         if (isDestroyed()) {
             return; // an orphan (sound without a screen) only feeds the notification
         }
+        if (mAudioMode && mSuggestionsAdapter != null) {
+            rebuildSuggestions(); // the queue moved on
+        }
 
         String title = video.getTitleFull() != null ? video.getTitleFull() : "...";
         String author = video.getAuthor();
@@ -1691,6 +1704,11 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         if (mAudioMode && !mShortsMode) {
             // Music: only the songs that follow in the list the song came from, no related videos
             Video current = getVideo();
+            List<Video> queued = new ArrayList<>(com.liskovsoft.smartyoutubetv2.common.app.models.data.Playlist.instance().getAllAfterCurrent());
+            if (!queued.isEmpty()) {
+                mSuggestionsAdapter.addHeader("Kö");
+                mSuggestionsAdapter.addVideos(queued);
+            }
             VideoGroup origin = current != null && !current.belongsToSuggestions() ? current.getGroup() : null;
             if (origin != null) {
                 java.util.List<Video> rest = new ArrayList<>();
