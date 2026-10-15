@@ -525,7 +525,12 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
             return;
         }
         if (isAllChannels(group.getVideos())) {
-            mAdapter.addChannelsRow(group.getVideos());
+            // The first run of channels on Home is the user's favourites (round avatars); later ones are recommended series (cards)
+            if (mAdapter.hasChannelsRow()) {
+                mAdapter.addSeriesRow(group.getVideos());
+            } else {
+                mAdapter.addChannelsRow(group.getVideos());
+            }
             return;
         }
         if (!isShortsSelected() && isAllShorts(group.getVideos())) {

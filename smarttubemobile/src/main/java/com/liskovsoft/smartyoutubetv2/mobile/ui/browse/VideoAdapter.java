@@ -99,6 +99,16 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
         notifyItemInserted(mItems.size() - 1);
     }
 
+    public boolean hasChannelsRow() {
+        for (Object item : mItems) {
+            if (item instanceof ChannelRow) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public void clear() {
         mSeenIds.clear();
         int size = mItems.size();
