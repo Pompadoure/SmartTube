@@ -221,7 +221,13 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         ImageView search = new ImageView(this);
         search.setImageResource(R.drawable.ic_search);
         search.setPadding(Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12));
-        search.setOnClickListener(v -> SearchPresenter.instance(this).startSearch(null));
+        search.setOnClickListener(v -> {
+            if (isMusicSelected()) {
+                startActivity(new android.content.Intent(this, com.liskovsoft.smartyoutubetv2.mobile.ui.music.MusicSearchActivity.class));
+            } else {
+                SearchPresenter.instance(this).startSearch(null);
+            }
+        });
         bar.addView(search, new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48)));
 
         bar.setMinimumHeight(Ui.dp(this, 52));
