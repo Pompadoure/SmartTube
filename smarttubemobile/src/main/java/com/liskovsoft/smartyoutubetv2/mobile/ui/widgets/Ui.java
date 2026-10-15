@@ -22,4 +22,14 @@ public final class Ui {
         });
         view.setClipToOutline(true);
     }
+
+    public static void makeRounded(View view, int radiusPx) {
+        view.setOutlineProvider(new ViewOutlineProvider() {
+            @Override
+            public void getOutline(View v, Outline outline) {
+                outline.setRoundRect(0, 0, v.getWidth(), v.getHeight(), radiusPx);
+            }
+        });
+        view.setClipToOutline(true);
+    }
 }

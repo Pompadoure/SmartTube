@@ -49,6 +49,13 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
         }
     }
 
+    /** A row of series/playlists: wide cards scrolling sideways. */
+    private static class SeriesRow extends ArrayList<Video> {
+        SeriesRow(List<Video> videos) {
+            super(videos);
+        }
+    }
+
     private boolean mDiversify;
     private final java.util.Set<String> mSeenIds = new java.util.HashSet<>();
     private boolean mShortsAsWide;
@@ -79,6 +86,16 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
         }
 
         mItems.add(new ChannelRow(channels));
+        notifyItemInserted(mItems.size() - 1);
+    }
+
+    /** Home feed: series (playlists) as a sideways scrolling row of cards. */
+    public void addSeriesRow(List<Video> series) {
+        if (series == null || series.isEmpty()) {
+            return;
+        }
+
+        mItems.add(new SeriesRow(series));
         notifyItemInserted(mItems.size() - 1);
     }
 
@@ -256,7 +273,7 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
             return TYPE_CHANNELS_ROW;
         }
 
-        if (item instanceof List) {
+        if (item instanceof List) { // shorts row and series row share the sideways scrolling holder
             return TYPE_SHORTS_ROW;
         }
 
@@ -453,6 +470,33 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
                 @Override
                 public int getItemCount() {
                     return channels.size();
+                }
+            });
+            return;
+        }
+
+        if (item instanceof SeriesRow) {
+            final SeriesRow series = (SeriesRow) item;
+            ((RecyclerView) holder.itemView).setAdapter(new RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+                @Override
+                public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+                    Context c = parent.getContext();
+                    View card = createCard(c, false);
+                    RecyclerView.LayoutParams params = new RecyclerView.LayoutParams(Ui.dp(c, 264), ViewGroup.LayoutParams.WRAP_CONTENT);
+                    params.setMarginEnd(Ui.dp(c, 10));
+                    card.setLayoutParams(params);
+                    Ui.makeRounded((View) card.findViewById(R.id.mobile_thumb).getParent(), Ui.dp(c, 12));
+                    return new CardHolder(card);
+                }
+
+                @Override
+                public void onBindViewHolder(RecyclerView.ViewHolder h, int pos) {
+                    bindCard(h.itemView, series.get(pos));
+                }
+
+                @Override
+                public int getItemCount() {
+                    return series.size();
                 }
             });
             return;

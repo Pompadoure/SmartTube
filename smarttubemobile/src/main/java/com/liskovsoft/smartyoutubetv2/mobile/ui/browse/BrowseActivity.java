@@ -520,6 +520,10 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         if (section != null && section.getType() == BrowseSection.TYPE_ROW && group.getPosition() >= 0) {
             mAdapter.addHeader(group.getTitle());
         }
+        if (isAllSeries(group.getVideos())) {
+            mAdapter.addSeriesRow(group.getVideos());
+            return;
+        }
         if (isAllChannels(group.getVideos())) {
             mAdapter.addChannelsRow(group.getVideos());
             return;
@@ -532,13 +536,27 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         mAdapter.addVideos(group.getVideos());
     }
 
+    private static boolean isAllSeries(List<Video> videos) {
+        if (videos == null || videos.isEmpty()) {
+            return false;
+        }
+
+        for (Video video : videos) {
+            if (!video.isPlaylistAsChannel()) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static boolean isAllChannels(List<Video> videos) {
         if (videos == null || videos.isEmpty()) {
             return false;
         }
 
         for (Video video : videos) {
-            if (!video.isChannel()) {
+            if (!video.isChannel() || video.isPlaylistAsChannel()) {
                 return false;
             }
         }
