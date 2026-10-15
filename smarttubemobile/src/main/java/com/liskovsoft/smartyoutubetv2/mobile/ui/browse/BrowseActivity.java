@@ -125,7 +125,7 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
                     return;
                 }
 
-                if (mLayoutManager.findLastVisibleItemPosition() >= mAdapter.size() - 6) {
+                if (mLayoutManager.findLastVisibleItemPosition() >= mAdapter.size() - 12) {
                     Video last = mAdapter.lastVideo();
                     if (last != null) {
                         mPresenter.onScrollEnd(last);
@@ -439,6 +439,7 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
 
             if (changed) {
                 mFeedPicked = false;
+                mFillTries = 0;
                 mStrip.removeAllViews();
                 mStripScroll.setVisibility(View.GONE);
                 mAdapter.clear();
@@ -488,11 +489,40 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         }
     }
 
+    private int mFillTries;
+
     private void appendGroup(VideoGroup group) {
+        mAdapter.setDiversify(mSelectedIndex >= 0 && mSelectedIndex < mSections.size() && mSections.get(mSelectedIndex).getId() == MediaGroup.TYPE_HOME);
+        appendGroupInner(group);
+        ensureFilled();
+    }
+
+    /** Home: keep asking for more until there is plenty to scroll (the first pages are short and get thinned out). */
+    private void ensureFilled() {
+        if (mSelectedIndex < 0 || mSelectedIndex >= mSections.size() || mSections.get(mSelectedIndex).getId() != MediaGroup.TYPE_HOME) {
+            return;
+        }
+
+        if (mAdapter.size() >= 60 || mFillTries >= 8) {
+            return;
+        }
+
+        Video last = mAdapter.lastVideo();
+        if (last != null) {
+            mFillTries++;
+            mList.post(() -> mPresenter.onScrollEnd(last));
+        }
+    }
+
+    private void appendGroupInner(VideoGroup group) {
         BrowseSection section = group.getSection();
         // The TV home feed is a column of rows: here a row is a titled run of cards
         if (section != null && section.getType() == BrowseSection.TYPE_ROW && group.getPosition() >= 0) {
             mAdapter.addHeader(group.getTitle());
+        }
+        if (isAllChannels(group.getVideos())) {
+            mAdapter.addChannelsRow(group.getVideos());
+            return;
         }
         if (!isShortsSelected() && isAllShorts(group.getVideos())) {
             mAdapter.addShortsRow(group.getVideos());
@@ -500,6 +530,20 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         }
 
         mAdapter.addVideos(group.getVideos());
+    }
+
+    private static boolean isAllChannels(List<Video> videos) {
+        if (videos == null || videos.isEmpty()) {
+            return false;
+        }
+
+        for (Video video : videos) {
+            if (!video.isChannel()) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static boolean isAllShorts(List<Video> videos) {

@@ -40,6 +40,17 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
     private static final int TYPE_SETTING = 3;
     private static final int TYPE_VIEW = 4;
     private static final int TYPE_SHORTS_ROW = 5;
+    private static final int TYPE_CHANNELS_ROW = 6;
+
+    /** A row of channels: small round avatars scrolling sideways. */
+    private static class ChannelRow extends ArrayList<Video> {
+        ChannelRow(List<Video> videos) {
+            super(videos);
+        }
+    }
+
+    private boolean mDiversify;
+    private final java.util.Set<String> mSeenIds = new java.util.HashSet<>();
     private boolean mShortsAsWide;
     private View mFixedHeader;
     private final List<Object> mItems = new ArrayList<>();
@@ -56,7 +67,23 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
         clear();
     }
 
+    /** Home feed: no repeated videos and the same creator not twice in a row. */
+    public void setDiversify(boolean diversify) {
+        mDiversify = diversify;
+    }
+
+    /** Home feed: a run of channels as one row of round avatars. */
+    public void addChannelsRow(List<Video> channels) {
+        if (channels == null || channels.isEmpty()) {
+            return;
+        }
+
+        mItems.add(new ChannelRow(channels));
+        notifyItemInserted(mItems.size() - 1);
+    }
+
     public void clear() {
+        mSeenIds.clear();
         int size = mItems.size();
         mItems.clear();
         if (mFixedHeader != null) {
@@ -115,13 +142,54 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
 
         int start = mItems.size();
 
+        List<Video> fresh = new ArrayList<>();
         for (Video video : videos) {
-            if (!contains(video)) {
-                mItems.add(video);
+            if (contains(video)) {
+                continue;
             }
+            if (mDiversify && video.videoId != null && !mSeenIds.add(video.videoId)) {
+                continue;
+            }
+            fresh.add(video);
         }
 
+        if (mDiversify) {
+            fresh = spreadCreators(fresh);
+        }
+
+        mItems.addAll(fresh);
+
         notifyItemRangeInserted(start, mItems.size() - start);
+    }
+
+    private static String creatorKey(Video video) {
+        return video.channelId != null ? video.channelId : video.getAuthor();
+    }
+
+    /** Greedy reorder: pick the next video whose creator differs from the previous one (short look-ahead keeps the order). */
+    private List<Video> spreadCreators(List<Video> in) {
+        List<Video> pending = new ArrayList<>(in);
+        List<Video> out = new ArrayList<>(in.size());
+        String prev = null;
+        if (!mItems.isEmpty() && mItems.get(mItems.size() - 1) instanceof Video) {
+            prev = creatorKey((Video) mItems.get(mItems.size() - 1));
+        }
+
+        while (!pending.isEmpty()) {
+            int pick = 0;
+            for (int i = 0; i < pending.size() && i < 30; i++) {
+                String key = creatorKey(pending.get(i));
+                if (key == null || !key.equals(prev)) {
+                    pick = i;
+                    break;
+                }
+            }
+            Video chosen = pending.remove(pick);
+            out.add(chosen);
+            prev = creatorKey(chosen);
+        }
+
+        return out;
     }
 
     private boolean contains(Video video) {
@@ -184,6 +252,10 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
             return TYPE_VIEW;
         }
 
+        if (item instanceof ChannelRow) {
+            return TYPE_CHANNELS_ROW;
+        }
+
         if (item instanceof List) {
             return TYPE_SHORTS_ROW;
         }
@@ -207,6 +279,17 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
             header.setTypeface(Typeface.DEFAULT_BOLD);
             header.setPadding(Ui.dp(context, 16), Ui.dp(context, 20), Ui.dp(context, 16), Ui.dp(context, 8));
             return new RecyclerView.ViewHolder(header) {
+            };
+        }
+
+        if (viewType == TYPE_CHANNELS_ROW) {
+            RecyclerView row = new RecyclerView(context);
+            row.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            row.setLayoutManager(new androidx.recyclerview.widget.LinearLayoutManager(context, androidx.recyclerview.widget.LinearLayoutManager.HORIZONTAL, false));
+            row.setPadding(Ui.dp(context, 10), Ui.dp(context, 4), Ui.dp(context, 10), Ui.dp(context, 8));
+            row.setClipToPadding(false);
+            row.setNestedScrollingEnabled(false);
+            return new RecyclerView.ViewHolder(row) {
             };
         }
 
@@ -316,6 +399,62 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
 
         if (item instanceof String) {
             ((TextView) holder.itemView).setText((String) item);
+            return;
+        }
+
+        if (item instanceof ChannelRow) {
+            final ChannelRow channels = (ChannelRow) item;
+            ((RecyclerView) holder.itemView).setAdapter(new RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+                @Override
+                public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+                    Context c = parent.getContext();
+                    LinearLayout cell = new LinearLayout(c);
+                    cell.setOrientation(LinearLayout.VERTICAL);
+                    cell.setGravity(Gravity.CENTER_HORIZONTAL);
+                    cell.setPadding(Ui.dp(c, 6), 0, Ui.dp(c, 6), 0);
+                    cell.setLayoutParams(new RecyclerView.LayoutParams(Ui.dp(c, 84), ViewGroup.LayoutParams.WRAP_CONTENT));
+                    ImageView avatar = new ImageView(c);
+                    avatar.setId(R.id.mobile_avatar);
+                    avatar.setBackgroundResource(R.drawable.bg_avatar);
+                    avatar.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                    Ui.makeCircle(avatar);
+                    cell.addView(avatar, new LinearLayout.LayoutParams(Ui.dp(c, 64), Ui.dp(c, 64)));
+                    TextView name = new TextView(c);
+                    name.setId(R.id.mobile_title);
+                    name.setTextColor(c.getColor(R.color.yt_text));
+                    name.setTextSize(12);
+                    name.setMaxLines(1);
+                    name.setEllipsize(TextUtils.TruncateAt.END);
+                    name.setGravity(Gravity.CENTER);
+                    name.setPadding(0, Ui.dp(c, 4), 0, 0);
+                    cell.addView(name, new LinearLayout.LayoutParams(Ui.dp(c, 76), ViewGroup.LayoutParams.WRAP_CONTENT));
+                    return new CardHolder(cell);
+                }
+
+                @Override
+                public void onBindViewHolder(RecyclerView.ViewHolder h, int pos) {
+                    Video channel = channels.get(pos);
+                    ImageView avatar = h.itemView.findViewById(R.id.mobile_avatar);
+                    ((TextView) h.itemView.findViewById(R.id.mobile_title)).setText(channel.getTitle());
+                    String image = channel.getCardImageUrl() != null ? channel.getCardImageUrl() : channel.authorImageUrl;
+                    if (image != null) {
+                        Glide.with(avatar).load(image).into(avatar);
+                    } else {
+                        Glide.with(avatar).clear(avatar);
+                        avatar.setImageDrawable(null);
+                    }
+                    h.itemView.setOnClickListener(v -> mListener.onClick(channel));
+                    h.itemView.setOnLongClickListener(v -> {
+                        mListener.onLongClick(channel);
+                        return true;
+                    });
+                }
+
+                @Override
+                public int getItemCount() {
+                    return channels.size();
+                }
+            });
             return;
         }
 
