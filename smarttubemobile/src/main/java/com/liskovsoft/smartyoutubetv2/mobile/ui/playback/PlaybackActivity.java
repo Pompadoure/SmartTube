@@ -1702,31 +1702,62 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         mSuggestionsAdapter.addView(mHeader);
 
         if (mAudioMode && !mShortsMode) {
-            // Music: only the songs that follow in the list the song came from, no related videos
-            Video current = getVideo();
-            List<Video> after = com.liskovsoft.smartyoutubetv2.common.app.models.data.Playlist.instance().getAllAfterCurrent(); // null at the last song
+            // Music: "Spelas just nu" + the queue, then the songs that follow in the list the song came from. No related videos.
+            final Video current = getVideo();
+            final com.liskovsoft.smartyoutubetv2.common.app.models.data.Playlist playlist = com.liskovsoft.smartyoutubetv2.common.app.models.data.Playlist.instance();
+            List<Video> after = playlist.getAllAfterCurrent(); // null at the last song
             List<Video> queued = after != null ? new ArrayList<>(after) : new ArrayList<>();
-            if (!queued.isEmpty()) {
-                mSuggestionsAdapter.addHeader("Kö");
-                mSuggestionsAdapter.addVideos(queued);
-            }
+
+            List<Video> rest = new ArrayList<>();
             VideoGroup origin = current != null && !current.belongsToSuggestions() ? current.getGroup() : null;
             if (origin != null) {
-                java.util.List<Video> rest = new ArrayList<>();
                 boolean found = false;
                 for (Video item : origin.getVideos()) {
-                    if (found && item.hasVideo() && !item.isUpcoming && !item.isShorts && !item.isLive) {
+                    if (found && item.hasVideo() && !item.isUpcoming && !item.isShorts && !item.isLive && !queued.contains(item)) {
                         rest.add(item);
                     }
                     if (item.equals(current)) {
                         found = true;
                     }
                 }
-                if (!rest.isEmpty()) {
-                    mSuggestionsAdapter.addHeader(getString(R.string.tab_music));
-                    mSuggestionsAdapter.addVideos(rest);
-                }
             }
+
+            mSuggestionsAdapter.addView(com.liskovsoft.smartyoutubetv2.mobile.ui.music.QueueView.create(this, current, queued, rest,
+                    new com.liskovsoft.smartyoutubetv2.mobile.ui.music.QueueView.Listener() {
+                        @Override
+                        public void onPlay(Video video) {
+                            if (video.equals(current)) {
+                                return;
+                            }
+                            if (playlist.contains(video)) {
+                                playlist.setCurrent(video);
+                            }
+                            mPlaybackPresenter.openVideo(video);
+                        }
+
+                        @Override
+                        public void onLongPress(Video video) {
+                            com.liskovsoft.smartyoutubetv2.mobile.ui.music.MusicMenu.show(PlaybackActivity.this, video, null, null);
+                        }
+
+                        @Override
+                        public void onReordered(List<Video> newOrder) {
+                            Video playing = playlist.getCurrent();
+                            if (playing == null) {
+                                return;
+                            }
+                            List<Video> all = new ArrayList<>(playlist.getAll());
+                            int index = all.indexOf(playing);
+                            if (index < 0) {
+                                return;
+                            }
+                            List<Video> result = new ArrayList<>(all.subList(0, index + 1));
+                            result.addAll(newOrder);
+                            playlist.clear();
+                            playlist.addAll(result);
+                            playlist.setCurrent(playing);
+                        }
+                    }));
             return;
         }
 
