@@ -100,6 +100,11 @@ public class MediaPlaybackService extends MediaSessionService {
         }
     }
 
+    /** The engine's player (for the mini player in the feed), or null. */
+    public static Player getPlayer() {
+        return sPlayer != null ? sPlayer.getWrappedPlayer() : null;
+    }
+
     public static boolean isActive() {
         return sSession != null;
     }

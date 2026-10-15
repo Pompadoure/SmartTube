@@ -114,6 +114,20 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     private ImageView mArtView;
     private View mControlsCenter;
 
+    /** The sound plays without a screen (swiped away / music screen closed). */
+    public static boolean hasOrphan() {
+        return sOrphan != null;
+    }
+
+    /** Stops the sound that plays without a screen. */
+    public static void closeOrphan() {
+        PlaybackActivity orphan = sOrphan;
+        sOrphan = null;
+        if (orphan != null) {
+            orphan.destroyOrphan();
+        }
+    }
+
     /** The next playback starts as audio only (music) or as video. */
     public static void setAudioModeForNextPlayback(boolean audio) {
         sAudioMode = audio;
