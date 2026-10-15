@@ -167,7 +167,9 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
             if (target == com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.HOME) {
                 selectSectionById(MediaGroup.TYPE_HOME);
             } else if (target == com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.MUSIC) {
-                selectSectionById(MediaGroup.TYPE_MUSIC);
+                if (!isMusicSelected()) {
+                    selectSectionById(MediaGroup.TYPE_MUSIC);
+                }
             } else {
                 startActivity(new android.content.Intent(this, com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastsActivity.class));
             }
@@ -178,6 +180,7 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         bottomBar.addView(mVideoBar);
         bottomBar.addView(mMusicBar);
         root.addView(bottomBar);
+        applyMode();
 
         root.setOnApplyWindowInsetsListener((v, insets) -> {
             mHeader.setPadding(0, insets.getSystemWindowInsetTop(), 0, 0);
@@ -529,6 +532,10 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
 
     /** Music mode: no video chips, Hem / Musik / Poddar at the bottom (like YouTube Music). */
     private void applyMode() {
+        if (mVideoBar == null || mMusicBar == null || mChipsView == null) {
+            return; // still building the screen
+        }
+
         boolean music = isMusicSelected();
         mMusicMode = music;
         com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity.setMusicContext(music);
@@ -889,7 +896,9 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
             if (!hasSection(MediaGroup.TYPE_MUSIC)) {
                 mPresenter.enableSection(MediaGroup.TYPE_MUSIC, true);
             }
-            selectSectionById(MediaGroup.TYPE_MUSIC);
+            if (!isMusicSelected()) {
+                selectSectionById(MediaGroup.TYPE_MUSIC);
+            }
         }
     }
 }

@@ -53,10 +53,29 @@ public class MediaPlaybackService extends MediaSessionService {
     /** The podcast player belongs to the session (its media items carry title, show and cover themselves). */
     public static void bindPodcast(Context context, Player player) {
         sPodcastPlayer = player;
+        if (sPlayer != null) {
+            sPlayer.setPlayWhenReady(false); // one sound at a time
+        }
         attach(context.getApplicationContext(), player);
     }
 
+    private static Context sApp;
+
+    private static void setSessionActivityFor(boolean podcast) {
+        if (sApp == null || sSession == null) {
+            return;
+        }
+
+        Intent open = podcast
+                ? new Intent(sApp, com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastPlayerActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                : new Intent(sApp, PlaybackActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra(PlaybackActivity.EXTRA_FROM_NOTIFICATION, true);
+        sSession.setSessionActivity(PendingIntent.getActivity(sApp, podcast ? 1 : 0, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+    }
+
     private static void attach(Context app, Player player) {
+        sApp = app;
         if (sSession == null) {
             Intent open = new Intent(app, PlaybackActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
                     .putExtra(PlaybackActivity.EXTRA_FROM_NOTIFICATION, true);
@@ -110,6 +129,7 @@ public class MediaPlaybackService extends MediaSessionService {
 
         if (sPodcastPlayer != null && sSession != null) {
             sSession.setPlayer(sPodcastPlayer);
+            setSessionActivityFor(true);
             return;
         }
 
@@ -122,6 +142,7 @@ public class MediaPlaybackService extends MediaSessionService {
 
         if (sPlayer != null && sSession != null) {
             sSession.setPlayer(sPlayer);
+            setSessionActivityFor(false);
             return;
         }
 

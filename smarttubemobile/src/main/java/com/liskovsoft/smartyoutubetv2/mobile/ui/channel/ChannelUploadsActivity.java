@@ -20,6 +20,11 @@ public class ChannelUploadsActivity extends ChannelBaseActivity implements Chann
     }
 
     @Override
+    protected void onPresenterFinish() {
+        mPresenter.onFinish();
+    }
+
+    @Override
     protected void onVideoClicked(Video video) {
         mPresenter.onVideoItemClicked(video);
     }

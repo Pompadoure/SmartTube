@@ -123,6 +123,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
     /** Stops the sound that plays without a screen. */
     public static void closeOrphan() {
+        com.liskovsoft.smartyoutubetv2.common.app.models.playback.controllers.SuggestionsController.sMusicOnly = false;
         PlaybackActivity orphan = sOrphan;
         sOrphan = null;
         if (orphan != null) {
@@ -1695,7 +1696,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
                 java.util.List<Video> rest = new ArrayList<>();
                 boolean found = false;
                 for (Video item : origin.getVideos()) {
-                    if (found && item.hasVideo() && !item.isShorts && !item.isLive) {
+                    if (found && item.hasVideo() && !item.isUpcoming && !item.isShorts && !item.isLive) {
                         rest.add(item);
                     }
                     if (item.equals(current)) {

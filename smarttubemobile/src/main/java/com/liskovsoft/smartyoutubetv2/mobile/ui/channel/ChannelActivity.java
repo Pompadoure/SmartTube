@@ -20,6 +20,11 @@ public class ChannelActivity extends ChannelBaseActivity implements ChannelView 
     }
 
     @Override
+    protected void onPresenterFinish() {
+        mPresenter.onFinish();
+    }
+
+    @Override
     protected void onVideoClicked(Video video) {
         mPresenter.onVideoItemClicked(video);
     }

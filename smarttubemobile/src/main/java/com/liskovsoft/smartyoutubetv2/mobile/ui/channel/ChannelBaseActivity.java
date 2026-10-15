@@ -40,6 +40,8 @@ abstract class ChannelBaseActivity extends MobileActivity {
 
     protected abstract void onPresenterDetach();
 
+    protected abstract void onPresenterFinish();
+
     protected abstract void onVideoClicked(Video video);
 
     protected abstract void onVideoLongClicked(Video video);
@@ -172,5 +174,8 @@ abstract class ChannelBaseActivity extends MobileActivity {
     protected void onDestroy() {
         super.onDestroy();
         onPresenterDetach();
+        if (isFinishing()) {
+            onPresenterFinish();
+        }
     }
 }
