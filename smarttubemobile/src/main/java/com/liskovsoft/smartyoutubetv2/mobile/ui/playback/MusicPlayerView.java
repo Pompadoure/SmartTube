@@ -420,11 +420,12 @@ public class MusicPlayerView extends FrameLayout {
                 Glide.with(mArt).load(image).into(mArt);
             }
         }
+        boolean changed = mShown == null || !video.equals(mShown);
         mShown = video;
         mTitle.setText(video.getTitle());
         mAuthor.setText(video.getAuthor() != null ? video.getAuthor() : "");
-        if (mQueueSheet != null) {
-            refreshQueue();
+        if (mQueueSheet != null && changed) {
+            refreshQueue(); // not for metadata updates of the same song (it would end a drag)
         }
     }
 
@@ -442,9 +443,23 @@ public class MusicPlayerView extends FrameLayout {
     }
 
     @Override
+    protected void onVisibilityChanged(View changedView, int visibility) {
+        super.onVisibilityChanged(changedView, visibility);
+        mHandler.removeCallbacks(mTick);
+        if (visibility == VISIBLE && isAttachedToWindow()) {
+            mSpeedIndex = 0;
+            mSpeedButton.setText("1x");
+            mHost.setSpeed(1f);
+            mHandler.post(mTick);
+        }
+    }
+
+    @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
-        mHandler.post(mTick);
+        if (getVisibility() == VISIBLE) {
+            mHandler.post(mTick);
+        }
     }
 
     @Override

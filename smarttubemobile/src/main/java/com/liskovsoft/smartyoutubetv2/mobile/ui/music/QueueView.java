@@ -106,10 +106,10 @@ public final class QueueView {
                 handle.setVisibility(draggable ? View.VISIBLE : View.INVISIBLE);
                 handle.setOnTouchListener((v, event) -> {
                     if (draggable && event.getActionMasked() == MotionEvent.ACTION_DOWN) {
-                        v.getParent().requestDisallowInterceptTouchEvent(true);
                         helper[0].startDrag(holder);
+                        return true; // the handle takes the touch: no click on the row
                     }
-                    return false;
+                    return draggable;
                 });
 
                 row.setOnClickListener(v -> listener.onPlay(video));
@@ -150,7 +150,7 @@ public final class QueueView {
                 if (from < firstQueued || from >= queuedEnd || to < firstQueued || to >= queuedEnd) {
                     return false;
                 }
-                Collections.swap(rows, from, to);
+                rows.add(to, rows.remove(from));
                 recyclerView.getAdapter().notifyItemMoved(from, to);
                 return true;
             }
@@ -162,7 +162,10 @@ public final class QueueView {
             @Override
             public void clearView(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder) {
                 super.clearView(recyclerView, viewHolder);
-                listener.onReordered(new ArrayList<>(rows.subList(firstQueued, queuedEnd)));
+                List<Video> now = new ArrayList<>(rows.subList(firstQueued, queuedEnd));
+                if (!now.equals(queued)) { // only when something moved
+                    listener.onReordered(now);
+                }
             }
         });
         helper[0].attachToRecyclerView(list);

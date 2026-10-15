@@ -1056,6 +1056,10 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
         mShortsMode = on;
         mShortsLayer.setVisibility(on ? View.VISIBLE : View.GONE);
+        if (on && mMusicView != null) {
+            mMusicView.setVisibility(View.GONE); // a Short is never shown over the music screen
+            mRoot.setVisibility(View.VISIBLE);
+        }
         if (mPlayer != null) {
             applyShortsResize(mPlayer.getVideoSize());
         }
@@ -1819,6 +1823,9 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
             @Override
             public void togglePlay() {
+                if (mExoPlayerController == null) {
+                    return;
+                }
                 mExoPlayerController.setPlayWhenReady(!mExoPlayerController.getPlayWhenReady());
             }
 
@@ -1834,12 +1841,16 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
             @Override
             public void seekTo(long ms) {
-                mExoPlayerController.setPositionMs(ms);
+                if (mExoPlayerController != null) {
+                    mExoPlayerController.setPositionMs(ms);
+                }
             }
 
             @Override
             public void setSpeed(float speed) {
-                mExoPlayerController.setSpeed(speed);
+                if (mExoPlayerController != null) {
+                    mExoPlayerController.setSpeed(speed);
+                }
             }
 
             @Override

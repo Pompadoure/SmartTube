@@ -448,7 +448,10 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
 
         androidx.media3.common.Player podcastPlayer = com.liskovsoft.smartyoutubetv2.mobile.ui.playback.MediaPlaybackService.getPodcastPlayer();
         com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastRepository.Episode episode = com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastPlayer.current();
-        boolean showPodcast = !showVideo && podcastPlayer != null && episode != null && com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastPlayer.isActive();
+        boolean podcastAlive = podcastPlayer != null && episode != null && com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastPlayer.isActive();
+        // both alive (one paused): show the one that actually plays
+        boolean showPodcast = podcastAlive && (!showVideo || (podcastPlayer.getPlayWhenReady() && !player.getPlayWhenReady()));
+        showVideo = showVideo && !showPodcast;
 
         mMiniBar.setVisibility(showVideo || showPodcast ? View.VISIBLE : View.GONE);
         if (!showVideo && !showPodcast) {
