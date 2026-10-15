@@ -809,6 +809,13 @@ public class SearchSupportFragment extends Fragment {
 
     private SearchKeyboardView mKeyboard;
 
+    /**
+     * JoTube: a key of the built-in keyboard has the focus.
+     */
+    public boolean isKeyboardFocused() {
+        return mKeyboard != null && mKeyboard.hasFocus();
+    }
+
     // JoTube: suggestions above the keyboard; keyboard and suggestions fade away while the results have the focus
     private static final int COLUMN_FADE_MS = 180;
     private HorizontalGridView mSuggestionGrid;

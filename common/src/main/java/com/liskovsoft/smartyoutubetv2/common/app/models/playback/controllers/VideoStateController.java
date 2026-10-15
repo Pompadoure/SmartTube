@@ -12,7 +12,6 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.playback.manager.PlayerU
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.service.VideoStateService.State;
 import com.liskovsoft.smartyoutubetv2.common.app.presenters.AppDialogPresenter;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.FormatItem;
-import com.liskovsoft.sharedutils.helpers.DeviceHelpers;
 import com.liskovsoft.smartyoutubetv2.common.misc.MediaServiceManager;
 import com.liskovsoft.smartyoutubetv2.common.misc.ScreensaverManager;
 import com.liskovsoft.smartyoutubetv2.common.prefs.GeneralData;
@@ -134,9 +133,6 @@ public class VideoStateController extends BasePlayerController {
 
     @Override
     public void onEngineReleased() {
-        Utils.removeCallbacks(mUpgradeQuality);
-        mWantedQuality = null;
-        mUpgradeStartPositionMs = -1;
         if (getPlayer() == null) {
             return;
         }
@@ -481,61 +477,11 @@ public class VideoStateController extends BasePlayerController {
         FormatItem wanted = getPlayerData().getTempVideoFormat() != null ?
                 getPlayerData().getTempVideoFormat() : getPlayerData().getFormat(FormatItem.TYPE_VIDEO);
 
-        Utils.removeCallbacks(mUpgradeQuality);
-
-        // JoTube: a quality above 1080p starts in 1080p (a 4K decoder start takes seconds on a TV box)
-        // and switches up to the wanted one after a few seconds of playback.
-        if (wanted != null && wanted.getType() == FormatItem.TYPE_VIDEO && wanted.getHeight() > START_QUALITY_HEIGHT) {
-            mWantedQuality = wanted;
-            mUpgradeChecks = 0;
-            mUpgradeStartPositionMs = -1;
-            getPlayer().setFormat(DeviceHelpers.isVP9ResolutionSupported(1080) ? FormatItem.VIDEO_FHD_VP9_60 : FormatItem.VIDEO_FHD_AVC_60);
-            Utils.postDelayed(mUpgradeQuality, UPGRADE_CHECK_MS);
-        } else {
-            mWantedQuality = null;
-            getPlayer().setFormat(wanted);
-        }
-    }
-
-    private static final int START_QUALITY_HEIGHT = 1080;
-    private static final long UPGRADE_CHECK_MS = 1000;
-    private static final long UPGRADE_AFTER_PLAYED_MS = 4000;
-    private FormatItem mWantedQuality;
-    private long mUpgradeStartPositionMs = -1;
-    private int mUpgradeChecks;
-    private final Runnable mUpgradeQuality = this::upgradeQualityIfReady;
-
-    private void upgradeQualityIfReady() {
-        if (mWantedQuality == null || getPlayer() == null || !getPlayer().isEngineInitialized()) {
-            return;
-        }
-
-        // The user may have picked another quality meanwhile: always apply the current preference
-        FormatItem wanted = getPlayerData().getTempVideoFormat() != null ?
-                getPlayerData().getTempVideoFormat() : getPlayerData().getFormat(FormatItem.TYPE_VIDEO);
-
-        if (++mUpgradeChecks > 40) { // ~40 s without starting: give up and use the wanted quality
-            mWantedQuality = null;
-            mUpgradeStartPositionMs = -1;
-            getPlayer().setFormat(wanted);
-            return;
-        }
-
-        if (getPlayer().isPlaying()) {
-            if (mUpgradeStartPositionMs < 0) {
-                mUpgradeStartPositionMs = getPlayer().getPositionMs();
-            }
-
-            if (getPlayer().getPositionMs() - mUpgradeStartPositionMs >= UPGRADE_AFTER_PLAYED_MS) {
-                Log.d(TAG, "Upgrading start quality to " + wanted.getTitle());
-                mWantedQuality = null;
-                mUpgradeStartPositionMs = -1;
-                getPlayer().setFormat(wanted);
-                return;
-            }
-        }
-
-        Utils.postDelayed(mUpgradeQuality, UPGRADE_CHECK_MS);
+        // JoTube: no forced start quality any more. The track selector already uses an adaptive ladder (the wanted
+        // quality plus the lower steps of the same codec, see TrackSelectorManager.createFastStartLadder): it starts
+        // low and moves up within the same stream, seamlessly. Swapping a single-track override mid-playback made
+        // Media3 throw away the buffer and restart the renderer (a visible hiccup a few seconds into every video).
+        getPlayer().setFormat(wanted);
     }
 
     private void restoreAudioFormat() {

@@ -20,7 +20,9 @@ public class SearchTagsActivity extends LeanbackActivity {
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         // If there are no results found, press the left key to reselect the microphone
-        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT && !mFragment.hasResults()) {
+        // JoTube: not while moving on the built-in keyboard (onKeyDown runs before the focus moves, so every LEFT
+        // there jumped back to the first key while the results were empty or still loading)
+        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT && !mFragment.hasResults() && !mFragment.isKeyboardFocused()) {
             mFragment.focusOnSearchField();
         }
         return super.onKeyDown(keyCode, event);
