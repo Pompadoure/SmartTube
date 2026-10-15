@@ -288,6 +288,27 @@ public class SuggestionsController extends BasePlayerController {
         mActions.add(metadataAction);
     }
 
+    /** JoTube mobile: music mode, the next one comes from the music list / the mix only, never from related videos. */
+    public static boolean sMusicOnly;
+
+    private Video getNextInGroup(Video current) {
+        VideoGroup group = current.getGroup();
+        if (group == null || group.isEmpty() || current.belongsToSuggestions()) {
+            return null;
+        }
+
+        boolean found = false;
+        for (Video item : group.getVideos()) {
+            if (found && item.hasVideo() && !item.isUpcoming && !item.isShorts && !item.isLive) {
+                return item;
+            }
+            if (item.equals(current)) {
+                found = true;
+            }
+        }
+        return null;
+    }
+
     public Video getNext() {
         if (getPlayer() == null || getVideo() == null) {
             return null;
@@ -299,6 +320,14 @@ public class SuggestionsController extends BasePlayerController {
         if (next != null) {
             next.fromQueue = true;
             result = next;
+        } else if (sMusicOnly) {
+            result = mNextSectionVideo != null && !getVideo().isShuffled ? mNextSectionVideo : null;
+            if (result == null && getVideo().hasPlaylist() && getVideo().nextMediaItem != null) {
+                result = Video.from(getVideo().nextMediaItem); // the mix of the song
+            }
+            if (result == null) {
+                result = getNextInGroup(getVideo());
+            }
         } else if (mNextSectionVideo != null && !getVideo().isShuffled) {
             result = mNextSectionVideo;
         } else if (isSmartNextFor(getVideo())) {

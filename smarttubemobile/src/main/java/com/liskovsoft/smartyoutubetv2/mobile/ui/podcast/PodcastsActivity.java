@@ -100,6 +100,11 @@ public class PodcastsActivity extends Activity {
         mList.setAdapter(mAdapter);
         mList.setItemAnimator(null);
         root.addView(mList, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        root.addView(com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.createBar(this, com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.PODCASTS, target -> {
+            if (target != com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.PODCASTS) {
+                com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.openFeed(this, target);
+            }
+        }));
 
         root.setOnApplyWindowInsetsListener((v, insets) -> {
             v.setPadding(0, insets.getSystemWindowInsetTop(), 0, insets.getSystemWindowInsetBottom());

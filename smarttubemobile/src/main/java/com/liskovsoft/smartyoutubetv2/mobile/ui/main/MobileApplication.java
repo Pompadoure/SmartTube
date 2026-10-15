@@ -7,6 +7,10 @@ import com.liskovsoft.smartyoutubetv2.common.app.views.BrowseView;
 import com.liskovsoft.smartyoutubetv2.common.app.views.PlaybackView;
 import com.liskovsoft.smartyoutubetv2.common.app.views.SearchView;
 import com.liskovsoft.smartyoutubetv2.common.app.views.SignInView;
+import com.liskovsoft.smartyoutubetv2.common.app.views.ChannelView;
+import com.liskovsoft.smartyoutubetv2.common.app.views.ChannelUploadsView;
+import com.liskovsoft.smartyoutubetv2.mobile.ui.channel.ChannelActivity;
+import com.liskovsoft.smartyoutubetv2.mobile.ui.channel.ChannelUploadsActivity;
 import com.liskovsoft.smartyoutubetv2.common.app.views.SplashView;
 import com.liskovsoft.smartyoutubetv2.common.app.views.ViewManager;
 import com.liskovsoft.smartyoutubetv2.common.prefs.NetworkData;
@@ -61,5 +65,7 @@ public class MobileApplication extends MultiDexApplication {
         viewManager.register(AppDialogView.class, AppDialogActivity.class, BrowseActivity.class);
         viewManager.register(SearchView.class, SearchActivity.class, BrowseActivity.class);
         viewManager.register(SignInView.class, SignInActivity.class, BrowseActivity.class);
+        viewManager.register(ChannelView.class, ChannelActivity.class, BrowseActivity.class);
+        viewManager.register(ChannelUploadsView.class, ChannelUploadsActivity.class, BrowseActivity.class);
     }
 }

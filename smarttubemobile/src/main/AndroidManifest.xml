@@ -57,6 +57,10 @@
             android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
 
+        <activity android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.channel.ChannelActivity" android:exported="false" />
+
+        <activity android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.channel.ChannelUploadsActivity" android:exported="false" />
+
         <activity
             android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.search.SearchActivity"
             android:exported="false"

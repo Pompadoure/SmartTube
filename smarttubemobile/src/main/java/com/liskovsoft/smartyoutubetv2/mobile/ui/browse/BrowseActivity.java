@@ -49,6 +49,10 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
     private HorizontalScrollView mStripScroll;
     private LinearLayout mStrip;
     private LinearLayout mHeader;
+    private View mTopBar, mChipsView;
+    private TextView mLogoText;
+    private LinearLayout mVideoBar, mMusicBar;
+    private boolean mMusicMode;
     private boolean mFeedPicked;
     private RecyclerView mList;
     private GridLayoutManager mLayoutManager;
@@ -90,8 +94,10 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         mHeader = new LinearLayout(this);
         mHeader.setOrientation(LinearLayout.VERTICAL);
         mHeader.setBackgroundColor(getColor(R.color.yt_bg));
-        mHeader.addView(createTopBar());
-        mHeader.addView(createChips());
+        mTopBar = createTopBar();
+        mChipsView = createChips();
+        mHeader.addView(mTopBar);
+        mHeader.addView(mChipsView);
         mHeader.addView(createChannelStrip());
 
         FrameLayout content = new FrameLayout(this);
@@ -156,7 +162,21 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
 
         root.addView(content, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         root.addView(createMiniPlayer());
-        View bottomBar = createBottomBar();
+        mVideoBar = (LinearLayout) createBottomBar();
+        mMusicBar = com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.createBar(this, com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.MUSIC, target -> {
+            if (target == com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.HOME) {
+                selectSectionById(MediaGroup.TYPE_HOME);
+            } else if (target == com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.MUSIC) {
+                selectSectionById(MediaGroup.TYPE_MUSIC);
+            } else {
+                startActivity(new android.content.Intent(this, com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastsActivity.class));
+            }
+        });
+        mMusicBar.setVisibility(View.GONE);
+        LinearLayout bottomBar = new LinearLayout(this);
+        bottomBar.setOrientation(LinearLayout.VERTICAL);
+        bottomBar.addView(mVideoBar);
+        bottomBar.addView(mMusicBar);
         root.addView(bottomBar);
 
         root.setOnApplyWindowInsetsListener((v, insets) -> {
@@ -182,6 +202,7 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         bar.addView(logoIcon, logoIconParams);
 
         TextView logo = new TextView(this);
+        mLogoText = logo;
         logo.setText("JoTube");
         logo.setTextColor(getColor(R.color.yt_text));
         logo.setTextSize(22);
@@ -494,16 +515,6 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
             mChips.add(chip);
         }
 
-        TextView podcasts = new TextView(this);
-        podcasts.setText("Poddar");
-        podcasts.setTextSize(14);
-        podcasts.setTypeface(Typeface.DEFAULT_BOLD);
-        podcasts.setTextColor(getColor(R.color.yt_text));
-        podcasts.setBackgroundResource(R.drawable.bg_chip);
-        podcasts.setPadding(Ui.dp(this, 12), Ui.dp(this, 7), Ui.dp(this, 12), Ui.dp(this, 7));
-        podcasts.setOnClickListener(v -> startActivity(new android.content.Intent(this, com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastsActivity.class)));
-        mChipRow.addView(podcasts, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
         updateChips();
     }
 
@@ -516,7 +527,19 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         }
     }
 
+    /** Music mode: no video chips, Hem / Musik / Poddar at the bottom (like YouTube Music). */
+    private void applyMode() {
+        boolean music = isMusicSelected();
+        mMusicMode = music;
+        com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity.setMusicContext(music);
+        mChipsView.setVisibility(music ? View.GONE : View.VISIBLE);
+        mLogoText.setText(music ? getString(R.string.tab_music) : "JoTube");
+        mVideoBar.setVisibility(music ? View.GONE : View.VISIBLE);
+        mMusicBar.setVisibility(music ? View.VISIBLE : View.GONE);
+    }
+
     private void updateTabs() {
+        applyMode();
         int selectedId = mSelectedIndex >= 0 && mSelectedIndex < mSections.size() ? mSections.get(mSelectedIndex).getId() : -1;
 
         for (int i = 0; i < mTabs.size(); i++) {
@@ -857,5 +880,16 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+
+        int target = intent.getIntExtra(com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.EXTRA_TARGET, -1);
+        intent.removeExtra(com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.EXTRA_TARGET);
+        if (target == com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.HOME) {
+            selectSectionById(MediaGroup.TYPE_HOME);
+        } else if (target == com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.MUSIC) {
+            if (!hasSection(MediaGroup.TYPE_MUSIC)) {
+                mPresenter.enableSection(MediaGroup.TYPE_MUSIC, true);
+            }
+            selectSectionById(MediaGroup.TYPE_MUSIC);
+        }
     }
 }

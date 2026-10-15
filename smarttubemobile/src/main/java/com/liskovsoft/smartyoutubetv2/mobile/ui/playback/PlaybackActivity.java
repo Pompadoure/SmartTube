@@ -135,6 +135,16 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         sPendingAudioMode = audio;
     }
 
+    private static boolean sMusicContext; // the user is in the music part of the app (artist pages inherit it)
+
+    public static void setMusicContext(boolean music) {
+        sMusicContext = music;
+    }
+
+    public static boolean isMusicContext() {
+        return sMusicContext;
+    }
+
     private boolean consumePendingAudioMode(boolean fallback) {
         Boolean pending = sPendingAudioMode;
         sPendingAudioMode = null;
@@ -619,6 +629,10 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     /** Audio mode: no video track (saves data and battery), the cover is shown, the controls stay. */
     private void applyAudioMode() {
         boolean audio = mAudioMode && !mShortsMode;
+        com.liskovsoft.smartyoutubetv2.common.app.models.playback.controllers.SuggestionsController.sMusicOnly = audio;
+        if (mSuggestionsAdapter != null) {
+            rebuildSuggestions();
+        }
         mModeAudioButton.setBackground(audio ? getDrawable(R.drawable.bg_mode_selected) : null);
         mModeVideoButton.setBackground(audio ? null : getDrawable(R.drawable.bg_mode_selected));
         applyVideoTrack();
@@ -1672,6 +1686,29 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     private void rebuildSuggestions() {
         mSuggestionsAdapter.clear();
         mSuggestionsAdapter.addView(mHeader);
+
+        if (mAudioMode && !mShortsMode) {
+            // Music: only the songs that follow in the list the song came from, no related videos
+            Video current = getVideo();
+            VideoGroup origin = current != null && !current.belongsToSuggestions() ? current.getGroup() : null;
+            if (origin != null) {
+                java.util.List<Video> rest = new ArrayList<>();
+                boolean found = false;
+                for (Video item : origin.getVideos()) {
+                    if (found && item.hasVideo() && !item.isShorts && !item.isLive) {
+                        rest.add(item);
+                    }
+                    if (item.equals(current)) {
+                        found = true;
+                    }
+                }
+                if (!rest.isEmpty()) {
+                    mSuggestionsAdapter.addHeader(getString(R.string.tab_music));
+                    mSuggestionsAdapter.addVideos(rest);
+                }
+            }
+            return;
+        }
 
         for (VideoGroup group : mGroups) {
             if (mGroups.size() > 1) {
