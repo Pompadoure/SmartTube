@@ -56,6 +56,13 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
         }
     }
 
+    /** A music row: square covers scrolling sideways. */
+    private static class MusicRow extends ArrayList<Video> {
+        MusicRow(List<Video> videos) {
+            super(videos);
+        }
+    }
+
     private boolean mDiversify;
     private final java.util.Set<String> mSeenIds = new java.util.HashSet<>();
     private boolean mShortsAsWide;
@@ -96,6 +103,15 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
         }
 
         mItems.add(new SeriesRow(series));
+        notifyItemInserted(mItems.size() - 1);
+    }
+
+    public void addMusicRow(List<Video> videos) {
+        if (videos == null || videos.isEmpty()) {
+            return;
+        }
+
+        mItems.add(new MusicRow(videos));
         notifyItemInserted(mItems.size() - 1);
     }
 
@@ -281,6 +297,10 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
 
         if (item instanceof ChannelRow) {
             return TYPE_CHANNELS_ROW;
+        }
+
+        if (item instanceof MusicRow) {
+            return TYPE_SHORTS_ROW;
         }
 
         if (item instanceof List) { // shorts row and series row share the sideways scrolling holder
@@ -480,6 +500,69 @@ public class VideoAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
                 @Override
                 public int getItemCount() {
                     return channels.size();
+                }
+            });
+            return;
+        }
+
+        if (item instanceof MusicRow) {
+            final MusicRow music = (MusicRow) item;
+            ((RecyclerView) holder.itemView).setAdapter(new RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+                @Override
+                public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+                    Context c = parent.getContext();
+                    LinearLayout cell = new LinearLayout(c);
+                    cell.setOrientation(LinearLayout.VERTICAL);
+                    RecyclerView.LayoutParams params = new RecyclerView.LayoutParams(Ui.dp(c, 148), ViewGroup.LayoutParams.WRAP_CONTENT);
+                    params.setMarginEnd(Ui.dp(c, 12));
+                    cell.setLayoutParams(params);
+                    ImageView cover = new ImageView(c);
+                    cover.setId(R.id.mobile_thumb);
+                    cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                    cover.setBackgroundColor(c.getColor(R.color.yt_surface));
+                    Ui.makeRounded(cover, Ui.dp(c, 8));
+                    cell.addView(cover, new LinearLayout.LayoutParams(Ui.dp(c, 148), Ui.dp(c, 148)));
+                    TextView title = new TextView(c);
+                    title.setId(R.id.mobile_title);
+                    title.setTextColor(c.getColor(R.color.yt_text));
+                    title.setTextSize(14);
+                    title.setTypeface(Typeface.DEFAULT_BOLD);
+                    title.setMaxLines(2);
+                    title.setEllipsize(TextUtils.TruncateAt.END);
+                    title.setPadding(0, Ui.dp(c, 8), 0, 0);
+                    cell.addView(title);
+                    TextView meta = new TextView(c);
+                    meta.setId(R.id.mobile_meta);
+                    meta.setTextColor(c.getColor(R.color.yt_text_secondary));
+                    meta.setTextSize(12);
+                    meta.setMaxLines(1);
+                    meta.setEllipsize(TextUtils.TruncateAt.END);
+                    cell.addView(meta);
+                    return new CardHolder(cell);
+                }
+
+                @Override
+                public void onBindViewHolder(RecyclerView.ViewHolder h, int pos) {
+                    Video video = music.get(pos);
+                    ((TextView) h.itemView.findViewById(R.id.mobile_title)).setText(video.getTitle());
+                    String author = video.getAuthor();
+                    CharSequence second = video.getSecondTitle();
+                    if (author != null && second != null && second.toString().startsWith(author)) {
+                        second = second.toString().substring(author.length()).replaceFirst("^\\s*[•·-]\\s*", "");
+                    }
+                    ((TextView) h.itemView.findViewById(R.id.mobile_meta)).setText(author != null ? author : second);
+                    ImageView cover = h.itemView.findViewById(R.id.mobile_thumb);
+                    Glide.with(cover).load(video.getCardImageUrl()).into(cover);
+                    h.itemView.setOnClickListener(v -> mListener.onClick(video));
+                    h.itemView.setOnLongClickListener(v -> {
+                        mListener.onLongClick(video);
+                        return true;
+                    });
+                }
+
+                @Override
+                public int getItemCount() {
+                    return music.size();
                 }
             });
             return;

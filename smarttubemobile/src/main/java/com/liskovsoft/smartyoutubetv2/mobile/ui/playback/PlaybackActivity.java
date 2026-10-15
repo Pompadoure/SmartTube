@@ -17,6 +17,8 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import androidx.media3.common.C;
+import androidx.media3.common.Player;
 import androidx.media3.common.util.Util;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
@@ -98,6 +100,24 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     private final List<VideoGroup> mGroups = new ArrayList<>();
     private final Map<Integer, Integer> mButtonStates = new HashMap<>();
     private boolean mEngineBlocked;
+
+    // Background playback / audio mode (music)
+    public static final String EXTRA_FROM_NOTIFICATION = "from_notification";
+    private static boolean sAudioMode;
+    private static PlaybackActivity sOrphan;
+    private boolean mAudioMode;
+    private boolean mFinishRequested;
+    private boolean mBackgrounded;
+    private LinearLayout mModePill;
+    private ImageView mModeAudioButton, mModeVideoButton, mLandscapeAudioButton;
+    private RatioFrameLayout mArtBox;
+    private ImageView mArtView;
+    private View mControlsCenter;
+
+    /** The next playback starts as audio only (music) or as video. */
+    public static void setAudioModeForNextPlayback(boolean audio) {
+        sAudioMode = audio;
+    }
     private LinearLayout mRoot;
 
     @Override
@@ -106,8 +126,51 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
         setContentView(createContent());
 
-        mPlayerInitializer = new ExoPlayerInitializer(this);
+        mAudioMode = sAudioMode;
         mPlaybackPresenter = PlaybackPresenter.instance(this);
+
+        // Android 13+: the media notification (lock screen controls) needs this permission
+        if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 7);
+        }
+
+        PlaybackActivity orphan = sOrphan;
+        sOrphan = null;
+        boolean fromNotification = getIntent().getBooleanExtra(EXTRA_FROM_NOTIFICATION, false);
+        boolean adopt = orphan != null && orphan.mPlayer != null;
+
+        if (adopt) {
+            // The sound kept playing after the screen was closed: take the engine over (no restart; a video that was
+            // just opened from the feed is already loading in it)
+            mPlayerInitializer = orphan.mPlayerInitializer;
+            mExoPlayerController = orphan.mExoPlayerController;
+            mPlayer = orphan.mPlayer;
+            orphan.mPlayer = null;
+            // from the notification: the music screen as it was; from the feed: the mode of the new start
+            mAudioMode = fromNotification ? orphan.mAudioMode : sAudioMode;
+            sAudioMode = mAudioMode;
+            wirePlayerView();
+            mPlaybackPresenter.setView(this);
+            mHandler.post(mShortsTick);
+            Video current = mPlaybackPresenter.getVideo();
+            if (current != null) {
+                showVideoInfo(current);
+            }
+            applyOrientation(getResources().getConfiguration());
+            applyAudioMode();
+            return;
+        }
+
+        if (orphan != null) {
+            orphan.destroyOrphan();
+        } else if (fromNotification && mPlaybackPresenter.getVideo() == null) {
+            // the notification outlived the playback: nothing to show
+            MediaPlaybackService.unbind();
+            finish();
+            return;
+        }
+
+        mPlayerInitializer = new ExoPlayerInitializer(this);
         mPlaybackPresenter.setView(this);
         mExoPlayerController = new ExoPlayerController(this, mPlaybackPresenter);
 
@@ -115,6 +178,15 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         mHandler.post(mShortsTick);
 
         applyOrientation(getResources().getConfiguration());
+        applyAudioMode();
+    }
+
+    /** A screen that was closed while the music kept playing is thrown away when something else starts. */
+    private void destroyOrphan() {
+        releasePlayer();
+        if (mPlaybackPresenter.getView() == this) {
+            mPlaybackPresenter.onViewDestroyed();
+        }
     }
 
     private static final int ID_LIKE = com.liskovsoft.smartyoutubetv2.common.R.id.action_thumbs_up;
@@ -135,6 +207,19 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         mPlayerView.setControllerShowTimeoutMs(3000);
         mPlayerView.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING);
         mPlayerBox.addView(mPlayerView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        // Audio mode: the cover instead of the video
+        mArtBox = new RatioFrameLayout(this);
+        mArtBox.setHeightPerWidth(1f);
+        mArtBox.setVisibility(View.GONE);
+        mArtView = new ImageView(this);
+        mArtView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        mArtView.setBackgroundColor(getColor(R.color.yt_surface));
+        Ui.makeRounded(mArtView, Ui.dp(this, 14));
+        mArtBox.addView(mArtView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        FrameLayout.LayoutParams artParams = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP);
+        artParams.setMargins(Ui.dp(this, 24), Ui.dp(this, 64), Ui.dp(this, 24), 0);
+        mPlayerBox.addView(mArtBox, artParams);
 
         mShortsLayer = createShortsLayer();
         mPlayerBox.addView(mShortsLayer, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -388,6 +473,18 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         top.addView(gear);
         box.addView(top, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
 
+        // audio / video switch (like YouTube Music), top centre in portrait
+        mModePill = new LinearLayout(this);
+        mModePill.setBackgroundResource(R.drawable.bg_mode_pill);
+        mModePill.setPadding(Ui.dp(this, 3), Ui.dp(this, 3), Ui.dp(this, 3), Ui.dp(this, 3));
+        mModeAudioButton = modeButton(R.drawable.ic_headphones, true);
+        mModeVideoButton = modeButton(R.drawable.ic_video_mode, false);
+        mModePill.addView(mModeAudioButton);
+        mModePill.addView(mModeVideoButton);
+        FrameLayout.LayoutParams pillParams = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        pillParams.topMargin = Ui.dp(this, 6);
+        box.addView(mModePill, pillParams);
+
         // center: previous, play/pause, next
         LinearLayout center = new LinearLayout(this);
         center.setGravity(Gravity.CENTER);
@@ -405,6 +502,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         ImageView next = icon(R.drawable.ic_next, 56, 12);
         next.setOnClickListener(v -> mPlaybackPresenter.onNextClicked());
         center.addView(next);
+        mControlsCenter = center;
         box.addView(center, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
 
         // bottom: time + fullscreen, seek bar, action icons
@@ -462,6 +560,9 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         ImageView share = icon(R.drawable.ic_share, 48, 12);
         share.setOnClickListener(v -> shareVideo());
         actions.addView(share);
+        mLandscapeAudioButton = icon(R.drawable.ic_headphones, 48, 12);
+        mLandscapeAudioButton.setOnClickListener(v -> setAudioMode(!mAudioMode));
+        actions.addView(mLandscapeAudioButton);
         ImageView more = icon(R.drawable.ic_more, 48, 12);
         more.setOnClickListener(v -> mPlaybackPresenter.onButtonLongClicked(com.liskovsoft.smartyoutubetv2.common.R.id.lb_control_high_quality, 0));
         actions.addView(more);
@@ -470,6 +571,61 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         box.addView(bottom, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
 
         return box;
+    }
+
+    private ImageView modeButton(int iconRes, boolean audio) {
+        ImageView button = new ImageView(this);
+        button.setImageResource(iconRes);
+        button.setPadding(Ui.dp(this, 12), Ui.dp(this, 7), Ui.dp(this, 12), Ui.dp(this, 7));
+        button.setLayoutParams(new LinearLayout.LayoutParams(Ui.dp(this, 56), Ui.dp(this, 38)));
+        button.setOnClickListener(v -> setAudioMode(audio));
+        return button;
+    }
+
+    private void setAudioMode(boolean audio) {
+        if (audio == mAudioMode) {
+            return;
+        }
+
+        mAudioMode = audio;
+        sAudioMode = audio;
+        applyAudioMode();
+    }
+
+    /** Audio mode: no video track (saves data and battery), the cover is shown, the controls stay. */
+    private void applyAudioMode() {
+        boolean audio = mAudioMode && !mShortsMode;
+        mModeAudioButton.setBackground(audio ? getDrawable(R.drawable.bg_mode_selected) : null);
+        mModeVideoButton.setBackground(audio ? null : getDrawable(R.drawable.bg_mode_selected));
+        applyVideoTrack();
+        applyOrientation(getResources().getConfiguration());
+        updateArt();
+
+        if (audio && !mInPip) {
+            showControls(true);
+        } else if (!audio) {
+            showControls(false);
+        }
+    }
+
+    private void updateArt() {
+        Video video = mPlaybackPresenter.getVideo();
+        if (video != null && video.getCardImageUrl() != null) {
+            Glide.with(mArtView).load(video.getCardImageUrl()).into(mArtView);
+        }
+    }
+
+    /** The video track is off in audio mode and while the screen is away. */
+    private void applyVideoTrack() {
+        if (mPlayer == null) {
+            return;
+        }
+
+        boolean disable = (mAudioMode && !mShortsMode) || mBackgrounded;
+        if (mPlayer.getTrackSelectionParameters().disabledTrackTypes.contains(C.TRACK_TYPE_VIDEO) != disable) {
+            mPlayer.setTrackSelectionParameters(mPlayer.getTrackSelectionParameters().buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, disable).build());
+        }
     }
 
     private void addControlAction(LinearLayout row, int iconRes, int buttonId) {
@@ -589,7 +745,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     protected void onUserLeaveHint() {
         super.onUserLeaveHint();
 
-        if (!mShortsMode && mPlayer != null && mPlayer.isPlaying() && android.os.Build.VERSION.SDK_INT >= 26) {
+        if (!mShortsMode && !mAudioMode && mPlayer != null && mPlayer.isPlaying() && android.os.Build.VERSION.SDK_INT >= 26) {
             enterMiniPlayer();
         }
     }
@@ -889,7 +1045,16 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         boolean fullscreen = landscape || mShortsMode || mInPip;
         mPlayerBox.setFullscreen(fullscreen);
         mShortsLayer.setVisibility(mShortsMode && !mInPip ? View.VISIBLE : View.GONE);
-        mPlayerBox.setHeightPerWidth(9f / 16f);
+        boolean audioLayout = mAudioMode && !mShortsMode && !landscape && !mInPip;
+        mPlayerBox.setHeightPerWidth(audioLayout ? 1.42f : 9f / 16f);
+        mArtBox.setVisibility(audioLayout ? View.VISIBLE : View.GONE);
+        mModePill.setVisibility(landscape || mShortsMode ? View.GONE : View.VISIBLE);
+        mLandscapeAudioButton.setVisibility(landscape ? View.VISIBLE : View.GONE);
+        mLandscapeAudioButton.setAlpha(mAudioMode ? 1f : 0.6f);
+        FrameLayout.LayoutParams centerParams = (FrameLayout.LayoutParams) mControlsCenter.getLayoutParams();
+        centerParams.gravity = audioLayout ? Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL : Gravity.CENTER;
+        centerParams.bottomMargin = audioLayout ? Ui.dp(this, 96) : 0;
+        mControlsCenter.setLayoutParams(centerParams);
         mSuggestionsList.setVisibility(fullscreen ? View.GONE : View.VISIBLE);
         mControlsTop.setVisibility(landscape ? View.VISIBLE : View.INVISIBLE);
         mControlsActions.setVisibility(landscape ? View.VISIBLE : View.GONE);
@@ -954,6 +1119,13 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     protected void onStart() {
         super.onStart();
 
+        if (mPlayer != null) {
+            // back from the background with a living engine: the video comes back
+            mBackgrounded = false;
+            mPlayerView.setPlayer(mPlayer);
+            applyVideoTrack();
+        }
+
         if (Util.SDK_INT > 23) {
             initializePlayer();
         }
@@ -986,9 +1158,22 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     protected void onStop() {
         super.onStop();
 
+        if (keepPlayingInBackground()) {
+            // Screen off / another app: the sound goes on (media notification), the video is dropped
+            mBackgrounded = true;
+            applyVideoTrack();
+            mPlayerView.setPlayer(null);
+            return;
+        }
+
         if (Util.SDK_INT > 23) {
             maybeReleasePlayer();
         }
+    }
+
+    private boolean keepPlayingInBackground() {
+        return mPlayer != null && mPlayer.getPlayWhenReady() && mPlayer.getPlaybackState() != Player.STATE_ENDED
+                && !mShortsMode && !isChangingConfigurations() && MediaPlaybackService.isActive();
     }
 
     @Override
@@ -997,6 +1182,13 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
         mHandler.removeCallbacks(mShortsTick);
         mHandler.removeCallbacks(mHideControls);
+
+        // The app was swiped away (or the music screen closed) while playing: the sound goes on, the engine lives on
+        // as an "orphan" until the user comes back through the notification or starts something else.
+        if (keepPlayingInBackground() && (!mFinishRequested || mAudioMode)) {
+            sOrphan = this;
+            return;
+        }
 
         releasePlayer();
 
@@ -1020,8 +1212,18 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
             return preloadSelector;
         });
 
+        mPlayer.setWakeMode(C.WAKE_MODE_NETWORK); // keeps the CPU and Wi-Fi awake while the screen is off
         mExoPlayerController.setPlayer(mPlayer);
         mExoPlayerController.setPreloadManager(mPlayerInitializer.getPreloadManager(), mPlayerInitializer.getPreloadControl());
+        wirePlayerView();
+        applyVideoTrack();
+
+        mPlaybackPresenter.setView(this);
+        mPlaybackPresenter.onEngineInitialized();
+    }
+
+    /** Connects the (possibly taken over) engine with this screen's views. */
+    private void wirePlayerView() {
         mExoPlayerController.setPlayerView(new com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.PlayerView() {
             @Override
             public void setQualityInfo(String info) {
@@ -1039,10 +1241,15 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
             public void onVideoSizeChanged(androidx.media3.common.VideoSize videoSize) {
                 applyShortsResize(videoSize);
             }
-        });
 
-        mPlaybackPresenter.setView(this);
-        mPlaybackPresenter.onEngineInitialized();
+            @Override
+            public void onPlaybackStateChanged(int state) {
+                if (state == Player.STATE_READY) {
+                    applyVideoTrack(); // a new track must not bring the video back in audio mode
+                }
+            }
+        });
+        MediaPlaybackService.bind(this, mPlayer);
     }
 
     private RestoreTrackSelector newTrackSelector() {
@@ -1065,6 +1272,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         Log.d(TAG, "releasePlayer: Start releasing player engine...");
         mPlaybackPresenter.onEngineReleased();
         mPlayerView.setPlayer(null);
+        MediaPlaybackService.unbind();
         mPlayerInitializer.release();
         mExoPlayerController.release();
         mPlayer = null;
@@ -1106,6 +1314,8 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         updateDescription();
         refreshButtons();
         setShortsMode(video.isShorts && !video.isLive);
+        updateArt();
+        MediaPlaybackService.notifyMetadataChanged();
     }
 
     ///////////////////// PlayerManager
@@ -1150,11 +1360,13 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
     @Override
     public void finish() {
+        mFinishRequested = true;
         super.finish();
     }
 
     @Override
     public void finishReally() {
+        mFinishRequested = true;
         super.finishReally();
     }
 
@@ -1512,8 +1724,12 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
             return;
         }
 
+        if (!show && mAudioMode && !mShortsMode && !mInPip) {
+            return; // the music screen keeps its controls
+        }
+
         mControls.setVisibility(show ? View.VISIBLE : View.GONE);
-        if (show) {
+        if (show && !(mAudioMode && !mShortsMode)) {
             scheduleHide();
         } else {
             mHandler.removeCallbacks(mHideControls);

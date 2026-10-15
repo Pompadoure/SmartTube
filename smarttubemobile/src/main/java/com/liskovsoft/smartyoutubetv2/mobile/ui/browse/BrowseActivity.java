@@ -59,10 +59,10 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
     private Button mErrorButton;
 
     private static final int[] TAB_SECTION_IDS = {
-            MediaGroup.TYPE_HOME, MediaGroup.TYPE_SHORTS, MediaGroup.TYPE_CHANNEL_UPLOADS, MediaGroup.TYPE_HISTORY
+            MediaGroup.TYPE_HOME, MediaGroup.TYPE_SHORTS, MediaGroup.TYPE_MUSIC, MediaGroup.TYPE_CHANNEL_UPLOADS, MediaGroup.TYPE_HISTORY
     };
-    private static final int[] TAB_ICONS = {R.drawable.ic_home, R.drawable.ic_shorts, R.drawable.ic_subs, R.drawable.ic_you};
-    private static final int[] TAB_TITLES = {R.string.tab_home, R.string.tab_shorts, R.string.tab_subscriptions, R.string.tab_you};
+    private static final int[] TAB_ICONS = {R.drawable.ic_home, R.drawable.ic_shorts, R.drawable.ic_music, R.drawable.ic_subs, R.drawable.ic_you};
+    private static final int[] TAB_TITLES = {R.string.tab_home, R.string.tab_shorts, R.string.tab_music, R.string.tab_subscriptions, R.string.tab_you};
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -98,6 +98,8 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         mAdapter = new VideoAdapter(new VideoAdapter.Listener() {
             @Override
             public void onClick(Video video) {
+                // music plays as audio (the player can switch to video), everything else as video
+                com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity.setAudioModeForNextPlayback(isMusicSelected());
                 mPresenter.onVideoItemClicked(video);
             }
 
@@ -298,13 +300,27 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
             tab.setCompoundDrawablesWithIntrinsicBounds(0, TAB_ICONS[i], 0, 0);
             tab.setCompoundDrawablePadding(Ui.dp(this, 2));
             tab.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
-            tab.setOnClickListener(v -> selectSectionById(sectionId));
+            tab.setOnClickListener(v -> {
+                if (sectionId == MediaGroup.TYPE_MUSIC && !hasSection(MediaGroup.TYPE_MUSIC)) {
+                    mPresenter.enableSection(MediaGroup.TYPE_MUSIC, true); // the section is off by default in some setups
+                }
+                selectSectionById(sectionId);
+            });
             bar.addView(tab, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
             mTabs.add(tab);
         }
 
         updateTabs();
         return bar;
+    }
+
+    private boolean hasSection(int sectionId) {
+        for (BrowseSection section : mSections) {
+            if (section.getId() == sectionId) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void selectSectionById(int sectionId) {
@@ -333,6 +349,10 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         if (entered && isShortsSelected()) {
             mPresenter.onContentEntered(true);
         }
+    }
+
+    private boolean isMusicSelected() {
+        return mSelectedIndex >= 0 && mSelectedIndex < mSections.size() && mSections.get(mSelectedIndex).getId() == MediaGroup.TYPE_MUSIC;
     }
 
     private boolean isShortsSelected() {
@@ -519,6 +539,15 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         // The TV home feed is a column of rows: here a row is a titled run of cards
         if (section != null && section.getType() == BrowseSection.TYPE_ROW && group.getPosition() >= 0) {
             mAdapter.addHeader(group.getTitle());
+        }
+        if (isMusicSelected()) {
+            // Music: square covers in sideways rows, artists as round avatars
+            if (isAllChannels(group.getVideos())) {
+                mAdapter.addChannelsRow(group.getVideos());
+            } else {
+                mAdapter.addMusicRow(group.getVideos());
+            }
+            return;
         }
         if (isAllSeries(group.getVideos())) {
             mAdapter.addSeriesRow(group.getVideos());

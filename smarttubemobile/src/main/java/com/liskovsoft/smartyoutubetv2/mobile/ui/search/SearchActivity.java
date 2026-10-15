@@ -125,6 +125,7 @@ public class SearchActivity extends MobileActivity implements SearchView {
             @Override
             public void onClick(Video video) {
                 hideKeyboard();
+                com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity.setAudioModeForNextPlayback(false);
                 mPresenter.onVideoItemClicked(video);
             }
 
