@@ -40,18 +40,41 @@ public class MediaPlaybackService extends MediaSessionService {
     private static Video sVideo; // strong: the presenter only keeps a weak reference
     private static MediaPlaybackService sService;
 
-    /** The player belongs to the session from now on (called when the playback screen creates its player). */
+    private static Player sPodcastPlayer;
+
+    /** The YouTube player belongs to the session from now on (called when the playback screen creates its player). */
     public static void bind(Context context, Player player) {
         Context app = context.getApplicationContext();
         sPlayer = new SessionPlayer(app, player);
+        com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastPlayer.pause(); // one sound at a time
+        attach(app, sPlayer);
+    }
 
+    /** The podcast player belongs to the session (its media items carry title, show and cover themselves). */
+    public static void bindPodcast(Context context, Player player) {
+        sPodcastPlayer = player;
+        attach(context.getApplicationContext(), player);
+    }
+
+    private static void attach(Context app, Player player) {
         if (sSession == null) {
             Intent open = new Intent(app, PlaybackActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
                     .putExtra(PlaybackActivity.EXTRA_FROM_NOTIFICATION, true);
             PendingIntent pending = PendingIntent.getActivity(app, 0, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            sSession = new MediaSession.Builder(app, sPlayer).setId("jotube").setSessionActivity(pending).build();
+            sSession = new MediaSession.Builder(app, player).setId("jotube").setSessionActivity(pending).build();
         } else {
-            sSession.setPlayer(sPlayer);
+            sSession.setPlayer(player);
+        }
+
+        if (player == sPodcastPlayer && sSession != null) {
+            // tapping the notification of a podcast opens the podcast player
+            Intent open = new Intent(app, com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastPlayerActivity.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            sSession.setSessionActivity(PendingIntent.getActivity(app, 1, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+        } else if (sSession != null) {
+            Intent open = new Intent(app, PlaybackActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    .putExtra(PlaybackActivity.EXTRA_FROM_NOTIFICATION, true);
+            sSession.setSessionActivity(PendingIntent.getActivity(app, 0, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
         }
 
         if (sController == null && sControllerFuture == null) {
@@ -81,11 +104,32 @@ public class MediaPlaybackService extends MediaSessionService {
         }
     }
 
-    /** The playback screen released its player. */
+    /** The YouTube playback screen released its player. */
     public static void unbind() {
-        if (sControllerFuture != null) {
-            sControllerFuture = null;
+        sPlayer = null;
+
+        if (sPodcastPlayer != null && sSession != null) {
+            sSession.setPlayer(sPodcastPlayer);
+            return;
         }
+
+        teardown();
+    }
+
+    /** The podcast player was stopped. */
+    public static void unbindPodcast() {
+        sPodcastPlayer = null;
+
+        if (sPlayer != null && sSession != null) {
+            sSession.setPlayer(sPlayer);
+            return;
+        }
+
+        teardown();
+    }
+
+    private static void teardown() {
+        sControllerFuture = null;
         if (sController != null) {
             sController.release();
             sController = null;
@@ -99,8 +143,10 @@ public class MediaPlaybackService extends MediaSessionService {
             sSession.release();
             sSession = null;
         }
+    }
 
-        sPlayer = null;
+    public static Player getPodcastPlayer() {
+        return sPodcastPlayer;
     }
 
     public static void setVideo(Video video) {

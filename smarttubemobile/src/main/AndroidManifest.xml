@@ -70,6 +70,15 @@
             android:resizeableActivity="true"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
 
+        <activity
+            android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastsActivity"
+            android:exported="false" />
+
+        <activity
+            android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastPlayerActivity"
+            android:exported="false"
+            android:launchMode="singleTop" />
+
         <service
             android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.playback.MediaPlaybackService"
             android:exported="true"

@@ -364,7 +364,9 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         mMiniPlay.setImageResource(R.drawable.ic_pause);
         mMiniPlay.setPadding(Ui.dp(this, 10), Ui.dp(this, 10), Ui.dp(this, 10), Ui.dp(this, 10));
         mMiniPlay.setOnClickListener(v -> {
-            androidx.media3.common.Player player = com.liskovsoft.smartyoutubetv2.mobile.ui.playback.MediaPlaybackService.getPlayer();
+            androidx.media3.common.Player player = mMiniPodcast
+                    ? com.liskovsoft.smartyoutubetv2.mobile.ui.playback.MediaPlaybackService.getPodcastPlayer()
+                    : com.liskovsoft.smartyoutubetv2.mobile.ui.playback.MediaPlaybackService.getPlayer();
             if (player != null) {
                 player.setPlayWhenReady(!player.getPlayWhenReady());
             }
@@ -375,33 +377,58 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         close.setImageResource(R.drawable.ic_close);
         close.setPadding(Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12));
         close.setOnClickListener(v -> {
-            com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity.closeOrphan();
+            if (mMiniPodcast) {
+                com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastPlayer.stop();
+            } else {
+                com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity.closeOrphan();
+            }
             updateMiniPlayer();
         });
         mMiniBar.addView(close, new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48)));
 
-        mMiniBar.setOnClickListener(v -> startActivity(new android.content.Intent(this, com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity.class)
-                .putExtra(com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity.EXTRA_FROM_NOTIFICATION, true)));
+        mMiniBar.setOnClickListener(v -> {
+            if (mMiniPodcast) {
+                startActivity(new android.content.Intent(this, com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastPlayerActivity.class));
+            } else {
+                startActivity(new android.content.Intent(this, com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity.class)
+                        .putExtra(com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity.EXTRA_FROM_NOTIFICATION, true));
+            }
+        });
         return mMiniBar;
     }
+
+    private boolean mMiniPodcast;
 
     private void updateMiniPlayer() {
         androidx.media3.common.Player player = com.liskovsoft.smartyoutubetv2.mobile.ui.playback.MediaPlaybackService.getPlayer();
         Video video = com.liskovsoft.smartyoutubetv2.mobile.ui.playback.MediaPlaybackService.getVideo();
-        boolean show = player != null && video != null && com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity.hasOrphan();
-        mMiniBar.setVisibility(show ? View.VISIBLE : View.GONE);
-        if (!show) {
+        boolean showVideo = player != null && video != null && com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity.hasOrphan();
+
+        androidx.media3.common.Player podcastPlayer = com.liskovsoft.smartyoutubetv2.mobile.ui.playback.MediaPlaybackService.getPodcastPlayer();
+        com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastRepository.Episode episode = com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastPlayer.current();
+        boolean showPodcast = !showVideo && podcastPlayer != null && episode != null && com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastPlayer.isActive();
+
+        mMiniBar.setVisibility(showVideo || showPodcast ? View.VISIBLE : View.GONE);
+        if (!showVideo && !showPodcast) {
             mMiniVideo = null;
             return;
         }
 
-        if (mMiniVideo != video) {
-            mMiniVideo = video;
-            mMiniTitle.setText(video.getTitle());
-            mMiniAuthor.setText(video.getAuthor());
-            com.bumptech.glide.Glide.with(mMiniCover).load(video.getCardImageUrl()).into(mMiniCover);
+        mMiniPodcast = showPodcast;
+        Object key = showPodcast ? episode : video;
+        if (mMiniVideo != key) {
+            mMiniVideo = key;
+            mMiniTitle.setText(showPodcast ? episode.title : video.getTitle());
+            mMiniAuthor.setText(showPodcast ? episode.feedTitle : video.getAuthor());
+            String image = showPodcast ? episode.image : video.getCardImageUrl();
+            if (image != null) {
+                com.bumptech.glide.Glide.with(mMiniCover).load(image).into(mMiniCover);
+            } else {
+                mMiniCover.setImageDrawable(null);
+            }
         }
-        mMiniPlay.setImageResource(player.getPlayWhenReady() ? R.drawable.ic_pause : R.drawable.ic_play);
+        androidx.media3.common.Player active = showPodcast ? podcastPlayer : player;
+        mMiniPlay.setImageResource(active.getPlayWhenReady() ? R.drawable.ic_pause : R.drawable.ic_play);
     }
 
     private boolean hasSection(int sectionId) {
@@ -466,6 +493,16 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
             mChipRow.addView(chip, params);
             mChips.add(chip);
         }
+
+        TextView podcasts = new TextView(this);
+        podcasts.setText("Poddar");
+        podcasts.setTextSize(14);
+        podcasts.setTypeface(Typeface.DEFAULT_BOLD);
+        podcasts.setTextColor(getColor(R.color.yt_text));
+        podcasts.setBackgroundResource(R.drawable.bg_chip);
+        podcasts.setPadding(Ui.dp(this, 12), Ui.dp(this, 7), Ui.dp(this, 12), Ui.dp(this, 7));
+        podcasts.setOnClickListener(v -> startActivity(new android.content.Intent(this, com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastsActivity.class)));
+        mChipRow.addView(podcasts, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         updateChips();
     }
