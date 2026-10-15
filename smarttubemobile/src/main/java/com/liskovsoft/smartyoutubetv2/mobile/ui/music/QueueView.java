@@ -70,7 +70,6 @@ public final class QueueView {
 
         RecyclerView list = new RecyclerView(activity);
         list.setLayoutManager(new LinearLayoutManager(activity));
-        list.setNestedScrollingEnabled(false);
         list.setOverScrollMode(View.OVER_SCROLL_NEVER);
         list.setItemAnimator(null);
 
@@ -168,8 +167,7 @@ public final class QueueView {
         });
         helper[0].attachToRecyclerView(list);
 
-        root.addView(list, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        root.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        root.addView(list, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         return root;
     }
 

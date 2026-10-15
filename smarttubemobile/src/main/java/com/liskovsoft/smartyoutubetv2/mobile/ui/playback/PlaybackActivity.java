@@ -96,6 +96,8 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     private ImageView mAvatarView;
     private LinearLayout mActionRow;
     private RecyclerView mSuggestionsList;
+    private MusicPlayerView mMusicView;
+    private boolean mMinimized;
     private VideoAdapter mSuggestionsAdapter;
     private final List<VideoGroup> mGroups = new ArrayList<>();
     private final Map<Integer, Integer> mButtonStates = new HashMap<>();
@@ -111,8 +113,8 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     /** The queue changed (play next / add to queue): update the list of what comes next. */
     public static void refreshQueue() {
         PlaybackActivity active = sActive != null ? sActive.get() : null;
-        if (active != null && !active.isDestroyed() && active.mSuggestionsAdapter != null) {
-            active.rebuildSuggestions();
+        if (active != null && !active.isDestroyed() && active.mMusicView != null) {
+            active.mMusicView.refreshQueue();
         }
     }
     private boolean mAudioMode;
@@ -166,7 +168,12 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(null);
 
-        setContentView(createContent());
+        FrameLayout frame = new FrameLayout(this);
+        frame.addView(createContent(), new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        mMusicView = createMusicView();
+        mMusicView.setVisibility(View.GONE);
+        frame.addView(mMusicView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        setContentView(frame);
 
         sActive = new java.lang.ref.WeakReference<>(this);
         mAudioMode = consumePendingAudioMode(false);
@@ -649,6 +656,15 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         applyVideoTrack();
         applyOrientation(getResources().getConfiguration());
         updateArt();
+        if (mMusicView != null) {
+            mMusicView.setVisibility(audio && !mInPip ? View.VISIBLE : View.GONE);
+            mRoot.setVisibility(audio && !mInPip ? View.GONE : View.VISIBLE);
+            if (audio) {
+                mMusicView.bind(getVideo());
+            } else {
+                mMusicView.showQueue(false);
+            }
+        }
 
         if (audio && !mInPip) {
             showControls(true);
@@ -779,6 +795,19 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
     /** Swipe down / chevron: the video goes to a small floating window and the grid behind it can be scrolled. */
     private void enterMiniPlayer() {
+        // Not PiP: the playback goes on without this screen and a mini player sits at the bottom of the app; a tap
+        // on it brings the video / song back in full screen.
+        if (mShortsMode || mPlayer == null || !MediaPlaybackService.isActive()) {
+            finish();
+            return;
+        }
+
+        mMinimized = true;
+        finish();
+    }
+
+    /** Leaving the app with a video playing: the small floating window. */
+    private void enterPip() {
         if (android.os.Build.VERSION.SDK_INT < 26 || mShortsMode) {
             finish();
             return;
@@ -799,7 +828,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         super.onUserLeaveHint();
 
         if (!mShortsMode && !mAudioMode && mPlayer != null && mPlayer.isPlaying() && android.os.Build.VERSION.SDK_INT >= 26) {
-            enterMiniPlayer();
+            enterPip();
         }
     }
 
@@ -1219,7 +1248,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     protected void onStop() {
         super.onStop();
 
-        if (keepPlayingInBackground()) {
+        if (keepPlayingInBackground() || (mMinimized && keepForMini())) {
             // Screen off / another app: the sound goes on (media notification), the video is dropped
             mBackgrounded = true;
             applyVideoTrack();
@@ -1230,6 +1259,11 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         if (Util.SDK_INT > 23) {
             maybeReleasePlayer();
         }
+    }
+
+    /** Minimized (also when paused): the engine lives on for the mini player. */
+    private boolean keepForMini() {
+        return mPlayer != null && mPlayer.getPlaybackState() != Player.STATE_ENDED && !mShortsMode && !isChangingConfigurations() && MediaPlaybackService.isActive();
     }
 
     private boolean keepPlayingInBackground() {
@@ -1246,7 +1280,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
         // The app was swiped away (or the music screen closed) while playing: the sound goes on, the engine lives on
         // as an "orphan" until the user comes back through the notification or starts something else.
-        if (keepPlayingInBackground() && !mInPip && (!mFinishRequested || mAudioMode)) {
+        if (((keepPlayingInBackground() && !mInPip && (!mFinishRequested || mAudioMode)) || (mMinimized && keepForMini())) && !mInPip) {
             sOrphan = this;
             return;
         }
@@ -1353,8 +1387,8 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         if (isDestroyed()) {
             return; // an orphan (sound without a screen) only feeds the notification
         }
-        if (mAudioMode && mSuggestionsAdapter != null) {
-            rebuildSuggestions(); // the queue moved on
+        if (mMusicView != null && mAudioMode) {
+            mMusicView.bind(video); // cover, title, queue
         }
 
         String title = video.getTitleFull() != null ? video.getTitleFull() : "...";
@@ -1697,67 +1731,170 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         rebuildSuggestions();
     }
 
+    private List<Video> queuedSongs() {
+        List<Video> after = com.liskovsoft.smartyoutubetv2.common.app.models.data.Playlist.instance().getAllAfterCurrent(); // null at the last song
+        return after != null ? new ArrayList<>(after) : new ArrayList<>();
+    }
+
+    /** Songs that follow in the list the playing song came from (not in the queue). */
+    private List<Video> restSongs() {
+        Video current = getVideo();
+        List<Video> queued = queuedSongs();
+        List<Video> rest = new ArrayList<>();
+        VideoGroup origin = current != null && !current.belongsToSuggestions() ? current.getGroup() : null;
+        if (origin != null) {
+            boolean found = false;
+            for (Video item : origin.getVideos()) {
+                if (found && item.hasVideo() && !item.isUpcoming && !item.isShorts && !item.isLive && !queued.contains(item)) {
+                    rest.add(item);
+                }
+                if (item.equals(current)) {
+                    found = true;
+                }
+            }
+        }
+        return rest;
+    }
+
+    private com.liskovsoft.smartyoutubetv2.mobile.ui.music.QueueView.Listener createQueueListener() {
+        final com.liskovsoft.smartyoutubetv2.common.app.models.data.Playlist playlist = com.liskovsoft.smartyoutubetv2.common.app.models.data.Playlist.instance();
+        return new com.liskovsoft.smartyoutubetv2.mobile.ui.music.QueueView.Listener() {
+            @Override
+            public void onPlay(Video video) {
+                if (video.equals(getVideo())) {
+                    return;
+                }
+                if (playlist.contains(video)) {
+                    playlist.setCurrent(video);
+                }
+                mPlaybackPresenter.openVideo(video);
+            }
+
+            @Override
+            public void onLongPress(Video video) {
+                com.liskovsoft.smartyoutubetv2.mobile.ui.music.MusicMenu.show(PlaybackActivity.this, video, null, null);
+            }
+
+            @Override
+            public void onReordered(List<Video> newOrder) {
+                Video playing = playlist.getCurrent();
+                if (playing == null) {
+                    return;
+                }
+                List<Video> all = new ArrayList<>(playlist.getAll());
+                int index = all.indexOf(playing);
+                if (index < 0) {
+                    return;
+                }
+                List<Video> result = new ArrayList<>(all.subList(0, index + 1));
+                result.addAll(newOrder);
+                playlist.clear();
+                playlist.addAll(result);
+                playlist.setCurrent(playing);
+            }
+        };
+    }
+
+    private MusicPlayerView createMusicView() {
+        return new MusicPlayerView(this, new MusicPlayerView.Host() {
+            @Override
+            public Video video() {
+                return getVideo();
+            }
+
+            @Override
+            public boolean isPlaying() {
+                return mExoPlayerController != null && mExoPlayerController.getPlayWhenReady();
+            }
+
+            @Override
+            public long position() {
+                return mExoPlayerController != null ? mExoPlayerController.getPositionMs() : 0;
+            }
+
+            @Override
+            public long duration() {
+                return mExoPlayerController != null ? mExoPlayerController.getDurationMs() : 0;
+            }
+
+            @Override
+            public void togglePlay() {
+                mExoPlayerController.setPlayWhenReady(!mExoPlayerController.getPlayWhenReady());
+            }
+
+            @Override
+            public void previous() {
+                mPlaybackPresenter.onPreviousClicked();
+            }
+
+            @Override
+            public void next() {
+                mPlaybackPresenter.onNextClicked();
+            }
+
+            @Override
+            public void seekTo(long ms) {
+                mExoPlayerController.setPositionMs(ms);
+            }
+
+            @Override
+            public void setSpeed(float speed) {
+                mExoPlayerController.setSpeed(speed);
+            }
+
+            @Override
+            public void minimize() {
+                enterMiniPlayer();
+            }
+
+            @Override
+            public void showVideo() {
+                setAudioMode(false);
+            }
+
+            @Override
+            public void share() {
+                shareVideo();
+            }
+
+            @Override
+            public com.liskovsoft.smartyoutubetv2.mobile.ui.music.QueueView.Listener queueListener() {
+                return createQueueListener();
+            }
+
+            @Override
+            public List<Video> queued() {
+                return queuedSongs();
+            }
+
+            @Override
+            public List<Video> rest() {
+                return restSongs();
+            }
+        });
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (mMusicView != null && mMusicView.isQueueShown()) {
+            mMusicView.showQueue(false);
+            return;
+        }
+        if (!mShortsMode && mPlayer != null && !mInPip) {
+            enterMiniPlayer(); // back minimizes to the mini player, like YouTube
+            return;
+        }
+        super.onBackPressed();
+    }
+
     private void rebuildSuggestions() {
         mSuggestionsAdapter.clear();
         mSuggestionsAdapter.addView(mHeader);
 
         if (mAudioMode && !mShortsMode) {
-            // Music: "Spelas just nu" + the queue, then the songs that follow in the list the song came from. No related videos.
-            final Video current = getVideo();
-            final com.liskovsoft.smartyoutubetv2.common.app.models.data.Playlist playlist = com.liskovsoft.smartyoutubetv2.common.app.models.data.Playlist.instance();
-            List<Video> after = playlist.getAllAfterCurrent(); // null at the last song
-            List<Video> queued = after != null ? new ArrayList<>(after) : new ArrayList<>();
-
-            List<Video> rest = new ArrayList<>();
-            VideoGroup origin = current != null && !current.belongsToSuggestions() ? current.getGroup() : null;
-            if (origin != null) {
-                boolean found = false;
-                for (Video item : origin.getVideos()) {
-                    if (found && item.hasVideo() && !item.isUpcoming && !item.isShorts && !item.isLive && !queued.contains(item)) {
-                        rest.add(item);
-                    }
-                    if (item.equals(current)) {
-                        found = true;
-                    }
-                }
+            if (mMusicView != null) {
+                mMusicView.refreshQueue(); // the music screen has its own queue page
             }
-
-            mSuggestionsAdapter.addView(com.liskovsoft.smartyoutubetv2.mobile.ui.music.QueueView.create(this, current, queued, rest,
-                    new com.liskovsoft.smartyoutubetv2.mobile.ui.music.QueueView.Listener() {
-                        @Override
-                        public void onPlay(Video video) {
-                            if (video.equals(current)) {
-                                return;
-                            }
-                            if (playlist.contains(video)) {
-                                playlist.setCurrent(video);
-                            }
-                            mPlaybackPresenter.openVideo(video);
-                        }
-
-                        @Override
-                        public void onLongPress(Video video) {
-                            com.liskovsoft.smartyoutubetv2.mobile.ui.music.MusicMenu.show(PlaybackActivity.this, video, null, null);
-                        }
-
-                        @Override
-                        public void onReordered(List<Video> newOrder) {
-                            Video playing = playlist.getCurrent();
-                            if (playing == null) {
-                                return;
-                            }
-                            List<Video> all = new ArrayList<>(playlist.getAll());
-                            int index = all.indexOf(playing);
-                            if (index < 0) {
-                                return;
-                            }
-                            List<Video> result = new ArrayList<>(all.subList(0, index + 1));
-                            result.addAll(newOrder);
-                            playlist.clear();
-                            playlist.addAll(result);
-                            playlist.setCurrent(playing);
-                        }
-                    }));
             return;
         }
 

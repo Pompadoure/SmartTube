@@ -102,6 +102,12 @@ public final class MusicMenu {
                 .show();
     }
 
+    public static void addToPlaylist(Activity activity, Video video) {
+        if (video != null && video.videoId != null) {
+            chooseList(activity, video);
+        }
+    }
+
     private static void chooseList(Activity activity, Video video) {
         List<MusicLibrary.Playlist> lists = MusicLibrary.playlists(activity);
         List<String> labels = new ArrayList<>();
