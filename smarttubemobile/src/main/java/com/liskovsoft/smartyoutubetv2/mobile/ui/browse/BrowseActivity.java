@@ -387,7 +387,7 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
 
     private void updateMiniPlayer() {
         androidx.media3.common.Player player = com.liskovsoft.smartyoutubetv2.mobile.ui.playback.MediaPlaybackService.getPlayer();
-        Video video = com.liskovsoft.smartyoutubetv2.common.app.presenters.PlaybackPresenter.instance(this).getVideo();
+        Video video = com.liskovsoft.smartyoutubetv2.mobile.ui.playback.MediaPlaybackService.getVideo();
         boolean show = player != null && video != null && com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity.hasOrphan();
         mMiniBar.setVisibility(show ? View.VISIBLE : View.GONE);
         if (!show) {

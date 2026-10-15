@@ -36,6 +36,8 @@ public class MediaPlaybackService extends MediaSessionService {
     private static MediaSession sSession;
     private static SessionPlayer sPlayer;
     private static MediaController sController;
+    private static com.google.common.util.concurrent.ListenableFuture<MediaController> sControllerFuture;
+    private static Video sVideo; // strong: the presenter only keeps a weak reference
     private static MediaPlaybackService sService;
 
     /** The player belongs to the session from now on (called when the playback screen creates its player). */
@@ -52,15 +54,21 @@ public class MediaPlaybackService extends MediaSessionService {
             sSession.setPlayer(sPlayer);
         }
 
-        if (sController == null) {
+        if (sController == null && sControllerFuture == null) {
             // Connecting a controller binds the service; the service then posts the notification while playing
             try {
                 SessionToken token = new SessionToken(app, new ComponentName(app, MediaPlaybackService.class));
                 MediaController.Builder builder = new MediaController.Builder(app, token);
                 final com.google.common.util.concurrent.ListenableFuture<MediaController> future = builder.buildAsync();
+                sControllerFuture = future;
                 future.addListener(() -> {
                     try {
-                        sController = future.get();
+                        MediaController controller = future.get();
+                        if (sControllerFuture == future && sSession != null) {
+                            sController = controller;
+                        } else {
+                            controller.release(); // unbound in the meantime
+                        }
                     } catch (Exception e) {
                         Log.e(TAG, "Can't bind the media service: %s", e.getMessage());
                     }
@@ -75,6 +83,9 @@ public class MediaPlaybackService extends MediaSessionService {
 
     /** The playback screen released its player. */
     public static void unbind() {
+        if (sControllerFuture != null) {
+            sControllerFuture = null;
+        }
         if (sController != null) {
             sController.release();
             sController = null;
@@ -90,6 +101,14 @@ public class MediaPlaybackService extends MediaSessionService {
         }
 
         sPlayer = null;
+    }
+
+    public static void setVideo(Video video) {
+        sVideo = video;
+    }
+
+    public static Video getVideo() {
+        return sVideo;
     }
 
     /** The current video changed (title, artist, cover). */
@@ -214,7 +233,7 @@ public class MediaPlaybackService extends MediaSessionService {
 
         @Override
         public MediaMetadata getMediaMetadata() {
-            Video video = PlaybackPresenter.instance(mContext).getVideo();
+            Video video = sVideo != null ? sVideo : PlaybackPresenter.instance(mContext).getVideo();
             if (video == null) {
                 return super.getMediaMetadata();
             }

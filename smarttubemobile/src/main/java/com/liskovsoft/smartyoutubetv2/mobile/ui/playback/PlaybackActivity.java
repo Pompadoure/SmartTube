@@ -103,10 +103,12 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
     // Background playback / audio mode (music)
     public static final String EXTRA_FROM_NOTIFICATION = "from_notification";
-    private static boolean sAudioMode;
+    private static boolean sAskedNotifications;
+    private static Boolean sPendingAudioMode; // set by the feed on a click, consumed by the screen
     private static PlaybackActivity sOrphan;
     private boolean mAudioMode;
     private boolean mFinishRequested;
+    private Player.Listener mPlayerListener;
     private boolean mBackgrounded;
     private LinearLayout mModePill;
     private ImageView mModeAudioButton, mModeVideoButton, mLandscapeAudioButton;
@@ -130,7 +132,13 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
     /** The next playback starts as audio only (music) or as video. */
     public static void setAudioModeForNextPlayback(boolean audio) {
-        sAudioMode = audio;
+        sPendingAudioMode = audio;
+    }
+
+    private boolean consumePendingAudioMode(boolean fallback) {
+        Boolean pending = sPendingAudioMode;
+        sPendingAudioMode = null;
+        return pending != null ? pending : fallback;
     }
     private LinearLayout mRoot;
 
@@ -140,11 +148,12 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
         setContentView(createContent());
 
-        mAudioMode = sAudioMode;
+        mAudioMode = consumePendingAudioMode(false);
         mPlaybackPresenter = PlaybackPresenter.instance(this);
 
         // Android 13+: the media notification (lock screen controls) needs this permission
-        if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+        if (!sAskedNotifications && android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            sAskedNotifications = true;
             requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 7);
         }
 
@@ -159,10 +168,12 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
             mPlayerInitializer = orphan.mPlayerInitializer;
             mExoPlayerController = orphan.mExoPlayerController;
             mPlayer = orphan.mPlayer;
+            if (orphan.mPlayerListener != null) {
+                mPlayer.removeListener(orphan.mPlayerListener);
+            }
             orphan.mPlayer = null;
             // from the notification: the music screen as it was; from the feed: the mode of the new start
-            mAudioMode = fromNotification ? orphan.mAudioMode : sAudioMode;
-            sAudioMode = mAudioMode;
+            mAudioMode = consumePendingAudioMode(orphan.mAudioMode);
             wirePlayerView();
             mPlaybackPresenter.setView(this);
             mHandler.post(mShortsTick);
@@ -602,7 +613,6 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         }
 
         mAudioMode = audio;
-        sAudioMode = audio;
         applyAudioMode();
     }
 
@@ -623,6 +633,10 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     }
 
     private void updateArt() {
+        if (isDestroyed()) {
+            return; // an orphan: its views are gone
+        }
+
         Video video = mPlaybackPresenter.getVideo();
         if (video != null && video.getCardImageUrl() != null) {
             Glide.with(mArtView).load(video.getCardImageUrl()).into(mArtView);
@@ -1133,6 +1147,14 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     protected void onStart() {
         super.onStart();
 
+        if (sPendingAudioMode != null) {
+            boolean pending = consumePendingAudioMode(mAudioMode);
+            if (pending != mAudioMode) {
+                mAudioMode = pending;
+                applyAudioMode();
+            }
+        }
+
         if (mPlayer != null) {
             // back from the background with a living engine: the video comes back
             mBackgrounded = false;
@@ -1199,7 +1221,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
         // The app was swiped away (or the music screen closed) while playing: the sound goes on, the engine lives on
         // as an "orphan" until the user comes back through the notification or starts something else.
-        if (keepPlayingInBackground() && (!mFinishRequested || mAudioMode)) {
+        if (keepPlayingInBackground() && !mInPip && (!mFinishRequested || mAudioMode)) {
             sOrphan = this;
             return;
         }
@@ -1250,7 +1272,10 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
             }
         });
         mPlayerView.setPlayer(mPlayer);
-        mPlayer.addListener(new androidx.media3.common.Player.Listener() {
+        if (mPlayerListener != null) {
+            mPlayer.removeListener(mPlayerListener);
+        }
+        mPlayerListener = new androidx.media3.common.Player.Listener() {
             @Override
             public void onVideoSizeChanged(androidx.media3.common.VideoSize videoSize) {
                 applyShortsResize(videoSize);
@@ -1262,7 +1287,8 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
                     applyVideoTrack(); // a new track must not bring the video back in audio mode
                 }
             }
-        });
+        };
+        mPlayer.addListener(mPlayerListener);
         MediaPlaybackService.bind(this, mPlayer);
     }
 
@@ -1297,6 +1323,12 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
             return;
         }
 
+        MediaPlaybackService.setVideo(video);
+        MediaPlaybackService.notifyMetadataChanged();
+        if (isDestroyed()) {
+            return; // an orphan (sound without a screen) only feeds the notification
+        }
+
         String title = video.getTitleFull() != null ? video.getTitleFull() : "...";
         String author = video.getAuthor();
         mTitleView.setText(title);
@@ -1329,7 +1361,6 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         refreshButtons();
         setShortsMode(video.isShorts && !video.isLive);
         updateArt();
-        MediaPlaybackService.notifyMetadataChanged();
     }
 
     ///////////////////// PlayerManager
@@ -1769,7 +1800,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
     @Override
     public void setChannelIcon(String iconUrl) {
-        if (iconUrl != null) {
+        if (iconUrl != null && !isDestroyed()) {
             Glide.with(mAvatarView).load(iconUrl).into(mAvatarView);
             Glide.with(mShortAvatar).load(iconUrl).into(mShortAvatar);
         }
