@@ -139,16 +139,49 @@ public final class PodcastRepository {
         return "pos_" + (episode.guid != null ? episode.guid : episode.audioUrl).hashCode();
     }
 
+    private static String finishedKey(Episode episode) {
+        return "done_" + (episode.guid != null ? episode.guid : episode.audioUrl).hashCode();
+    }
+
+    private static String durationKey(Episode episode) {
+        return "dur_" + (episode.guid != null ? episode.guid : episode.audioUrl).hashCode();
+    }
+
     public static long getPosition(Context context, Episode episode) {
         return prefs(context).getLong(positionKey(episode), 0);
     }
 
+    /** Listened to the end (the last 30 s count as the end). */
+    public static boolean isFinished(Context context, Episode episode) {
+        return prefs(context).getBoolean(finishedKey(episode), false);
+    }
+
+    /** The length from the feed, else the one the player measured (some feeds have none). 0 if unknown. */
+    public static long getDurationMs(Context context, Episode episode) {
+        return episode.durationMs > 0 ? episode.durationMs : prefs(context).getLong(durationKey(episode), 0);
+    }
+
+    /** How far it was listened to, 0..1 (1 when finished, 0 when not started or the length is unknown). */
+    public static float getProgress(Context context, Episode episode) {
+        if (isFinished(context, episode)) {
+            return 1f;
+        }
+        long position = getPosition(context, episode);
+        long duration = getDurationMs(context, episode);
+        return position > 0 && duration > 0 ? Math.min(1f, position / (float) duration) : 0f;
+    }
+
     public static void savePosition(Context context, Episode episode, long positionMs, long durationMs) {
         SharedPreferences.Editor editor = prefs(context).edit();
+        if (durationMs > 0) {
+            editor.putLong(durationKey(episode), durationMs);
+        }
         if (durationMs > 0 && positionMs >= durationMs - 30_000) {
             editor.remove(positionKey(episode)); // finished
+            editor.putBoolean(finishedKey(episode), true);
         } else if (positionMs > 5_000) {
             editor.putLong(positionKey(episode), positionMs);
+            editor.remove(finishedKey(episode)); // listened to again
         }
         editor.apply();
     }

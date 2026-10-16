@@ -382,12 +382,19 @@ public final class PodcastsView extends LinearLayout {
             row.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(Ui.dp(c, 16), Ui.dp(c, 8), Ui.dp(c, 8), Ui.dp(c, 8));
+            // The cover, with how far it was listened to as a red bar along its bottom edge (like YouTube)
+            android.widget.FrameLayout coverBox = new android.widget.FrameLayout(c);
+            coverBox.setBackgroundColor(c.getColor(R.color.yt_surface));
+            Ui.makeRounded(coverBox, Ui.dp(c, 8));
             ImageView cover = new ImageView(c);
             cover.setId(R.id.mobile_thumb);
             cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            cover.setBackgroundColor(c.getColor(R.color.yt_surface));
-            Ui.makeRounded(cover, Ui.dp(c, 8));
-            row.addView(cover, new LinearLayout.LayoutParams(Ui.dp(c, 68), Ui.dp(c, 68)));
+            coverBox.addView(cover, new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            View progress = new View(c);
+            progress.setId(R.id.mobile_progress);
+            progress.setBackgroundColor(c.getColor(R.color.yt_red));
+            coverBox.addView(progress, new android.widget.FrameLayout.LayoutParams(0, Ui.dp(c, 4), Gravity.BOTTOM | Gravity.START));
+            row.addView(coverBox, new LinearLayout.LayoutParams(Ui.dp(c, 68), Ui.dp(c, 68)));
             LinearLayout texts = new LinearLayout(c);
             texts.setOrientation(LinearLayout.VERTICAL);
             texts.setPadding(Ui.dp(c, 12), 0, Ui.dp(c, 8), 0);
@@ -430,7 +437,16 @@ public final class PodcastsView extends LinearLayout {
         }
 
         private void bindEpisode(View row, final PodcastRepository.Episode episode) {
-            ((TextView) row.findViewById(R.id.mobile_title)).setText(episode.title);
+            Context c = row.getContext();
+            boolean finished = PodcastRepository.isFinished(c, episode);
+            TextView titleView = row.findViewById(R.id.mobile_title);
+            titleView.setText(episode.title);
+            titleView.setTextColor(c.getColor(finished ? R.color.yt_text_secondary : R.color.yt_text));
+            View progress = row.findViewById(R.id.mobile_progress);
+            ViewGroup.LayoutParams progressParams = progress.getLayoutParams();
+            progressParams.width = Math.round(Ui.dp(c, 68) * PodcastRepository.getProgress(c, episode));
+            progress.setLayoutParams(progressParams);
+            progress.setVisibility(progressParams.width > 0 ? View.VISIBLE : View.GONE);
             StringBuilder meta = new StringBuilder();
             if (episode.feedTitle != null) {
                 meta.append(episode.feedTitle);
@@ -441,9 +457,12 @@ public final class PodcastsView extends LinearLayout {
             if (episode.durationMs > 0) {
                 meta.append(" • ").append(formatDuration(episode.durationMs));
             }
-            long position = PodcastRepository.getPosition(row.getContext(), episode);
-            if (position > 0 && episode.durationMs > position) {
-                meta.append("\n").append("Fortsätt: ").append(formatDuration(episode.durationMs - position)).append(" kvar");
+            long position = PodcastRepository.getPosition(c, episode);
+            long duration = PodcastRepository.getDurationMs(c, episode);
+            if (finished) {
+                meta.append("\n").append("✓ Lyssnad");
+            } else if (position > 0 && duration > position) {
+                meta.append("\n").append("Fortsätt: ").append(formatDuration(duration - position)).append(" kvar");
             }
             ((TextView) row.findViewById(R.id.mobile_meta)).setText(meta);
             ImageView cover = row.findViewById(R.id.mobile_thumb);

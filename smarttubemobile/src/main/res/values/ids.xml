@@ -5,4 +5,5 @@
     <item name="mobile_avatar" type="id"/>
     <item name="mobile_title" type="id"/>
     <item name="mobile_meta" type="id"/>
+    <item name="mobile_progress" type="id"/>
 </resources>
