@@ -1532,7 +1532,9 @@ public class BrowseSupportFragment extends BaseSupportFragment {
 
         if (!expanded) {
             grid.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
-        } else if (grid.getDescendantFocusability() == ViewGroup.FOCUS_BLOCK_DESCENDANTS) {
+        } else if (mHeadersTransition == null
+                && grid.getDescendantFocusability() == ViewGroup.FOCUS_BLOCK_DESCENDANTS) {
+            // While expanding, the items stay blocked until the transition end (like stock leanback)
             grid.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         }
     }
