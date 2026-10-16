@@ -45,6 +45,7 @@ public final class PodcastsView extends LinearLayout {
     private RecyclerView.Adapter<RecyclerView.ViewHolder> mAdapter;
     private String mSelectedFeed;
     private boolean mLoading;
+    private int mRefreshGeneration; // only the latest refresh round updates the list (Poddar may be shown again meanwhile)
     private boolean mDestroyed;
 
     private static final int TYPE_RAIL = 0, TYPE_HEADER = 1, TYPE_EPISODE = 2, TYPE_EMPTY = 3;
@@ -117,6 +118,9 @@ public final class PodcastsView extends LinearLayout {
 
     /** Shown (again): the list from the stored feeds right away, then fresh episodes from the network. */
     public void onShown() {
+        // Like the old screen, which started fresh each time: all shows, at the top
+        mSelectedFeed = null;
+        mList.scrollToPosition(0);
         rebuild();
         refresh();
     }
@@ -166,6 +170,7 @@ public final class PodcastsView extends LinearLayout {
     private void refresh() {
         final List<PodcastRepository.Feed> feeds = PodcastRepository.subscriptions(mActivity);
         mLoading = !feeds.isEmpty();
+        final int generation = ++mRefreshGeneration;
         final int[] pending = {feeds.size()};
         for (PodcastRepository.Feed feed : feeds) {
             final String url = feed.url;
@@ -177,8 +182,8 @@ public final class PodcastsView extends LinearLayout {
                     // keep what we had; the next refresh tries again
                 }
                 mActivity.runOnUiThread(() -> {
-                    if (mDestroyed) {
-                        return;
+                    if (mDestroyed || generation != mRefreshGeneration) {
+                        return; // destroyed, or a newer round runs (the fetched feed is stored anyway)
                     }
                     pending[0]--;
                     if (pending[0] <= 0) {

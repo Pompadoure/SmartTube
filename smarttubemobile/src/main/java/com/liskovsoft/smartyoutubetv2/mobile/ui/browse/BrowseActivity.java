@@ -463,6 +463,15 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         }
     }
 
+    private void createPodcastsView() {
+        if (mPodcasts == null && mContent != null) {
+            mPodcasts = new com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastsView(this, () -> showPodcasts(false));
+            mPodcasts.setPadding(0, mTopInset, 0, 0);
+            mPodcasts.setVisibility(View.GONE);
+            mContent.addView(mPodcasts, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        }
+    }
+
     private boolean isPodcastsShown() {
         return mPodcasts != null && mPodcasts.getVisibility() == View.VISIBLE;
     }
@@ -476,12 +485,7 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
             if (mContent == null) {
                 return;
             }
-            if (mPodcasts == null) {
-                mPodcasts = new com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastsView(this, () -> showPodcasts(false));
-                mPodcasts.setPadding(0, mTopInset, 0, 0);
-                mPodcasts.setVisibility(View.GONE);
-                mContent.addView(mPodcasts, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            }
+            createPodcastsView();
             if (!isPodcastsShown()) {
                 mPodcasts.setVisibility(View.VISIBLE);
                 mPodcasts.onShown();
@@ -834,8 +838,11 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (mPodcasts != null && requestCode == com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastsView.REQUEST_OPML) {
-            mPodcasts.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastsView.REQUEST_OPML) {
+            createPodcastsView(); // the app may have been restarted while the file picker was open
+            if (mPodcasts != null) {
+                mPodcasts.onActivityResult(requestCode, resultCode, data);
+            }
         }
     }
 
