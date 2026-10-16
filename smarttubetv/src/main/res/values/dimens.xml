@@ -148,8 +148,8 @@
 
     <!-- JoTube: YouTube-style sidebar -->
     <dimen name="sidebar_item_height">44dp</dimen>
-    <!-- headers width 270dp - padding start/end 22dp - fragment padding end 8dp -->
-    <dimen name="sidebar_item_width">218dp</dimen>
+    <!-- headers grid width 270dp - its padding start/end 22dp -->
+    <dimen name="sidebar_item_width">226dp</dimen>
     <dimen name="sidebar_item_padding">14dp</dimen>
     <dimen name="sidebar_icon_size">22dp</dimen>
     <dimen name="sidebar_icon_gap">18dp</dimen>
