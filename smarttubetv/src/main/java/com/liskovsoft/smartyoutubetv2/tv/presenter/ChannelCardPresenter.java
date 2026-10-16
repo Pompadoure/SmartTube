@@ -42,17 +42,16 @@ public class ChannelCardPresenter extends LongClickPresenter {
     public ViewHolder onCreateViewHolder(ViewGroup parent) {
         Context context = parent.getContext();
 
-        // JoTube: YouTube TV look, the channel list lies on the page color and the focused channel gets the light pill color
         mDefaultBackgroundColor =
-                ContextCompat.getColor(context, Helpers.getThemeAttr(context, R.attr.shelfBackground));
+                ContextCompat.getColor(context, Helpers.getThemeAttr(context, R.attr.cardDefaultBackground));
         mDefaultTextColor =
                 ContextCompat.getColor(context, R.color.card_default_text);
         // JoTube: no red highlight for channels with new videos
         mNewContentBackgroundColor = mDefaultBackgroundColor;
         mSelectedBackgroundColor =
-                ContextCompat.getColor(context, R.color.sidebar_item_focused);
+                ContextCompat.getColor(context, Helpers.getThemeAttr(context, R.attr.cardSelectedBackground));
         mSelectedTextColor =
-                ContextCompat.getColor(context, R.color.sidebar_content_focused);
+                ContextCompat.getColor(context, R.color.card_selected_text_grey);
 
         updateDimensions(context);
 

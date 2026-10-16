@@ -1397,11 +1397,6 @@ public class BrowseSupportFragment extends BaseSupportFragment {
     }
 
     void updateTitleViewVisibility() {
-        if (isHeadersRailActive()) {
-            // JoTube MOD: the title holds the account and search buttons of the sidebar rail: always visible
-            showTitle(TitleViewAdapter.FULL_VIEW_VISIBLE);
-            return;
-        }
         if (!mShowingHeaders) {
             boolean showTitleView;
             if (mIsPageRow && mMainFragmentAdapter != null) {
