@@ -106,6 +106,7 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
     @Override
     public void onFinish() {
         mBufferingDetector.reset();
+        Utils.removeCallbacks(mNetRetry);
     }
 
     @Override
@@ -139,7 +140,11 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
         if (Helpers.startsWithAny(errorContent, "Unable to connect to")) {
             // No internet connection or WRONG DATE on the device
             // Recently this message starting to show for other unknown reasons
-            if (!getPlayerTweaksData().isNetworkErrorFixingDisabled()) {
+            if (SuggestionsController.sMusicOnly) {
+                // Music in background: don't tear down the engine/service on a network blip, just retry later
+                restartEngine = false;
+                Utils.postDelayed(mNetRetry, 5_000);
+            } else if (!getPlayerTweaksData().isNetworkErrorFixingDisabled()) {
                 switchNextEngine();
             }
         } else if (error instanceof OutOfMemoryError || (error != null && error.getCause() instanceof OutOfMemoryError)) {
@@ -278,6 +283,7 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
         return errorTitle;
     }
 
+    private final Runnable mNetRetry = () -> { if (getPlayer() != null) mVideoLoaderController.reloadVideo(); };
     private int mFormatErrorCount;
     private long mLastFormatErrorMs;
 
@@ -312,14 +318,14 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
         mLastFormatErrorMs = now;
         mFormatErrorCount++;
 
-        if (!hadProgress && Utils.fixRetrofitErrors(getContext(), error)) {
+        if (!hadProgress && !SuggestionsController.sMusicOnly && Utils.fixRetrofitErrors(getContext(), error)) {
             return;
         }
 
         if (mFormatErrorCount > 3 && Helpers.containsAny(message, "UnknownHost", "No address associated", "Unable to resolve", "timeout", "Timeout")) {
             // Offline: stop the reload loop, wait longer
             Log.e(TAG, "Network unavailable. Retrying in 15 sec");
-            Utils.postDelayed(() -> { if (getPlayer() != null) mVideoLoaderController.reloadVideo(); }, 15_000);
+            Utils.postDelayed(mNetRetry, 15_000);
             return;
         }
 
