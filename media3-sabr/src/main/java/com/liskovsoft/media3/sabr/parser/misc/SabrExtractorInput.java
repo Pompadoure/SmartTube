@@ -3,7 +3,9 @@ package com.liskovsoft.media3.sabr.parser.misc;
 import androidx.media3.common.C;
 import androidx.media3.extractor.ExtractorInput;
 import com.liskovsoft.media3.sabr.parser.SabrStream;
+import com.liskovsoft.media3.sabr.parser.exceptions.SabrReloadPlayerError;
 import com.liskovsoft.media3.sabr.parser.parts.MediaSegmentDataSabrPart;
+import com.liskovsoft.media3.sabr.parser.parts.RefreshPlayerResponseSabrPart;
 import com.liskovsoft.media3.sabr.parser.parts.SabrPart;
 import com.liskovsoft.sharedutils.mylogger.Log;
 
@@ -190,6 +192,12 @@ public final class SabrExtractorInput implements ExtractorInput {
                 data = (MediaSegmentDataSabrPart) sabrPart;
                 startPosition = position;
                 break;
+            }
+
+            // Upstream (17b09643): the server won't send any media until the player response is reloaded.
+            // Ignoring this part leads to the endless init chunk loading loop.
+            if (sabrPart instanceof RefreshPlayerResponseSabrPart) {
+                throw new SabrReloadPlayerError(((RefreshPlayerResponseSabrPart) sabrPart).reloadPlaybackToken);
             }
         }
     }

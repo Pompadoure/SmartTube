@@ -316,6 +316,19 @@ public final class ShortsQueue {
     }
 
     /**
+     * JoTube: the queued stream data of this Short must not be reused (e.g. the SABR server asked for a new player
+     * response): the next load of it fetches the format info again, like after a failed preload.
+     */
+    public static void invalidate(String videoId) {
+        ShortsQueue queue = sActive;
+        int index = queue != null ? queue.indexOf(videoId) : -1;
+
+        if (index != -1) {
+            queue.mEntries.get(index).failed = true;
+        }
+    }
+
+    /**
      * Format info of a Short that is already queued (e.g. the previous one), so going back
      * doesn't wait for the network. Null if the video isn't queued (or it's the current one).
      */

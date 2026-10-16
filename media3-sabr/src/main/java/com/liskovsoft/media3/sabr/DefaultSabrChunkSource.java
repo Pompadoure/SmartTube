@@ -30,6 +30,7 @@ import com.liskovsoft.media3.sabr.manifest.SabrManifest;
 import com.liskovsoft.media3.sabr.parser.adapter.SabrFragmentedMp4Adapter;
 import com.liskovsoft.media3.sabr.parser.adapter.SabrMatroskaAdapter;
 import com.liskovsoft.media3.sabr.parser.SabrStream;
+import com.liskovsoft.media3.sabr.parser.exceptions.SabrReloadPlayerError;
 import com.liskovsoft.media3.sabr.parser.models.AudioSelector;
 import com.liskovsoft.media3.sabr.parser.models.CaptionSelector;
 import com.liskovsoft.media3.sabr.parser.models.FormatSelector;
@@ -521,6 +522,12 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
             LoadErrorHandlingPolicy loadErrorHandlingPolicy) {
         IOException e = loadErrorInfo.exception;
         Log.e(TAG, "Chunk load failed: " + e.getMessage());
+        // Upstream (486c493b): a reload request is not a transport failure. Switching the CDN would retry the very same
+        // request. Let the LoadErrorHandlingPolicy fail the load, the app re-fetches the player response.
+        if (isSabrReloadPlayerError(e)) {
+            Log.e(TAG, "SABR control signal, letting the error policy decide: " + e.getCause().getMessage());
+            return false;
+        }
         if (!cancelable) {
             return false;
         }
@@ -592,6 +599,11 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
                 textExtractor.release();
             }
         }
+    }
+
+    private static boolean isSabrReloadPlayerError(IOException error) {
+        // Media3 wraps the RuntimeException of the extractor into UnexpectedLoaderException
+        return error.getCause() instanceof SabrReloadPlayerError;
     }
 
     private static boolean isEndpointConnectionFailure(Chunk chunk, IOException error) {
