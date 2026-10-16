@@ -46,8 +46,8 @@ public class ChannelCardPresenter extends LongClickPresenter {
                 ContextCompat.getColor(context, Helpers.getThemeAttr(context, R.attr.cardDefaultBackground));
         mDefaultTextColor =
                 ContextCompat.getColor(context, R.color.card_default_text);
-        mNewContentBackgroundColor =
-                ContextCompat.getColor(context, R.color.dark_red);
+        // JoTube: no red highlight for channels with new videos
+        mNewContentBackgroundColor = mDefaultBackgroundColor;
         mSelectedBackgroundColor =
                 ContextCompat.getColor(context, Helpers.getThemeAttr(context, R.attr.cardSelectedBackground));
         mSelectedTextColor =
