@@ -1398,8 +1398,12 @@ public class BrowseSupportFragment extends BaseSupportFragment {
 
     void updateTitleViewVisibility() {
         if (isHeadersRailActive()) {
-            // JoTube MOD: the title holds the account and search buttons of the sidebar rail: always visible
-            showTitle(TitleViewAdapter.FULL_VIEW_VISIBLE);
+            // JoTube MOD: the title holds the account and search buttons of the sidebar rail: always visible.
+            // The branding (clock) still hides while scrolling, like before.
+            boolean branding = (mIsPageRow && mMainFragmentAdapter != null)
+                    ? mMainFragmentAdapter.mFragmentHost.mShowTitleView
+                    : isFirstRowWithContent(mSelectedPosition);
+            showTitle(TitleViewAdapter.SEARCH_VIEW_VISIBLE | (branding ? TitleViewAdapter.BRANDING_VIEW_VISIBLE : 0));
             return;
         }
         if (!mShowingHeaders) {
