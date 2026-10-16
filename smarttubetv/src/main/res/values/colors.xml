@@ -25,7 +25,7 @@
 
     <!-- Browse fragment colors -->
     <color name="shelf_background">#282828</color>
-    <color name="shelf_background_dark">#1F1F1F</color> <!-- JoTube: YouTube TV page color (was #131313) -->
+    <color name="shelf_background_dark">#131313</color>
     <color name="icon_background">#4A4F51</color>
     <color name="icon_alt_background">#2A2F51</color>
     <color name="player_background">#FF000000</color>
@@ -33,13 +33,13 @@
     <!-- Dark color scheme -->
     <color name="scheme_grey_background">#181818</color>
     <color name="scheme_grey_background_dark">#181818</color>
-    <color name="scheme_grey_shelf_background_dark">#1F1F1F</color> <!-- JoTube: YouTube TV page color (was #000000) -->
+    <color name="scheme_grey_shelf_background_dark">#000000</color>
     <color name="scheme_grey_card_background_dark">#121212</color>
 
     <!-- Red color scheme -->
     <color name="scheme_red_background">#131313</color>
     <color name="scheme_red_background_dark">@color/dark_red</color>
-    <color name="scheme_red_shelf_background_dark">#1F1F1F</color> <!-- JoTube: YouTube TV page color (was #131313) -->
+    <color name="scheme_red_shelf_background_dark">#131313</color>
     <color name="scheme_red_card_background_dark">#36474f</color>
 
     <!-- Blue color scheme -->
@@ -70,7 +70,7 @@
     <color name="lb_speech_orb_not_recording_icon">@color/orb_icon_color</color>
 
     <!-- JoTube: YouTube-style sidebar -->
-    <color name="sidebar_background">#1F1F1F</color> <!-- same as the page, like YouTube -->
+    <color name="sidebar_background">#131313</color> <!-- same as the page -->
     <color name="sidebar_item_focused">#E3EBF3</color> <!-- YouTube TV: light, slightly blue -->
     <color name="sidebar_content_focused">#1F1F1F</color>
     <color name="sidebar_content_normal">#B3FFFFFF</color>
