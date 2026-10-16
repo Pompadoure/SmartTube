@@ -545,7 +545,17 @@ public class MultiVideoGridFragment extends MultiGridFragment implements VideoSe
             int index = adapter.indexOf(item);
 
             if (index > (size - ViewUtil.GRID_SCROLL_CONTINUE_NUM)) {
-                mMainPresenter.onScrollEnd((Video) adapter.get(size - 1));
+                Video last = (Video) adapter.get(size - 1);
+                VideoGroup group = last.getGroup();
+
+                // JoTube: the player shares this group and sets its position to -1 (SuggestionsController
+                // "make the index consistent"). update() only routes position 1 to this grid, so after a video
+                // was played the continuation was loaded but dropped. This grid's group is always position 1.
+                if (group != null && group.getPosition() != 1) {
+                    group.setPosition(1);
+                }
+
+                mMainPresenter.onScrollEnd(last);
             }
         }
     }
