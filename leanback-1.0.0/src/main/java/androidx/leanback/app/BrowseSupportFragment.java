@@ -1377,6 +1377,7 @@ public class BrowseSupportFragment extends BaseSupportFragment {
                 }
                 if (mHeadersSupportFragment != null) {
                     mHeadersSupportFragment.onTransitionEnd();
+                    updateRailFocusability(mShowingHeaders); // JoTube MOD: after onTransitionEnd reset it
                     if (mShowingHeaders) {
                         VerticalGridView headerGridView = mHeadersSupportFragment.getVerticalGridView();
                         if (headerGridView != null && !headerGridView.hasFocus()) {
@@ -1509,7 +1510,30 @@ public class BrowseSupportFragment extends BaseSupportFragment {
         setHeadersOnScreen(show);
         expandMainFragment(!show);
         if (isHeadersRailActive()) {
+            updateRailFocusability(show);
             onHeadersRailStateChanged(show, mHeadersTransition != null);
+        }
+    }
+
+    /**
+     * JoTube MOD: the items of the collapsed rail can't take the focus (no focus recovery or up/down into them).
+     * Moving start still focuses the list itself, which expands the headers like stock leanback.
+     */
+    private void updateRailFocusability(boolean expanded) {
+        if (!isHeadersRailActive() || mHeadersSupportFragment == null) {
+            return;
+        }
+
+        VerticalGridView grid = mHeadersSupportFragment.getVerticalGridView();
+
+        if (grid == null) {
+            return;
+        }
+
+        if (!expanded) {
+            grid.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+        } else if (grid.getDescendantFocusability() == ViewGroup.FOCUS_BLOCK_DESCENDANTS) {
+            grid.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         }
     }
 
@@ -1875,6 +1899,7 @@ public class BrowseSupportFragment extends BaseSupportFragment {
 
         if (mHeadersSupportFragment != null) {
             mHeadersSupportFragment.onTransitionEnd();
+            updateRailFocusability(mShowingHeaders); // JoTube MOD: after onTransitionEnd reset it
         }
     }
 

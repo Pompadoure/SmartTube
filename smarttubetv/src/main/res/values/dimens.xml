@@ -159,4 +159,7 @@
     <dimen name="sidebar_padding_end">22dp</dimen>
     <!-- collapsed sidebar: only the icons stay visible while the content has the focus -->
     <dimen name="sidebar_rail_width">72dp</dimen>
+    <!-- grids next to the rail: rail 72 + 16 + 24 = the stock paddings 56 + 56 (same columns, same cards) -->
+    <dimen name="sidebar_content_padding_start">16dp</dimen>
+    <dimen name="sidebar_content_padding_end">24dp</dimen>
 </resources>

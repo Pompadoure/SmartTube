@@ -27,6 +27,7 @@ import androidx.leanback.widget.Presenter;
 import androidx.leanback.widget.PresenterSelector;
 import androidx.leanback.widget.TitleHelper;
 import androidx.leanback.widget.VerticalGridView;
+import androidx.recyclerview.widget.RecyclerView;
 import com.bumptech.glide.Glide;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.BrowseSection;
@@ -73,6 +74,7 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
     private VideoCardPresenter mPreloadCardPresenter; // JoTube: sidebar warm-up, the same presenter classes as the section fragments
     private ShortsCardPresenter mPreloadShortsPresenter;
     private ValueAnimator mRailAnimator; // JoTube: clip of the sidebar between the icon rail and the full menu
+    private VerticalGridView mRailLabelsGrid; // JoTube: the headers list whose attached items get the label alpha
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -573,10 +575,29 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
             mRailAnimator = null;
         }
 
-        int duration = animate ? getResources().getInteger(R.integer.lb_browse_headers_transition_duration) : 0;
+        int duration = animate ? headers.getResources().getInteger(R.integer.lb_browse_headers_transition_duration) : 0;
 
         // Labels
         VerticalGridView grid = getHeadersSupportFragment().getVerticalGridView();
+        if (grid != null && grid != mRailLabelsGrid) {
+            // Items from the RecyclerView cache come back without a new bind: give them the current label alpha
+            mRailLabelsGrid = grid;
+            grid.addOnChildAttachStateChangeListener(new RecyclerView.OnChildAttachStateChangeListener() {
+                @Override
+                public void onChildViewAttachedToWindow(@NonNull View view) {
+                    View label = view.findViewById(R.id.header_label);
+                    if (label != null) {
+                        label.animate().cancel();
+                        label.setAlpha(IconHeaderItemPresenter.isLabelsShown() ? 1f : 0f);
+                    }
+                }
+
+                @Override
+                public void onChildViewDetachedFromWindow(@NonNull View view) {
+                    // NOP
+                }
+            });
+        }
         if (grid != null) {
             for (int i = 0; i < grid.getChildCount(); i++) {
                 View label = grid.getChildAt(i).findViewById(R.id.header_label);
@@ -594,7 +615,7 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
         // Clip
         int rail = getHeadersRailWidth();
         int full = headers.getWidth() > 0 ? headers.getWidth() :
-                getResources().getDimensionPixelSize(R.dimen.lb_browse_headers_width);
+                headers.getResources().getDimensionPixelSize(R.dimen.lb_browse_headers_width);
         Rect current = headers.getClipBounds();
         int from = current != null ? current.right : full;
         int to = expanded ? full : rail;
@@ -633,7 +654,7 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
         if (right < 0) {
             headers.setClipBounds(null);
         } else {
-            headers.setClipBounds(new Rect(0, 0, right, Integer.MAX_VALUE / 2));
+            headers.setClipBounds(new Rect(0, 0, right, Math.max(headers.getHeight(), 100_000)));
         }
     }
 
@@ -643,6 +664,7 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
             mRailAnimator.cancel();
             mRailAnimator = null;
         }
+        mRailLabelsGrid = null;
 
         mSectionFragmentFactory.cleanup();
 
