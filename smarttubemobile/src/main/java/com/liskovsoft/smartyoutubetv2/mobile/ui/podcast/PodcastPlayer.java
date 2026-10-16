@@ -107,6 +107,8 @@ public final class PodcastPlayer {
                     .build());
         }
 
+        // Only an episode the user picks counts as listened to again (not the ones that follow in the queue)
+        PodcastRepository.clearFinished(sContext, sQueue.get(index));
         long start = PodcastRepository.getPosition(sContext, sQueue.get(index));
         player.setMediaItems(items, index, start > 5_000 ? start : 0);
         player.setPlaybackParameters(new PlaybackParameters(sSpeed));

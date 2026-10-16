@@ -181,9 +181,13 @@ public final class PodcastRepository {
             editor.putBoolean(finishedKey(episode), true);
         } else if (positionMs > 5_000) {
             editor.putLong(positionKey(episode), positionMs);
-            editor.remove(finishedKey(episode)); // listened to again
         }
         editor.apply();
+    }
+
+    /** The user starts a finished episode again: it counts as not finished until it ends again. */
+    public static void clearFinished(Context context, Episode episode) {
+        prefs(context).edit().remove(finishedKey(episode)).apply();
     }
 
     ///////////////////// RSS
