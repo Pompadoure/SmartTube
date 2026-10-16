@@ -166,7 +166,7 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         content.addView(mErrorBox, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
 
         root.addView(content, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        root.addView(createMiniPlayer());
+        root.addView(new com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MiniPlayerBar(this, this::isMusicSelected));
         mVideoBar = (LinearLayout) createBottomBar();
         mMusicBar = com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.createBar(this, com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.MUSIC, target -> {
             if (target == com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.HOME) {
@@ -355,125 +355,6 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
 
         updateTabs();
         return bar;
-    }
-
-    ///////////////////// mini player (the sound that goes on after the player screen was closed)
-
-    private LinearLayout mMiniBar;
-    private ImageView mMiniCover, mMiniPlay;
-    private TextView mMiniTitle, mMiniAuthor;
-    private Object mMiniVideo;
-    private final android.os.Handler mMiniHandler = new android.os.Handler(android.os.Looper.getMainLooper());
-    private final Runnable mMiniTick = new Runnable() {
-        @Override
-        public void run() {
-            updateMiniPlayer();
-            mMiniHandler.postDelayed(this, 500);
-        }
-    };
-
-    private View createMiniPlayer() {
-        mMiniBar = new LinearLayout(this);
-        mMiniBar.setOrientation(LinearLayout.HORIZONTAL);
-        mMiniBar.setGravity(Gravity.CENTER_VERTICAL);
-        mMiniBar.setBackgroundColor(getColor(R.color.yt_surface));
-        mMiniBar.setPadding(Ui.dp(this, 8), Ui.dp(this, 6), Ui.dp(this, 4), Ui.dp(this, 6));
-        mMiniBar.setVisibility(View.GONE);
-
-        mMiniCover = new ImageView(this);
-        mMiniCover.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        Ui.makeRounded(mMiniCover, Ui.dp(this, 6));
-        mMiniBar.addView(mMiniCover, new LinearLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44)));
-
-        LinearLayout texts = new LinearLayout(this);
-        texts.setOrientation(LinearLayout.VERTICAL);
-        texts.setPadding(Ui.dp(this, 12), 0, Ui.dp(this, 8), 0);
-        mMiniTitle = new TextView(this);
-        mMiniTitle.setTextColor(getColor(R.color.yt_text));
-        mMiniTitle.setTextSize(14);
-        mMiniTitle.setMaxLines(1);
-        mMiniTitle.setEllipsize(TextUtils.TruncateAt.END);
-        texts.addView(mMiniTitle);
-        mMiniAuthor = new TextView(this);
-        mMiniAuthor.setTextColor(getColor(R.color.yt_text_secondary));
-        mMiniAuthor.setTextSize(12);
-        mMiniAuthor.setMaxLines(1);
-        mMiniAuthor.setEllipsize(TextUtils.TruncateAt.END);
-        texts.addView(mMiniAuthor);
-        mMiniBar.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        mMiniPlay = new ImageView(this);
-        mMiniPlay.setImageResource(R.drawable.ic_pause);
-        mMiniPlay.setPadding(Ui.dp(this, 10), Ui.dp(this, 10), Ui.dp(this, 10), Ui.dp(this, 10));
-        mMiniPlay.setOnClickListener(v -> {
-            androidx.media3.common.Player player = mMiniPodcast
-                    ? com.liskovsoft.smartyoutubetv2.mobile.ui.playback.MediaPlaybackService.getPodcastPlayer()
-                    : com.liskovsoft.smartyoutubetv2.mobile.ui.playback.MediaPlaybackService.getPlayer();
-            if (player != null) {
-                player.setPlayWhenReady(!player.getPlayWhenReady());
-            }
-        });
-        mMiniBar.addView(mMiniPlay, new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48)));
-
-        ImageView close = new ImageView(this);
-        close.setImageResource(R.drawable.ic_close);
-        close.setPadding(Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12));
-        close.setOnClickListener(v -> {
-            if (mMiniPodcast) {
-                com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastPlayer.stop();
-            } else {
-                com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity.closeOrphan();
-            }
-            updateMiniPlayer();
-        });
-        mMiniBar.addView(close, new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48)));
-
-        mMiniBar.setOnClickListener(v -> {
-            if (mMiniPodcast) {
-                startActivity(new android.content.Intent(this, com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastPlayerActivity.class));
-            } else {
-                startActivity(new android.content.Intent(this, com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity.class)
-                        .putExtra(com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity.EXTRA_FROM_NOTIFICATION, true));
-            }
-        });
-        return mMiniBar;
-    }
-
-    private boolean mMiniPodcast;
-
-    private void updateMiniPlayer() {
-        androidx.media3.common.Player player = com.liskovsoft.smartyoutubetv2.mobile.ui.playback.MediaPlaybackService.getPlayer();
-        Video video = com.liskovsoft.smartyoutubetv2.mobile.ui.playback.MediaPlaybackService.getVideo();
-        boolean showVideo = player != null && video != null && com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity.hasOrphan();
-
-        androidx.media3.common.Player podcastPlayer = com.liskovsoft.smartyoutubetv2.mobile.ui.playback.MediaPlaybackService.getPodcastPlayer();
-        com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastRepository.Episode episode = com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastPlayer.current();
-        boolean podcastAlive = podcastPlayer != null && episode != null && com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastPlayer.isActive();
-        // both alive (one paused): show the one that actually plays
-        boolean showPodcast = podcastAlive && (!showVideo || (podcastPlayer.getPlayWhenReady() && !player.getPlayWhenReady()));
-        showVideo = showVideo && !showPodcast;
-
-        mMiniBar.setVisibility(showVideo || showPodcast ? View.VISIBLE : View.GONE);
-        if (!showVideo && !showPodcast) {
-            mMiniVideo = null;
-            return;
-        }
-
-        mMiniPodcast = showPodcast;
-        Object key = showPodcast ? episode : video;
-        if (mMiniVideo != key) {
-            mMiniVideo = key;
-            mMiniTitle.setText(showPodcast ? episode.title : video.getTitle());
-            mMiniAuthor.setText(showPodcast ? episode.feedTitle : video.getAuthor());
-            String image = showPodcast ? episode.image : video.getCardImageUrl();
-            if (image != null) {
-                com.bumptech.glide.Glide.with(mMiniCover).load(image).into(mMiniCover);
-            } else {
-                mMiniCover.setImageDrawable(null);
-            }
-        }
-        androidx.media3.common.Player active = showPodcast ? podcastPlayer : player;
-        mMiniPlay.setImageResource(active.getPlayWhenReady() ? R.drawable.ic_pause : R.drawable.ic_play);
     }
 
     private boolean hasSection(int sectionId) {
@@ -887,14 +768,12 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
 
     @Override
     protected void onResume() {
-        mMiniHandler.post(mMiniTick);
         super.onResume();
         mPresenter.onViewResumed();
     }
 
     @Override
     protected void onPause() {
-        mMiniHandler.removeCallbacks(mMiniTick);
         super.onPause();
         mPresenter.onViewPaused();
     }

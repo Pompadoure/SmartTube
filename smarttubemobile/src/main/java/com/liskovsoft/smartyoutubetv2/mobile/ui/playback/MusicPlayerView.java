@@ -72,7 +72,7 @@ public class MusicPlayerView extends FrameLayout {
     private final Host mHost;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private ImageView mArt;
-    private TextView mTitle, mAuthor, mSpeedButton, mPosition, mDuration;
+    private TextView mTitle, mAuthor, mSpeedButton, mPosition, mDuration, mNextView;
     private SeekBar mSeek;
     private ImageView mPlay;
     private ImageView mModeAudio, mModeVideo;
@@ -103,11 +103,15 @@ public class MusicPlayerView extends FrameLayout {
         setBackgroundColor(activity.getColor(R.color.yt_bg));
         setClickable(true); // nothing behind it gets the touches
 
+        LinearLayout column = new LinearLayout(activity);
+        column.setOrientation(LinearLayout.VERTICAL);
         ScrollView scroll = new ScrollView(activity);
         scroll.setFillViewport(true);
         scroll.setVerticalScrollBarEnabled(false);
         scroll.addView(createPage(), new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        addView(scroll, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        column.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        column.addView(createQueueBar(), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        addView(column, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
     private View createPage() {
@@ -268,24 +272,52 @@ public class MusicPlayerView extends FrameLayout {
         controls.addView(moon, new LinearLayout.LayoutParams(0, Ui.dp(a, 48), 1f));
         page.addView(controls);
 
-        // handle to the queue
-        LinearLayout handle = new LinearLayout(a);
-        handle.setOrientation(LinearLayout.VERTICAL);
-        handle.setGravity(Gravity.CENTER_HORIZONTAL);
-        handle.setPadding(0, Ui.dp(a, 12), 0, Ui.dp(a, 20));
-        View bar = new View(a);
-        GradientDrawable barShape = new GradientDrawable();
-        barShape.setCornerRadius(Ui.dp(a, 2));
-        barShape.setColor(a.getColor(R.color.yt_text_secondary));
-        bar.setBackground(barShape);
-        handle.addView(bar, new LinearLayout.LayoutParams(Ui.dp(a, 40), Ui.dp(a, 4)));
-        TextView label = text(16, R.color.yt_text);
-        label.setText("Spelas just nu");
-        label.setPadding(0, Ui.dp(a, 16), 0, 0);
-        handle.addView(label);
-        handle.setOnClickListener(v -> showQueue(true));
-        page.addView(handle, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return page;
+    }
+
+    /** Always visible at the bottom: what comes next, tap to open the queue. */
+    private View createQueueBar() {
+        Activity a = mActivity;
+        LinearLayout bar = new LinearLayout(a);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setBackgroundResource(R.drawable.bg_sheet);
+        bar.setPadding(Ui.dp(a, 20), Ui.dp(a, 12), Ui.dp(a, 8), Ui.dp(a, 12));
+
+        LinearLayout texts = new LinearLayout(a);
+        texts.setOrientation(LinearLayout.VERTICAL);
+        TextView title = text(16, R.color.yt_text);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setText("Kö");
+        texts.addView(title);
+        mNextView = text(13, R.color.yt_text_secondary);
+        mNextView.setSingleLine(true);
+        mNextView.setEllipsize(TextUtils.TruncateAt.END);
+        texts.addView(mNextView);
+        bar.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        ImageView up = icon(R.drawable.ic_chevron_down, 48, 12);
+        up.setRotation(180);
+        bar.addView(up);
+        bar.setOnClickListener(v -> showQueue(true));
+        return bar;
+    }
+
+    private void updateQueueBar() {
+        if (mNextView == null) {
+            return;
+        }
+        List<Video> queued = mHost.queued();
+        Video next = !queued.isEmpty() ? queued.get(0) : null;
+        if (next == null) {
+            List<Video> rest = mHost.rest();
+            next = rest.isEmpty() ? null : rest.get(0);
+        }
+        if (next == null) {
+            mNextView.setText("Inga fler låtar i kön");
+        } else {
+            String author = next.getAuthor();
+            mNextView.setText("Nästa: " + next.getTitle() + (author != null ? " - " + author : ""));
+        }
     }
 
     private ImageView icon(int res, int sizeDp, int padDp) {
@@ -386,6 +418,7 @@ public class MusicPlayerView extends FrameLayout {
 
     /** The queue changed (song added, moved or the next song started). */
     public void refreshQueue() {
+        updateQueueBar();
         if (mQueueSheet == null) {
             return;
         }
@@ -420,6 +453,7 @@ public class MusicPlayerView extends FrameLayout {
                 Glide.with(mArt).load(image).into(mArt);
             }
         }
+        updateQueueBar();
         boolean changed = mShown == null || !video.equals(mShown);
         mShown = video;
         mTitle.setText(video.getTitle());

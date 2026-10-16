@@ -795,9 +795,19 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
     /** Swipe down / chevron: the video goes to a small floating window and the grid behind it can be scrolled. */
     private void enterMiniPlayer() {
-        // Not PiP: the playback goes on without this screen and a mini player sits at the bottom of the app; a tap
-        // on it brings the video / song back in full screen.
-        if (mShortsMode || mPlayer == null || !MediaPlaybackService.isActive()) {
+        if (mShortsMode || mPlayer == null) {
+            finish();
+            return;
+        }
+
+        if (!mAudioMode) {
+            enterPip(); // regular videos: the small floating window as before
+            return;
+        }
+
+        // Music: the sound goes on without this screen and a mini player sits at the bottom of the music part; a tap
+        // on it brings the song back in full screen.
+        if (!MediaPlaybackService.isActive()) {
             finish();
             return;
         }
@@ -1891,8 +1901,8 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
             mMusicView.showQueue(false);
             return;
         }
-        if (!mShortsMode && mPlayer != null && !mInPip) {
-            enterMiniPlayer(); // back minimizes to the mini player, like YouTube
+        if (mAudioMode && !mShortsMode && mPlayer != null && !mInPip) {
+            enterMiniPlayer(); // music: back minimizes to the mini player, like YouTube Music
             return;
         }
         super.onBackPressed();
