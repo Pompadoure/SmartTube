@@ -467,7 +467,7 @@ public class VideoLoaderController extends BasePlayerController {
             return;
         }
 
-        if (current.nextMediaItem != null) {
+        if (current.nextMediaItem != null && !com.liskovsoft.smartyoutubetv2.common.app.models.playback.controllers.SuggestionsController.sMusicOnly) {
             openVideoInt(Video.from(current.nextMediaItem));
         } else if (!current.isSynced) { // Maybe there's nothing left. E.g. when casting from phone
             // Wait in a loop while suggestions have been loaded...

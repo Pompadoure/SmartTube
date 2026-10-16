@@ -278,6 +278,9 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
         return errorTitle;
     }
 
+    private int mFormatErrorCount;
+    private long mLastFormatErrorMs;
+
     public void runFormatErrorAction(Throwable error) {
         if (getPlayer() == null) {
             return;
@@ -300,7 +303,23 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
             }
         }
 
-        if (Utils.fixRetrofitErrors(getContext(), error)) {
+        // Network hiccup while something already plays (e.g. mobile data): never restart the app, just back off and retry
+        boolean hadProgress = getPlayer() != null && getPlayer().getPositionMs() > 0;
+        long now = System.currentTimeMillis();
+        if (now - mLastFormatErrorMs > 60_000) {
+            mFormatErrorCount = 0;
+        }
+        mLastFormatErrorMs = now;
+        mFormatErrorCount++;
+
+        if (!hadProgress && Utils.fixRetrofitErrors(getContext(), error)) {
+            return;
+        }
+
+        if (mFormatErrorCount > 3 && Helpers.containsAny(message, "UnknownHost", "No address associated", "Unable to resolve", "timeout", "Timeout")) {
+            // Offline: stop the reload loop, wait longer
+            Log.e(TAG, "Network unavailable. Retrying in 15 sec");
+            Utils.postDelayed(() -> { if (getPlayer() != null) mVideoLoaderController.reloadVideo(); }, 15_000);
             return;
         }
 
