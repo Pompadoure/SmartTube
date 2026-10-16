@@ -49,6 +49,22 @@ public final class MusicNav {
         return bar;
     }
 
+    /** Marks another tab as selected, in place (the bar isn't rebuilt). */
+    public static void setSelected(LinearLayout bar, int selected) {
+        if (bar == null) {
+            return;
+        }
+
+        for (int i = 0; i < bar.getChildCount(); i++) {
+            if (bar.getChildAt(i) instanceof TextView) {
+                TextView tab = (TextView) bar.getChildAt(i);
+                int color = bar.getContext().getColor(i == selected ? R.color.yt_text : R.color.yt_text_secondary);
+                tab.setTextColor(color);
+                tab.setCompoundDrawableTintList(android.content.res.ColorStateList.valueOf(color));
+            }
+        }
+    }
+
     /** From a screen outside the feed: back to the feed on Hem or Musik. */
     public static void openFeed(Activity activity, int target) {
         activity.startActivity(new Intent(activity, BrowseActivity.class)

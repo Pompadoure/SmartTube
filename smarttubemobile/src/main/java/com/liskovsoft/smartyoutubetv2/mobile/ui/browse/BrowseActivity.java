@@ -62,6 +62,10 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
     private LinearLayout mErrorBox;
     private TextView mErrorText;
     private Button mErrorButton;
+    // JoTube: Poddar is shown inside this screen (over the music feed), so the bottom bar stays in place
+    private FrameLayout mContent;
+    private com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastsView mPodcasts;
+    private int mTopInset;
 
     private static final int[] TAB_SECTION_IDS = {
             MediaGroup.TYPE_HOME, MediaGroup.TYPE_SHORTS, MediaGroup.TYPE_MUSIC, MediaGroup.TYPE_CHANNEL_UPLOADS, MediaGroup.TYPE_HISTORY
@@ -102,6 +106,7 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         mHeader.addView(createChannelStrip());
 
         FrameLayout content = new FrameLayout(this);
+        mContent = content;
         mAdapter = new VideoAdapter(new VideoAdapter.Listener() {
             @Override
             public void onClick(Video video) {
@@ -170,13 +175,15 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         mVideoBar = (LinearLayout) createBottomBar();
         mMusicBar = com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.createBar(this, com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.MUSIC, target -> {
             if (target == com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.HOME) {
+                showPodcasts(false);
                 selectSectionById(MediaGroup.TYPE_HOME);
             } else if (target == com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.MUSIC) {
+                showPodcasts(false);
                 if (!isMusicSelected()) {
                     selectSectionById(MediaGroup.TYPE_MUSIC);
                 }
             } else {
-                startActivity(new android.content.Intent(this, com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastsActivity.class));
+                showPodcasts(true);
             }
         });
         mMusicBar.setVisibility(View.GONE);
@@ -189,6 +196,10 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
 
         root.setOnApplyWindowInsetsListener((v, insets) -> {
             mHeader.setPadding(0, insets.getSystemWindowInsetTop(), 0, 0);
+            mTopInset = insets.getSystemWindowInsetTop();
+            if (mPodcasts != null) {
+                mPodcasts.setPadding(0, mTopInset, 0, 0);
+            }
             bottomBar.setPadding(0, 0, 0, insets.getSystemWindowInsetBottom());
             mErrorBox.setPadding(0, insets.getSystemWindowInsetTop(), 0, 0);
             return insets;
@@ -446,6 +457,42 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         mLibraryIcon.setVisibility(music ? View.VISIBLE : View.GONE);
         mVideoBar.setVisibility(music ? View.GONE : View.VISIBLE);
         mMusicBar.setVisibility(music ? View.VISIBLE : View.GONE);
+
+        if (!music) {
+            showPodcasts(false); // Poddar belongs to the music part
+        }
+    }
+
+    private boolean isPodcastsShown() {
+        return mPodcasts != null && mPodcasts.getVisibility() == View.VISIBLE;
+    }
+
+    /**
+     * JoTube: Poddar over the music feed, in this screen. Only the content changes; the bottom bar and the mini player
+     * stay as they are (a separate activity rebuilt them on every switch).
+     */
+    private void showPodcasts(boolean show) {
+        if (show) {
+            if (mContent == null) {
+                return;
+            }
+            if (mPodcasts == null) {
+                mPodcasts = new com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastsView(this, () -> showPodcasts(false));
+                mPodcasts.setPadding(0, mTopInset, 0, 0);
+                mPodcasts.setVisibility(View.GONE);
+                mContent.addView(mPodcasts, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            }
+            if (!isPodcastsShown()) {
+                mPodcasts.setVisibility(View.VISIBLE);
+                mPodcasts.onShown();
+            }
+            com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.setSelected(mMusicBar, com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.PODCASTS);
+        } else {
+            if (isPodcastsShown()) {
+                mPodcasts.setVisibility(View.GONE);
+            }
+            com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.setSelected(mMusicBar, com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.MUSIC);
+        }
     }
 
     private void updateTabs() {
@@ -770,6 +817,26 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
     protected void onResume() {
         super.onResume();
         mPresenter.onViewResumed();
+        if (isPodcastsShown()) {
+            mPodcasts.onResume();
+        }
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (isPodcastsShown()) {
+            showPodcasts(false); // back to Musik, like the old Poddar screen
+            return;
+        }
+        super.onBackPressed();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (mPodcasts != null && requestCode == com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastsView.REQUEST_OPML) {
+            mPodcasts.onActivityResult(requestCode, resultCode, data);
+        }
     }
 
     @Override
@@ -782,6 +849,9 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
     protected void onDestroy() {
         super.onDestroy();
         mPresenter.onViewDestroyed();
+        if (mPodcasts != null) {
+            mPodcasts.release();
+        }
     }
 
     @Override
@@ -792,8 +862,10 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         int target = intent.getIntExtra(com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.EXTRA_TARGET, -1);
         intent.removeExtra(com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.EXTRA_TARGET);
         if (target == com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.HOME) {
+            showPodcasts(false);
             selectSectionById(MediaGroup.TYPE_HOME);
         } else if (target == com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MusicNav.MUSIC) {
+            showPodcasts(false);
             if (!hasSection(MediaGroup.TYPE_MUSIC)) {
                 mPresenter.enableSection(MediaGroup.TYPE_MUSIC, true);
             }
