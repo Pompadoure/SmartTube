@@ -1,6 +1,10 @@
 package com.liskovsoft.smartyoutubetv2.tv.ui.browse;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.content.Context;
+import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Handler;
@@ -22,6 +26,7 @@ import androidx.leanback.widget.PageRow;
 import androidx.leanback.widget.Presenter;
 import androidx.leanback.widget.PresenterSelector;
 import androidx.leanback.widget.TitleHelper;
+import androidx.leanback.widget.VerticalGridView;
 import com.bumptech.glide.Glide;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.BrowseSection;
@@ -67,9 +72,15 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
     private CrashRestorer mCrashRestorer;
     private VideoCardPresenter mPreloadCardPresenter; // JoTube: sidebar warm-up, the same presenter classes as the section fragments
     private ShortsCardPresenter mPreloadShortsPresenter;
+    private ValueAnimator mRailAnimator; // JoTube: clip of the sidebar between the icon rail and the full menu
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        if (getContext() != null) {
+            // JoTube: YouTube-style sidebar, only the icons stay while the content has the focus (before the views exist)
+            setHeadersRailWidth(getContext().getResources().getDimensionPixelSize(R.dimen.sidebar_rail_width));
+        }
+
         super.onCreate(null);
 
         if (getContext() == null) {
@@ -542,8 +553,97 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
         mSectionFragmentFactory.clearCurrentFragment();
     }
 
+    /**
+     * JoTube: the sidebar collapses to its icon rail or expands to the full menu. Draw-only on purpose: the headers
+     * list never changes its layout (no width, visibility or column changes at runtime, those crashed leanback grids).
+     * The labels fade and the panel is clipped; leanback moves the content with its own transition.
+     */
+    @Override
+    protected void onHeadersRailStateChanged(boolean expanded, boolean animate) {
+        IconHeaderItemPresenter.setLabelsShown(expanded);
+
+        View headers = getHeadersSupportFragment() != null ? getHeadersSupportFragment().getView() : null;
+
+        if (headers == null) {
+            return;
+        }
+
+        if (mRailAnimator != null) {
+            mRailAnimator.cancel();
+            mRailAnimator = null;
+        }
+
+        int duration = animate ? getResources().getInteger(R.integer.lb_browse_headers_transition_duration) : 0;
+
+        // Labels
+        VerticalGridView grid = getHeadersSupportFragment().getVerticalGridView();
+        if (grid != null) {
+            for (int i = 0; i < grid.getChildCount(); i++) {
+                View label = grid.getChildAt(i).findViewById(R.id.header_label);
+                if (label != null) {
+                    label.animate().cancel();
+                    if (duration > 0) {
+                        label.animate().alpha(expanded ? 1f : 0f).setDuration(expanded ? duration : duration / 2).start();
+                    } else {
+                        label.setAlpha(expanded ? 1f : 0f);
+                    }
+                }
+            }
+        }
+
+        // Clip
+        int rail = getHeadersRailWidth();
+        int full = headers.getWidth() > 0 ? headers.getWidth() :
+                getResources().getDimensionPixelSize(R.dimen.lb_browse_headers_width);
+        Rect current = headers.getClipBounds();
+        int from = current != null ? current.right : full;
+        int to = expanded ? full : rail;
+
+        if (duration <= 0 || from == to) {
+            setRailClip(headers, expanded ? -1 : rail);
+            return;
+        }
+
+        ValueAnimator animator = ValueAnimator.ofInt(from, to);
+        animator.setDuration(duration);
+        animator.addUpdateListener(a -> setRailClip(headers, (int) a.getAnimatedValue()));
+        animator.addListener(new AnimatorListenerAdapter() {
+            private boolean mCanceled;
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+                mCanceled = true;
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (!mCanceled) {
+                    setRailClip(headers, expanded ? -1 : rail);
+                }
+            }
+        });
+        mRailAnimator = animator;
+        animator.start();
+    }
+
+    /**
+     * @param right the visible width, -1 = no clip
+     */
+    private static void setRailClip(View headers, int right) {
+        if (right < 0) {
+            headers.setClipBounds(null);
+        } else {
+            headers.setClipBounds(new Rect(0, 0, right, Integer.MAX_VALUE / 2));
+        }
+    }
+
     @Override
     public void onDestroyView() {
+        if (mRailAnimator != null) {
+            mRailAnimator.cancel();
+            mRailAnimator = null;
+        }
+
         mSectionFragmentFactory.cleanup();
 
         super.onDestroyView();

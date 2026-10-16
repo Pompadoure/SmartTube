@@ -93,7 +93,7 @@ public class VideoGridFragment extends GridFragment implements VideoSection {
     private void setupAdapter() {
         VerticalGridPresenter presenter = new CustomVerticalGridPresenter();
         presenter.setNumberOfColumns(
-                GridFragmentHelper.getMaxColsNum(getContext(), isShorts() ? R.dimen.shorts_card_width : R.dimen.card_width, mVideoGridScale)
+                GridFragmentHelper.getMaxColsNum(getContext(), isShorts() ? R.dimen.shorts_card_width : R.dimen.card_width, mVideoGridScale, GridFragmentHelper.getSidebarReservedPx(this))
         );
         presenter.enableChildRoundedCorners(getMainUIData().isUiTweakEnabled(MainUIData.UI_TWEAK_ROUNDED_CORNERS));
         setGridPresenter(presenter);
@@ -197,7 +197,7 @@ public class VideoGridFragment extends GridFragment implements VideoSection {
         // JoTube: warm the thumbnails of the new items (the first screens of a list, the next page of a long one)
         // before they are scrolled to, not only after the selection has moved next to them
         if (getContext() != null) {
-            int cols = GridFragmentHelper.getMaxColsNum(getContext(), isShorts() ? R.dimen.shorts_card_width : R.dimen.card_width, mVideoGridScale);
+            int cols = GridFragmentHelper.getMaxColsNum(getContext(), isShorts() ? R.dimen.shorts_card_width : R.dimen.card_width, mVideoGridScale, GridFragmentHelper.getSidebarReservedPx(this));
             ThumbnailPreloader.preload(getContext(), mGridAdapter, sizeBefore, Math.max(cols, 1) * PRELOAD_GRID_ROWS);
         }
 
@@ -314,7 +314,7 @@ public class VideoGridFragment extends GridFragment implements VideoSection {
                 return;
             }
 
-            int cols = GridFragmentHelper.getMaxColsNum(getContext(), isShorts() ? R.dimen.shorts_card_width : R.dimen.card_width, mVideoGridScale);
+            int cols = GridFragmentHelper.getMaxColsNum(getContext(), isShorts() ? R.dimen.shorts_card_width : R.dimen.card_width, mVideoGridScale, GridFragmentHelper.getSidebarReservedPx(VideoGridFragment.this));
 
             ThumbnailPreloader.preload(getContext(), mGridAdapter, index + 1, Math.max(cols, 1) * PRELOAD_GRID_ROWS);
         }

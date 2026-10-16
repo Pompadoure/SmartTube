@@ -71,7 +71,7 @@ public class SettingsGridFragment extends GridFragment implements SettingsSectio
     private void setupAdapter() {
         VerticalGridPresenter presenter = new VerticalGridPresenter(ViewUtil.FOCUS_ZOOM_FACTOR, ViewUtil.FOCUS_DIMMER_ENABLED);
         presenter.enableChildRoundedCorners(getMainUIData().isUiTweakEnabled(MainUIData.UI_TWEAK_ROUNDED_CORNERS));
-        presenter.setNumberOfColumns(GridFragmentHelper.getMaxColsNum(getContext(), R.dimen.settings_card_width));
+        presenter.setNumberOfColumns(GridFragmentHelper.getMaxColsNum(getContext(), R.dimen.settings_card_width, 1.0f, GridFragmentHelper.getSidebarReservedPx(this)));
         setGridPresenter(presenter);
 
         if (mSettingsAdapter == null) {

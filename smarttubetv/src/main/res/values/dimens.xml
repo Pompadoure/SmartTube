@@ -148,12 +148,15 @@
 
     <!-- JoTube: YouTube-style sidebar -->
     <dimen name="sidebar_item_height">44dp</dimen>
-    <!-- headers grid width 270dp - its padding start/end 22dp -->
-    <dimen name="sidebar_item_width">226dp</dimen>
+    <!-- headers grid width 270dp - its padding start 11dp and end 22dp -->
+    <dimen name="sidebar_item_width">237dp</dimen>
     <dimen name="sidebar_item_padding">14dp</dimen>
     <dimen name="sidebar_icon_size">22dp</dimen>
     <dimen name="sidebar_icon_gap">18dp</dimen>
     <dimen name="sidebar_text_size">16sp</dimen>
-    <dimen name="sidebar_padding_start">22dp</dimen>
+    <!-- icons centered in the collapsed rail: 11 + 14 + 22/2 = 36 = rail/2 -->
+    <dimen name="sidebar_padding_start">11dp</dimen>
     <dimen name="sidebar_padding_end">22dp</dimen>
+    <!-- collapsed sidebar: only the icons stay visible while the content has the focus -->
+    <dimen name="sidebar_rail_width">72dp</dimen>
 </resources>

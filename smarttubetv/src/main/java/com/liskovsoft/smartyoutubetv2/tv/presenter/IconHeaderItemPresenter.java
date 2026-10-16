@@ -31,6 +31,16 @@ import com.liskovsoft.smartyoutubetv2.tv.util.ViewUtil;
 public class IconHeaderItemPresenter extends RowHeaderPresenter {
     private static final String TAG = IconHeaderItemPresenter.class.getSimpleName();
     private static final ArgbEvaluator ARGB = new ArgbEvaluator();
+    // JoTube: false while the sidebar is collapsed to the icon rail (labels faded out)
+    private static boolean sLabelsShown = true;
+
+    public static void setLabelsShown(boolean shown) {
+        sLabelsShown = shown;
+    }
+
+    public static boolean isLabelsShown() {
+        return sLabelsShown;
+    }
     // JoTube: YouTube-style sidebar. A pill fades in behind the focused item, icon and text turn dark.
     private int mPillColor;
     private int mPillColorTransparent;
@@ -107,6 +117,8 @@ public class IconHeaderItemPresenter extends RowHeaderPresenter {
         TextView label = rootView.findViewById(R.id.header_label);
         if (label != null) {
             label.setText(headerItem.getName());
+            label.animate().cancel();
+            label.setAlpha(sLabelsShown ? 1f : 0f); // recycled while the rail is collapsed
         }
     }
 

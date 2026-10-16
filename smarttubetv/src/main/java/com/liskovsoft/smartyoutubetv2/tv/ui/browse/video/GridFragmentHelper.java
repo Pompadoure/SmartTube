@@ -8,6 +8,9 @@ import android.util.DisplayMetrics;
 import android.util.Pair;
 import android.view.WindowManager;
 
+import androidx.fragment.app.Fragment;
+import androidx.leanback.app.BrowseSupportFragment;
+
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.VideoGroup;
 import com.liskovsoft.smartyoutubetv2.common.app.views.ViewManager;
@@ -21,12 +24,14 @@ import java.util.Map;
 public class GridFragmentHelper {
     private static final Map<Integer, Pair<Integer, Integer>> sCardDimensPx = new HashMap<>();
     private static final Map<Integer, Float> sMaxColsNum = new HashMap<>();
+    private static final Map<String, Float> sMaxColsNumReserved = new HashMap<>(); // JoTube: grids next to the sidebar rail
     private static final Runnable sInvalidate = GridFragmentHelper::invalidate;
     private static final int MIN_ADAPTER_SIZE = 6;
 
     private static void invalidate() {
         sCardDimensPx.clear();
         sMaxColsNum.clear();
+        sMaxColsNumReserved.clear();
     }
 
     /**
@@ -41,6 +46,40 @@ public class GridFragmentHelper {
      */
     public static int getMaxColsNum(Context context, int cardWidthResId, float cardScale) {
         return (int) getMaxColsNumFloat(context, cardWidthResId, cardScale);
+    }
+
+    /**
+     * JoTube: max number of cards that could fit next to the collapsed sidebar rail ({@link #getSidebarReservedPx}).
+     * Computed once per grid creation, like before: the column count never changes at runtime.
+     */
+    public static int getMaxColsNum(Context context, int cardWidthResId, float cardScale, int reservedPx) {
+        if (reservedPx <= 0) {
+            return getMaxColsNum(context, cardWidthResId, cardScale);
+        }
+
+        String key = cardWidthResId + ":" + reservedPx;
+        Float maxColsNum = sMaxColsNumReserved.get(key);
+
+        if (maxColsNum == null) {
+            ViewManager.instance(context).addOnFinish(sInvalidate);
+            maxColsNum = getMaxColsNumFloatInt(context, cardWidthResId, cardScale, reservedPx);
+            sMaxColsNumReserved.put(key, maxColsNum);
+        }
+
+        return (int) (float) maxColsNum;
+    }
+
+    /**
+     * JoTube: width taken by the collapsed sidebar rail when the fragment is a section of the browse screen, else 0.
+     */
+    public static int getSidebarReservedPx(Fragment fragment) {
+        Fragment parent = fragment != null ? fragment.getParentFragment() : null;
+
+        if (parent instanceof BrowseSupportFragment && ((BrowseSupportFragment) parent).isHeadersRailActive()) {
+            return ((BrowseSupportFragment) parent).getHeadersRailWidth();
+        }
+
+        return 0;
     }
 
     private static float getMaxColsNumFloat(Context context, int cardWidthResId, float cardScale) {
@@ -60,6 +99,10 @@ public class GridFragmentHelper {
     }
 
     private static float getMaxColsNumFloatInt(Context context, int cardWidthResId, float cardScale) {
+        return getMaxColsNumFloatInt(context, cardWidthResId, cardScale, 0);
+    }
+
+    private static float getMaxColsNumFloatInt(Context context, int cardWidthResId, float cardScale, int reservedPx) {
         float uiScale = MainUIData.instance(context).getUIScale();
 
         Resources res = context.getResources();
@@ -77,6 +120,8 @@ public class GridFragmentHelper {
             DisplayMetrics displayMetrics = res.getDisplayMetrics();
             displayWidthPx = Math.max(displayMetrics.widthPixels, displayMetrics.heightPixels);
         }
+
+        displayWidthPx -= Math.max(0, reservedPx); // JoTube: the sidebar rail
 
         float cardWidthPx = res.getDimensionPixelSize(cardWidthResId) * cardScale;
         float cardSpacingPx = res.getDimensionPixelSize(R.dimen.grid_item_horizontal_spacing);

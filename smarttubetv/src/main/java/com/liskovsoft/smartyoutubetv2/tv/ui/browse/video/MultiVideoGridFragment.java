@@ -76,7 +76,8 @@ public class MultiVideoGridFragment extends MultiGridFragment implements VideoSe
             protected android.util.Pair<Integer, Integer> getCardDimensPx(android.content.Context context) {
                 // Exactly three cards per row when the channel list is hidden
                 android.util.DisplayMetrics dm = context.getResources().getDisplayMetrics();
-                int screenW = Math.max(dm.widthPixels, dm.heightPixels);
+                int screenW = Math.max(dm.widthPixels, dm.heightPixels)
+                        - GridFragmentHelper.getSidebarReservedPx(MultiVideoGridFragment.this); // JoTube: the sidebar rail
                 int spacing = context.getResources().getDimensionPixelSize(R.dimen.grid_item_horizontal_spacing);
                 int w = (int) ((screenW * 0.86f - spacing * 3) / 3f);
                 return new android.util.Pair<>(w, (int) (w * 9f / 16f));
