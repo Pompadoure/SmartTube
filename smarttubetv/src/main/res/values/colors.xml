@@ -68,4 +68,10 @@
     <color name="lb_speech_orb_not_recording">@color/orb_color</color>
     <color name="lb_speech_orb_not_recording_pulsed">@color/orb_bright_color</color>
     <color name="lb_speech_orb_not_recording_icon">@color/orb_icon_color</color>
+
+    <!-- JoTube: YouTube-style sidebar -->
+    <color name="sidebar_background">#0F0F0F</color>
+    <color name="sidebar_item_focused">#F1F1F1</color>
+    <color name="sidebar_content_focused">#0F0F0F</color>
+    <color name="sidebar_content_normal">#B3FFFFFF</color>
 </resources>

@@ -97,6 +97,8 @@
 
     <!-- MOD: Zoom factor of focused sidebar header (default: 1.2) -->
     <!--<item format="float" name="lb_browse_header_select_scale" type="dimen">1.2</item>-->
+    <!-- JoTube: no zoom, the focused item gets a pill like YouTube -->
+    <item format="float" name="lb_browse_header_select_scale" type="dimen">1.0</item>
 
     <!--
     Space between cards. Origin: 8dp More info:
@@ -110,7 +112,7 @@
 
     <!-- Browse headers spacing. Origin: 21dp -->
     <!--<dimen name="lb_browse_headers_vertical_spacing">10dp</dimen>-->
-    <dimen name="browse_headers_vertical_spacing">10dp</dimen>
+    <dimen name="browse_headers_vertical_spacing">4dp</dimen>
 
     <!-- Vine card widget values -->
     <dimen name="lb_basic_card_main_width">140dp</dimen>
@@ -143,4 +145,15 @@
     <dimen name="tooltip_vertical_padding_mod">6.5dp</dimen>
     <dimen name="tooltip_y_offset_non_touch_mod">0dp</dimen>
     <dimen name="tooltip_y_offset_touch_mod">16dp</dimen>
+
+    <!-- JoTube: YouTube-style sidebar -->
+    <dimen name="sidebar_item_height">44dp</dimen>
+    <!-- headers width 270dp - padding start/end 22dp - fragment padding end 8dp -->
+    <dimen name="sidebar_item_width">218dp</dimen>
+    <dimen name="sidebar_item_padding">14dp</dimen>
+    <dimen name="sidebar_icon_size">22dp</dimen>
+    <dimen name="sidebar_icon_gap">18dp</dimen>
+    <dimen name="sidebar_text_size">16sp</dimen>
+    <dimen name="sidebar_padding_start">22dp</dimen>
+    <dimen name="sidebar_padding_end">22dp</dimen>
 </resources>

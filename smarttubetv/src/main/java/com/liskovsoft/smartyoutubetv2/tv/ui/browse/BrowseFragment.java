@@ -217,7 +217,6 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
         setHeadersState(HEADERS_ENABLED);
         setHeadersTransitionOnBackEnabled(true);
 
-        int brandColorRes = Helpers.getThemeAttr(getContext(), R.attr.brandColor);
         int brandAccentColorRes = Helpers.getThemeAttr(getContext(), R.attr.brandAccentColor);
 
         updateBadge();
@@ -226,7 +225,8 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
         //setTitle(getString(R.string.browse_title));
 
         // Set fastLane (or headers) background color
-        setBrandColor(ContextCompat.getColor(getContext(), brandColorRes));
+        // JoTube: YouTube-style dark sidebar, whatever color scheme is chosen
+        setBrandColor(ContextCompat.getColor(getContext(), R.color.sidebar_background));
 
         // Set search icon color.
         setSearchAffordanceColor(ContextCompat.getColor(getContext(), brandAccentColorRes));

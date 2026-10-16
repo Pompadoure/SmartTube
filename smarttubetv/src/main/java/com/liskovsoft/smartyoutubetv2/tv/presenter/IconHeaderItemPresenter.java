@@ -1,7 +1,11 @@
 package com.liskovsoft.smartyoutubetv2.tv.presenter;
 
+import android.animation.ArgbEvaluator;
 import android.content.Context;
+import android.content.res.Resources;
+import android.graphics.PorterDuff;
 import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.Drawable;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -26,7 +30,12 @@ import com.liskovsoft.smartyoutubetv2.tv.util.ViewUtil;
 
 public class IconHeaderItemPresenter extends RowHeaderPresenter {
     private static final String TAG = IconHeaderItemPresenter.class.getSimpleName();
-    private float mUnselectedAlpha;
+    private static final ArgbEvaluator ARGB = new ArgbEvaluator();
+    // JoTube: YouTube-style sidebar. A pill fades in behind the focused item, icon and text turn dark.
+    private int mPillColor;
+    private int mPillColorTransparent;
+    private int mContentNormalColor;
+    private int mContentFocusedColor;
     private final int mResId;
     private final String mIconUrl;
     private Drawable mDefaultIcon;
@@ -38,16 +47,28 @@ public class IconHeaderItemPresenter extends RowHeaderPresenter {
 
     @Override
     public ViewHolder onCreateViewHolder(ViewGroup viewGroup) {
-        mUnselectedAlpha = viewGroup.getResources()
-                .getFraction(R.fraction.lb_browse_header_unselect_alpha, 1, 1);
-        LayoutInflater inflater = (LayoutInflater) viewGroup.getContext()
+        Context context = viewGroup.getContext();
+        Resources res = context.getResources();
+        mPillColor = ContextCompat.getColor(context, R.color.sidebar_item_focused);
+        mPillColorTransparent = mPillColor & 0x00FFFFFF;
+        mContentNormalColor = ContextCompat.getColor(context, R.color.sidebar_content_normal);
+        mContentFocusedColor = ContextCompat.getColor(context, R.color.sidebar_content_focused);
+        LayoutInflater inflater = (LayoutInflater) context
                 .getSystemService(Context.LAYOUT_INFLATER_SERVICE);
-        mDefaultIcon = new ColorDrawable(ContextCompat.getColor(viewGroup.getContext(), R.color.lb_grey));
+        mDefaultIcon = new ColorDrawable(ContextCompat.getColor(context, R.color.lb_grey));
 
-        View view = inflater.inflate(R.layout.icon_header_item, null);
-        view.setAlpha(mUnselectedAlpha); // Initialize icons to be at half-opacity.
+        View view = inflater.inflate(R.layout.icon_header_item, viewGroup, false);
 
-        return new ViewHolder(view);
+        GradientDrawable pill = new GradientDrawable();
+        pill.setShape(GradientDrawable.RECTANGLE);
+        pill.setCornerRadius(res.getDimensionPixelSize(R.dimen.sidebar_item_height) / 2f);
+        pill.setColor(mPillColorTransparent);
+        view.setBackground(pill);
+
+        ViewHolder holder = new ViewHolder(view);
+        applyLevel(view, 0);
+
+        return holder;
     }
 
     @Override
@@ -66,6 +87,8 @@ public class IconHeaderItemPresenter extends RowHeaderPresenter {
         ImageView iconView = rootView.findViewById(R.id.header_icon);
         if (iconView != null) {
             if (mIconUrl != null) {
+                iconView.setTag(R.id.header_icon, null); // channel avatar: keep its colors
+                iconView.clearColorFilter();
                 Glide.with(rootView.getContext())
                         .load(mIconUrl)
                         .apply(ViewUtil.glideOptions().error(mDefaultIcon))
@@ -76,6 +99,8 @@ public class IconHeaderItemPresenter extends RowHeaderPresenter {
             } else {
                 Drawable icon = mResId > 0 ? ContextCompat.getDrawable(rootView.getContext(), mResId) : mDefaultIcon;
                 iconView.setImageDrawable(icon);
+                iconView.setTag(R.id.header_icon, Boolean.TRUE); // monochrome icon: tinted with the text
+                applyLevel(rootView, ((RowHeaderPresenter.ViewHolder) viewHolder).getSelectLevel());
             }
         }
 
@@ -90,12 +115,33 @@ public class IconHeaderItemPresenter extends RowHeaderPresenter {
         // NOP
     }
 
-    // TODO: This is a temporary fix. Remove me when leanback onCreateViewHolder no longer sets the
-    // mUnselectAlpha, and also assumes the xml inflation will return a RowHeaderView.
+    /**
+     * JoTube: leanback animates the select level (0..1) of the focused header. It drives the pill and the colors,
+     * so the focus glides from item to item like in the YouTube app.
+     */
     @Override
     protected void onSelectLevelChanged(RowHeaderPresenter.ViewHolder holder) {
-        holder.view.setAlpha(mUnselectedAlpha + holder.getSelectLevel() *
-                (1.0f - mUnselectedAlpha));
+        applyLevel(holder.view, holder.getSelectLevel());
+    }
+
+    private void applyLevel(View view, float level) {
+        view.setAlpha(1f);
+
+        if (view.getBackground() instanceof GradientDrawable) {
+            ((GradientDrawable) view.getBackground()).setColor((int) ARGB.evaluate(level, mPillColorTransparent, mPillColor));
+        }
+
+        int contentColor = (int) ARGB.evaluate(level, mContentNormalColor, mContentFocusedColor);
+
+        TextView label = view.findViewById(R.id.header_label);
+        if (label != null) {
+            label.setTextColor(contentColor);
+        }
+
+        ImageView icon = view.findViewById(R.id.header_icon);
+        if (icon != null && icon.getTag(R.id.header_icon) != null) {
+            icon.setColorFilter(contentColor, PorterDuff.Mode.SRC_IN);
+        }
     }
 
     private final RequestListener<Drawable> mErrorListener = new RequestListener<Drawable>() {
