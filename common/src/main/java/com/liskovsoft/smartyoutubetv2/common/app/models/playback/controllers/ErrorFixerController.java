@@ -2,6 +2,7 @@ package com.liskovsoft.smartyoutubetv2.common.app.models.playback.controllers;
 
 import android.annotation.SuppressLint;
 
+import com.liskovsoft.media3.sabr.parser.exceptions.SabrReloadPlayerError;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.sharedutils.helpers.MessageHelpers;
 import com.liskovsoft.sharedutils.mylogger.Log;
@@ -9,6 +10,7 @@ import com.liskovsoft.smartyoutubetv2.common.R;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.BasePlayerController;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.listener.PlayerEventListener;
+import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ShortsQueue;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.FormatItem;
 import com.liskovsoft.smartyoutubetv2.common.misc.BufferingDetector;
 import com.liskovsoft.smartyoutubetv2.common.misc.BufferingDetector.OnLongBuffering;
@@ -22,8 +24,12 @@ import java.util.List;
 public class ErrorFixerController extends BasePlayerController implements OnLongBuffering {
     private static final String TAG = ErrorFixerController.class.getSimpleName();
     private static final long STREAM_END_THRESHOLD_MS = 180_000;
+    // Upstream (yuliskov 17b09643): how many times a SABR "reload the player response" request is honored per video
+    private static final int MAX_SABR_RELOAD_ATTEMPTS = 3;
     private final BufferingDetector mBufferingDetector = new BufferingDetector(this);
     private VideoLoaderController mVideoLoaderController;
+    private String mSabrReloadVideoId;
+    private int mSabrReloadAttempts;
 
     @Override
     public void onInit() {
@@ -34,6 +40,8 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
     public void onEngineError(int type, int rendererIndex, Throwable error) {
         Log.e(TAG, "Player error occurred: %s. Trying to fix…", type);
 
+        // Upstream (e2436a44): the error is being handled, the long buffering fix mustn't run on top of it
+        mBufferingDetector.reset();
         runEngineErrorAction(type, rendererIndex, error);
     }
 
@@ -91,6 +99,7 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
     @Override
     public void onPlay() {
         mBufferingDetector.onStopBuffering();
+        mSabrReloadAttempts = 0;
     }
 
     @Override
@@ -127,7 +136,56 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
             return;
         }
 
+        if (applySabrReloadPlayerAction(error)) {
+            return;
+        }
+
         applyEngineErrorAction(type, rendererIndex, error);
+    }
+
+    /**
+     * Upstream (yuliskov 17b09643, Thioby): the SABR server sent ReloadPlayerResponse. It won't send any media until
+     * the player response is re-fetched with its token (ignoring it looped on the init chunk forever).
+     * After {@link #MAX_SABR_RELOAD_ATTEMPTS} the common error handling takes over, like before.
+     */
+    private boolean applySabrReloadPlayerAction(Throwable error) {
+        SabrReloadPlayerError reloadError = findSabrReloadPlayerError(error);
+        Video video = getVideo();
+
+        if (reloadError == null || video == null || mVideoLoaderController == null) {
+            return false;
+        }
+
+        if (!Helpers.equals(video.videoId, mSabrReloadVideoId)) {
+            mSabrReloadVideoId = video.videoId;
+            mSabrReloadAttempts = 0;
+        }
+
+        if (++mSabrReloadAttempts > MAX_SABR_RELOAD_ATTEMPTS) {
+            return false;
+        }
+
+        Log.e(TAG, "SABR requested a player response reload. Attempt: %s", mSabrReloadAttempts);
+
+        YouTubeServiceManager.instance().reloadPlayerResponse(video.videoId, reloadError.reloadPlaybackToken);
+        // A queued Short would be reloaded from its stored format info, without the token
+        ShortsQueue.invalidate(video.videoId);
+        mVideoLoaderController.reloadVideo();
+
+        return true;
+    }
+
+    private static SabrReloadPlayerError findSabrReloadPlayerError(Throwable error) {
+        // Media3 wraps it: PlaybackException -> UnexpectedLoaderException -> SabrReloadPlayerError
+        for (int depth = 0; error != null && depth < 10; depth++) {
+            if (error instanceof SabrReloadPlayerError) {
+                return (SabrReloadPlayerError) error;
+            }
+
+            error = error.getCause();
+        }
+
+        return null;
     }
 
     private void applyEngineErrorAction(int type, int rendererIndex, Throwable error) {

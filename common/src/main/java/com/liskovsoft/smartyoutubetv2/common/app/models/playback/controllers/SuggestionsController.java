@@ -328,6 +328,9 @@ public class SuggestionsController extends BasePlayerController {
             if (result == null) {
                 result = getNextInGroup(getVideo());
             }
+        } else if (isMixAutoplay(getVideo())) {
+            // Upstream (ad1418b1, yuliskov#5588): a YouTube Mix goes on inside the mix, not with the next card of the section
+            result = Video.from(getVideo().nextMediaItem);
         } else if (mNextSectionVideo != null && !getVideo().isShuffled) {
             result = mNextSectionVideo;
         } else if (isSmartNextFor(getVideo())) {
@@ -784,6 +787,11 @@ public class SuggestionsController extends BasePlayerController {
         mSmartNextFor = video.videoId;
     }
 
+    private static boolean isMixAutoplay(Video current) {
+        return current != null && !current.isShuffled && Helpers.startsWith(current.getPlaylistId(), "RD")
+                && current.hasNextPlaylist();
+    }
+
     private boolean isSmartNextFor(Video current) {
         // Not when the same video is now played in a playlist/mix or from the phone
         return mSmartNext != null && current != null && !current.isShuffled && !current.hasPlaylist() && !current.isRemote
@@ -808,7 +816,7 @@ public class SuggestionsController extends BasePlayerController {
         int nextIdx = Utils.getRandomIndex(currentIdx, group.getSize());
 
         mNextSectionVideo = group.get(nextIdx);
-        getPlayer().setNextTitle(mNextSectionVideo);
+        getPlayer().setNextTitle(isMixAutoplay(video) ? getNext() : mNextSectionVideo); // JoTube: the mix plays next
     }
 
     private void findNextSectionVideo(Video video) {
@@ -831,7 +839,7 @@ public class SuggestionsController extends BasePlayerController {
             if (found && current.hasVideo() && !current.isUpcoming) {
                 mNextRetryCount = 0;
                 mNextSectionVideo = current;
-                getPlayer().setNextTitle(mNextSectionVideo);
+                getPlayer().setNextTitle(isMixAutoplay(video) ? getNext() : mNextSectionVideo); // JoTube: the mix plays next
                 return;
             }
 
