@@ -222,9 +222,8 @@ public class NavigateTitleView extends TitleView implements OnDataChange, Accoun
             }
         }
 
-        // Center the column in the rail: the orb view is the orb plus leanback's margins around it
-        int orbViewWidth = orbSize + getResources().getDimensionPixelSize(R.dimen.lb_search_orb_margin_start)
-                + getResources().getDimensionPixelSize(R.dimen.lb_search_orb_margin_end);
+        // Center the column in the rail (the orb view is as wide as its circle)
+        int orbViewWidth = orbSize;
         if (column.getLayoutParams() instanceof FrameLayout.LayoutParams) {
             FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) column.getLayoutParams();
             lp.gravity = android.view.Gravity.TOP | android.view.Gravity.START;

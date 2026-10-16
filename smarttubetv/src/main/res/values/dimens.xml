@@ -167,6 +167,6 @@
     <dimen name="sidebar_orb_gap">8dp</dimen>
     <dimen name="sidebar_orb_icon_size">20dp</dimen>
     <dimen name="sidebar_orb_avatar_size">32dp</dimen>
-    <!-- the sections start below them: title padding 27 + 2 x (36 + 2 x 4) + 8 + 13 -->
+    <!-- the sections start below them: title padding 27 + 36 + 8 + 36 + 29 -->
     <dimen name="sidebar_list_padding_top">136dp</dimen>
 </resources>

@@ -141,6 +141,8 @@ public class MultiVideoGridFragment extends MultiGridFragment implements VideoSe
         gridDock.setWindowAlignmentOffsetPercent(0);
         gridDock.setItemAlignmentOffset(0);
         gridDock.setItemAlignmentOffsetPercent(0);
+        // Both grids stay attached while the videos fill the dock: left from the videos focuses the channels directly
+        gridDock.setPruneChild(false);
     }
 
     private static boolean isInside(View view, View container) {
