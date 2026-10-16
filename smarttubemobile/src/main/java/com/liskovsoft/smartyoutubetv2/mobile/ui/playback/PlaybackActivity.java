@@ -75,6 +75,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     private android.widget.SeekBar mSeekBar;
     private boolean mSeeking;
     private boolean mInPip;
+    private boolean mPipSession; // the floating window was shown and the screen has not been opened again
     private boolean mFastForward;
     private float mSpeedBeforeFastForward = 1f;
     private TextView mSeekHint;
@@ -846,6 +847,9 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode, Configuration newConfig) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
         mInPip = isInPictureInPictureMode;
+        if (isInPictureInPictureMode) {
+            mPipSession = true;
+        }
 
         if (mInPip) {
             showControls(false);
@@ -1238,6 +1242,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     @Override
     protected void onResume() {
         super.onResume();
+        mPipSession = false; // opened again from the floating window
 
         if (Util.SDK_INT <= 23 || mPlayer == null) {
             initializePlayer();
@@ -1261,6 +1266,16 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     @Override
     protected void onStop() {
         super.onStop();
+
+        if (mPipSession && !mAudioMode && !mShortsMode && !isChangingConfigurations()) {
+            // The floating window was closed (X): the video ends, no sound is left behind
+            mPipSession = false;
+            if (mExoPlayerController != null) {
+                mExoPlayerController.setPlayWhenReady(false);
+            }
+            finish();
+            return;
+        }
 
         if (keepPlayingInBackground() || (mMinimized && keepForMini())) {
             // Screen off / another app: the sound goes on (media notification), the video is dropped
