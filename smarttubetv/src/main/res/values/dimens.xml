@@ -162,4 +162,11 @@
     <!-- grids next to the rail: rail 72 + 16 + 24 = the stock paddings 56 + 56 (same columns, same cards) -->
     <dimen name="sidebar_content_padding_start">16dp</dimen>
     <dimen name="sidebar_content_padding_end">24dp</dimen>
+    <!-- account and search buttons at the top of the rail -->
+    <dimen name="sidebar_orb_size">36dp</dimen>
+    <dimen name="sidebar_orb_gap">8dp</dimen>
+    <dimen name="sidebar_orb_icon_size">20dp</dimen>
+    <dimen name="sidebar_orb_avatar_size">32dp</dimen>
+    <!-- the sections start below them: title padding 27 + 2 x (36 + 2 x 4) + 8 + 13 -->
+    <dimen name="sidebar_list_padding_top">136dp</dimen>
 </resources>

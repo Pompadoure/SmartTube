@@ -7,6 +7,10 @@ import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
 import android.view.View;
+import android.view.ViewGroup;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -69,6 +73,7 @@ public class NavigateTitleView extends TitleView implements OnDataChange, Accoun
     private boolean mIsAccountViewEnabled;
     private boolean mIsLanguageViewEnabled;
     private boolean mIsGlobalClockEnabled;
+    private boolean mSidebarRailMode; // JoTube: search and account sit in the sidebar rail, stacked vertically
 
     public NavigateTitleView(Context context) {
         super(context);
@@ -86,6 +91,10 @@ public class NavigateTitleView extends TitleView implements OnDataChange, Accoun
 
     @Override
     public View focusSearch(View focused, int direction) {
+        if (mSidebarRailMode) {
+            return focusSearchRail(focused, direction);
+        }
+
         View nextFoundFocusableViewInLayout = null;
 
         // Only concerned about focusing left and right at the moment
@@ -118,6 +127,154 @@ public class NavigateTitleView extends TitleView implements OnDataChange, Accoun
         } else {
             // No focusable view found in layout...propagate to super (should invoke the BrowseFrameLayout.OnFocusSearchListener
             return super.focusSearch(focused, direction);
+        }
+    }
+
+    /**
+     * JoTube: the buttons are a vertical column in the sidebar rail. Up/down moves between them (down from the last one
+     * leaves the title like before), left stays, right leaves the title (to the content, like before).
+     */
+    private View focusSearchRail(View focused, int direction) {
+        if (direction == View.FOCUS_UP || direction == View.FOCUS_DOWN) {
+            ViewGroup column = getRailColumn();
+            View current = findDirectChild(column, focused);
+
+            if (column != null && current != null) {
+                int step = direction == View.FOCUS_DOWN ? 1 : -1;
+
+                for (int i = column.indexOfChild(current) + step; i >= 0 && i < column.getChildCount(); i += step) {
+                    View candidate = column.getChildAt(i);
+
+                    if (candidate.getVisibility() == View.VISIBLE && candidate.isFocusable()) {
+                        return candidate;
+                    }
+                }
+            }
+
+            if (direction == View.FOCUS_UP) {
+                return focused; // the top of the rail
+            }
+        } else if (direction == View.FOCUS_LEFT) {
+            return focused;
+        }
+
+        return super.focusSearch(focused, direction);
+    }
+
+    private ViewGroup getRailColumn() {
+        View searchOrb = findViewById(R.id.title_orb);
+        return searchOrb != null && searchOrb.getParent() instanceof ViewGroup ? (ViewGroup) searchOrb.getParent() : null;
+    }
+
+    private static View findDirectChild(ViewGroup parent, View view) {
+        View current = view;
+
+        while (current != null && parent != null) {
+            if (current.getParent() == parent) {
+                return current;
+            }
+
+            current = current.getParent() instanceof View ? (View) current.getParent() : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * JoTube: puts the account (on top) and the search button in a vertical column centered in the collapsed sidebar
+     * rail, smaller and in the sidebar colors. Called once when the browse view is created (one layout pass, no grids).
+     *
+     * @param railWidthPx width of the collapsed sidebar rail
+     */
+    public void setSidebarRailMode(int railWidthPx) {
+        if (mSidebarRailMode || railWidthPx <= 0) {
+            return;
+        }
+
+        ViewGroup column = getRailColumn();
+        View account = findViewById(R.id.account_orb);
+
+        if (!(column instanceof LinearLayout) || account == null || account.getParent() != column) {
+            return;
+        }
+
+        mSidebarRailMode = true;
+
+        int orbSize = getResources().getDimensionPixelSize(R.dimen.sidebar_orb_size);
+        int gap = getResources().getDimensionPixelSize(R.dimen.sidebar_orb_gap);
+
+        // Account first, like YouTube
+        column.removeView(account);
+        column.addView(account, 0);
+
+        LinearLayout linear = (LinearLayout) column;
+        linear.setOrientation(LinearLayout.VERTICAL);
+
+        for (int i = 0; i < column.getChildCount(); i++) {
+            View child = column.getChildAt(i);
+            ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) child.getLayoutParams();
+            lp.setMarginStart(0);
+            lp.topMargin = i == 0 ? 0 : gap;
+            child.setLayoutParams(lp);
+
+            if (child instanceof SearchOrbView) {
+                resizeOrb((SearchOrbView) child, orbSize, child == account);
+            }
+        }
+
+        // Center the column in the rail: the orb view is the orb plus leanback's margins around it
+        int orbViewWidth = orbSize + getResources().getDimensionPixelSize(R.dimen.lb_search_orb_margin_start)
+                + getResources().getDimensionPixelSize(R.dimen.lb_search_orb_margin_end);
+        if (column.getLayoutParams() instanceof FrameLayout.LayoutParams) {
+            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) column.getLayoutParams();
+            lp.gravity = android.view.Gravity.TOP | android.view.Gravity.START;
+            lp.setMarginStart((railWidthPx - orbViewWidth) / 2 - getPaddingStart());
+            column.setLayoutParams(lp);
+        }
+
+        // The title grew taller (a column): the branding/clock block stays at the top instead of its vertical center
+        for (int i = 0; i < getChildCount(); i++) {
+            View child = getChildAt(i);
+            if (child != column && child.getLayoutParams() instanceof FrameLayout.LayoutParams) {
+                FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) child.getLayoutParams();
+                lp.gravity = android.view.Gravity.TOP | android.view.Gravity.END;
+                child.setLayoutParams(lp);
+            }
+        }
+
+        // Same look as the sidebar icons: no colored circle, a light one only on focus
+        int iconColor = ContextCompat.getColor(getContext(), R.color.sidebar_orb_icon);
+        Colors colors = new Colors(Color.TRANSPARENT, ContextCompat.getColor(getContext(), R.color.sidebar_orb_focused), iconColor);
+        if (mAccountView != null) {
+            mAccountView.setOrbColors(colors);
+        } else if (account instanceof SearchOrbView) {
+            ((SearchOrbView) account).setOrbColors(colors);
+        }
+
+        mIconWidth = 0; // the avatar is loaded for the new size
+        mIconHeight = 0;
+        updateAccountIcon();
+    }
+
+    private void resizeOrb(SearchOrbView orb, int orbSize, boolean isAccount) {
+        View circle = orb.findViewById(R.id.search_orb);
+
+        if (circle != null) {
+            ViewGroup.LayoutParams lp = circle.getLayoutParams();
+            lp.width = orbSize;
+            lp.height = orbSize;
+            circle.setLayoutParams(lp);
+        }
+
+        View icon = orb.findViewById(R.id.icon);
+
+        if (icon instanceof ImageView) {
+            int iconSize = getResources().getDimensionPixelSize(isAccount ? R.dimen.sidebar_orb_avatar_size : R.dimen.sidebar_orb_icon_size);
+            ViewGroup.LayoutParams lp = icon.getLayoutParams();
+            lp.width = iconSize;
+            lp.height = iconSize;
+            icon.setLayoutParams(lp);
+            ((ImageView) icon).setScaleType(ImageView.ScaleType.FIT_CENTER);
         }
     }
 
@@ -195,7 +352,8 @@ public class NavigateTitleView extends TitleView implements OnDataChange, Accoun
         mSearchOrbView = findViewById(R.id.title_orb);
 
         mAccountView = findViewById(R.id.account_orb);
-        mAccountView.setOnOrbClickedListener(v -> AccountSelectionPresenter.instance(getContext()).nextAccountOrDialog());
+        // JoTube: the profile picture opens the account settings (switching accounts on click signed Johan out)
+        mAccountView.setOnOrbClickedListener(v -> AccountSettingsPresenter.instance(getContext()).show());
         mAccountView.setOnOrbLongClickedListener(v -> {
             AccountSettingsPresenter.instance(getContext()).show();
             return true;

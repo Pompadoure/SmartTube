@@ -74,4 +74,6 @@
     <color name="sidebar_item_focused">#F1F1F1</color>
     <color name="sidebar_content_focused">#0F0F0F</color>
     <color name="sidebar_content_normal">#B3FFFFFF</color>
+    <color name="sidebar_orb_icon">#E6FFFFFF</color>
+    <color name="sidebar_orb_focused">#4DFFFFFF</color>
 </resources>

@@ -25,6 +25,7 @@
         <!-- JoTube: YouTube-style sidebar (pills, not the classic leanback list) -->
         <item name="android:paddingStart">@dimen/sidebar_padding_start</item>
         <item name="android:paddingEnd">@dimen/sidebar_padding_end</item>
+        <item name="android:paddingTop">@dimen/sidebar_list_padding_top</item>
         <item name="android:clipToPadding">false</item>
     </style>
 

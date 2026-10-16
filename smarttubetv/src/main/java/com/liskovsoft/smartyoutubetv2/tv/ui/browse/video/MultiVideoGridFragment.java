@@ -7,7 +7,9 @@ import android.view.ViewTreeObserver;
 import android.widget.Toast;
 
 import androidx.annotation.Nullable;
+import androidx.leanback.widget.BaseGridView;
 import androidx.leanback.widget.ClassPresenterSelector;
+import androidx.leanback.widget.HorizontalGridView;
 import androidx.leanback.widget.OnItemViewClickedListener;
 import androidx.leanback.widget.OnItemViewSelectedListener;
 import androidx.leanback.widget.Presenter;
@@ -100,6 +102,7 @@ public class MultiVideoGridFragment extends MultiGridFragment implements VideoSe
         super.onViewCreated(view, savedInstanceState);
 
         removePadding();
+        alignDockToStart(view);
 
         view.getViewTreeObserver().addOnGlobalFocusChangeListener(mFocusListener);
     }
@@ -118,6 +121,26 @@ public class MultiVideoGridFragment extends MultiGridFragment implements VideoSe
             getBrowseGrid1().setAlpha(1f);
         }
         super.onDestroyView();
+    }
+
+    /**
+     * JoTube: the focused grid of the dock (channels or videos) starts at the left edge of the content. Before, the dock
+     * centered the focused grid and, next to the sidebar rail, left the faded channel list as a big black area.
+     * Set once when the view is created: only the scroll position follows the focus, nothing is laid out again.
+     */
+    private static void alignDockToStart(View root) {
+        View dock = root != null ? root.findViewById(R.id.browse_grid_dock) : null;
+
+        if (!(dock instanceof HorizontalGridView)) {
+            return;
+        }
+
+        HorizontalGridView gridDock = (HorizontalGridView) dock;
+        gridDock.setWindowAlignment(BaseGridView.WINDOW_ALIGN_LOW_EDGE);
+        gridDock.setWindowAlignmentOffset(0);
+        gridDock.setWindowAlignmentOffsetPercent(0);
+        gridDock.setItemAlignmentOffset(0);
+        gridDock.setItemAlignmentOffsetPercent(0);
     }
 
     private static boolean isInside(View view, View container) {

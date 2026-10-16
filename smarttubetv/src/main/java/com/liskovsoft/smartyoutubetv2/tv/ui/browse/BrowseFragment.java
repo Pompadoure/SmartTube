@@ -4,6 +4,7 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
+import android.graphics.Color;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
@@ -25,6 +26,7 @@ import androidx.leanback.widget.ListRowPresenter;
 import androidx.leanback.widget.PageRow;
 import androidx.leanback.widget.Presenter;
 import androidx.leanback.widget.PresenterSelector;
+import androidx.leanback.widget.SearchOrbView;
 import androidx.leanback.widget.TitleHelper;
 import androidx.leanback.widget.VerticalGridView;
 import androidx.recyclerview.widget.RecyclerView;
@@ -50,6 +52,7 @@ import com.liskovsoft.smartyoutubetv2.tv.ui.browse.dialog.ErrorDialogFragment;
 import com.liskovsoft.smartyoutubetv2.tv.ui.mod.leanback.headers.ExtendedHeadersSupportFragment;
 import com.liskovsoft.smartyoutubetv2.tv.ui.mod.leanback.misc.ProgressBarManager;
 import com.liskovsoft.smartyoutubetv2.tv.ui.playback.ShortsBackground;
+import com.liskovsoft.smartyoutubetv2.tv.ui.widgets.browse.NavigateTitleView;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -119,6 +122,11 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
         View root = super.onCreateView(inflater, container, savedInstanceState);
 
         mProgressBarManager.setRootView((ViewGroup) root);
+
+        // JoTube: account and search sit at the top of the sidebar rail
+        if (getTitleView() instanceof NavigateTitleView && isHeadersRailActive()) {
+            ((NavigateTitleView) getTitleView()).setSidebarRailMode(getHeadersRailWidth());
+        }
 
         return root;
     }
@@ -230,7 +238,6 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
         setHeadersState(HEADERS_ENABLED);
         setHeadersTransitionOnBackEnabled(true);
 
-        int brandAccentColorRes = Helpers.getThemeAttr(getContext(), R.attr.brandAccentColor);
 
         updateBadge();
 
@@ -241,8 +248,10 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
         // JoTube: YouTube-style dark sidebar, whatever color scheme is chosen
         setBrandColor(ContextCompat.getColor(getContext(), R.color.sidebar_background));
 
-        // Set search icon color.
-        setSearchAffordanceColor(ContextCompat.getColor(getContext(), brandAccentColorRes));
+        // JoTube: the search button looks like the sidebar icons (no red circle, a light one on focus)
+        setSearchAffordanceColors(new SearchOrbView.Colors(Color.TRANSPARENT,
+                ContextCompat.getColor(getContext(), R.color.sidebar_orb_focused),
+                ContextCompat.getColor(getContext(), R.color.sidebar_orb_icon)));
 
         setHeaderPresenterSelector(new PresenterSelector() {
             private final Map<Integer, Presenter> mPresenterMap = new HashMap<>();
