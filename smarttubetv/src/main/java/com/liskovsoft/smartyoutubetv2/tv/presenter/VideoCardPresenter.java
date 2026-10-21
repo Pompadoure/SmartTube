@@ -258,8 +258,9 @@ public class VideoCardPresenter extends LongClickPresenter {
      * The source is requested in a bigger size (the default one is tiny) and scaled down: sharp result.
      */
     private void bindChannelAvatar(ComplexImageCardView cardView, Context context, Video video) {
-        // A round button: the whole picture is a circle (the card is as wide as it is high)
-        int size = Math.max(mHeight, 1);
+        // A round button: the whole picture is a circle (the card is as wide as it is high), about 60% of the
+        // thumbnail height like YouTube's channel shelves (the full height made the avatars too big)
+        int size = Math.max(Math.round(mHeight * 0.6f), 1);
         cardView.setMainImageDimensions(size, size);
         ImageView imageView = cardView.getMainImageView();
         imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
