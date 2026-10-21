@@ -6,6 +6,7 @@ import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.InsetDrawable;
 import android.graphics.Typeface;
 import androidx.core.content.res.ResourcesCompat;
 import android.os.Build.VERSION;
@@ -161,10 +162,13 @@ public class VideoCardPresenter extends LongClickPresenter {
                 boolean round = view.getMainImageView().getClipToOutline();
                 if (round) {
                     outline.setShape(GradientDrawable.OVAL);
+                    // Avatar: the ring goes around the circle, not around the (padded) square card
+                    int inset = view.getMainImageView().getPaddingLeft();
+                    wrapper.setForeground(inset > 0 ? new InsetDrawable(outline, inset) : outline);
                 } else {
                     outline.setCornerRadius(12 * d);
+                    wrapper.setForeground(outline);
                 }
-                wrapper.setForeground(outline);
             } else {
                 wrapper.setForeground(null);
             }
@@ -212,6 +216,7 @@ public class VideoCardPresenter extends LongClickPresenter {
         }
 
         // Cards are recycled: undo the round avatar look
+        cardView.getMainImageView().setPadding(0, 0, 0, 0);
         cardView.getMainImageView().setClipToOutline(false);
         cardView.getMainImageView().setOutlineProvider(ViewOutlineProvider.BACKGROUND);
         cardView.getMainImageView().setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -254,20 +259,24 @@ public class VideoCardPresenter extends LongClickPresenter {
     }
 
     /**
-     * JoTube: avatar is drawn as a circle (~60% of the card height) in the middle of the card.
+     * JoTube: avatar is drawn as a circle (~60% of the card height) in the middle of a square card as high as the
+     * thumbnails (the card keeps its width for the channel name, the titles line up with the video cards).
      * The source is requested in a bigger size (the default one is tiny) and scaled down: sharp result.
      */
     private void bindChannelAvatar(ComplexImageCardView cardView, Context context, Video video) {
-        // A round button: the whole picture is a circle (the card is as wide as it is high), about 60% of the
-        // thumbnail height like YouTube's channel shelves (the full height made the avatars too big)
+        // A round button about 60% of the thumbnail height like YouTube's channel shelves (the full height made the
+        // avatars too big). The card stays mHeight x mHeight, the padding centers the circle in it.
         int size = Math.max(Math.round(mHeight * 0.6f), 1);
-        cardView.setMainImageDimensions(size, size);
+        int padding = (mHeight - size) / 2;
+        cardView.setMainImageDimensions(mHeight, mHeight);
         ImageView imageView = cardView.getMainImageView();
+        imageView.setPadding(padding, padding, padding, padding);
         imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
         imageView.setOutlineProvider(new ViewOutlineProvider() {
             @Override
             public void getOutline(View view, Outline outline) {
-                outline.setOval(0, 0, view.getWidth(), view.getHeight());
+                outline.setOval(view.getPaddingLeft(), view.getPaddingTop(),
+                        view.getWidth() - view.getPaddingRight(), view.getHeight() - view.getPaddingBottom());
             }
         });
         imageView.setClipToOutline(true);
