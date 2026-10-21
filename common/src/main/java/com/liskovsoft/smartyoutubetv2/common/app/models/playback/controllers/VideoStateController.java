@@ -596,6 +596,7 @@ public class VideoStateController extends BasePlayerController {
         if (item.isLive && (state == null || state.durationMs - state.positionMs < Math.max(RESTORE_LIVE_BUFFER_MS, getLiveThreshold()))) {
             // Add buffer. Should I take into account segment offset???
             state = new State(item, getPlayer().getDurationMs() - getLiveBuffer());
+            Log.d(TAG, "Live start: durationMs=%s position=%s buffer=%s", getPlayer().getDurationMs(), state.positionMs, getLiveBuffer());
         }
 
         // Do I need to check that item isn't live? (state != null && !item.isLive)
