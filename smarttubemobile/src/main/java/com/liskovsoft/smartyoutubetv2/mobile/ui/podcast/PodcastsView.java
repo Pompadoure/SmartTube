@@ -322,13 +322,11 @@ public final class PodcastsView extends LinearLayout {
         new AlertDialog.Builder(mActivity, android.R.style.Theme_Material_Dialog_Alert)
                 .setTitle(episode.title)
                 .setItems(new String[]{"Spela härnäst", "Lägg till i kön"}, (d, which) -> {
-                    boolean wasActive = PodcastPlayer.isActive();
-                    if (which == 0) {
-                        PodcastPlayer.playNext(mActivity, episode);
-                    } else {
-                        PodcastPlayer.addToQueue(mActivity, episode);
-                    }
-                    Toast.makeText(mActivity, wasActive ? (which == 0 ? "Spelas härnäst" : "Tillagd i kön") : "Spelas nu", Toast.LENGTH_SHORT).show();
+                    int result = which == 0 ? PodcastPlayer.playNext(mActivity, episode) : PodcastPlayer.addToQueue(mActivity, episode);
+                    String message = result == PodcastPlayer.ENQUEUE_STARTED ? "Spelas nu"
+                            : result == PodcastPlayer.ENQUEUE_QUEUED ? (which == 0 ? "Spelas härnäst" : "Tillagd i kön")
+                            : "Spelas redan";
+                    Toast.makeText(mActivity, message, Toast.LENGTH_SHORT).show();
                 })
                 .show();
     }

@@ -99,11 +99,12 @@ public final class PodcastPlayer {
             return;
         }
 
+        // JoTube: the episodes the user queued stay next (after the picked one), then the rest of the list
+        // (read before the old list is replaced)
+        List<PodcastRepository.Episode> queued = queued();
+
         ExoPlayer player = get(context);
         sQueue = new ArrayList<>(queue);
-
-        // JoTube: the episodes the user queued stay next (after the picked one), then the rest of the list
-        List<PodcastRepository.Episode> queued = queued();
         sQueued.clear();
         PodcastRepository.Episode picked = sQueue.get(index);
         for (int i = queued.size() - 1; i >= 0; i--) {
@@ -177,37 +178,50 @@ public final class PodcastPlayer {
         sQueueListener = listener;
     }
 
+    /** Removes [listener] only if it is still the one listening (another screen may have taken over). */
+    public static void removeQueueListener(Runnable listener) {
+        if (sQueueListener == listener) {
+            sQueueListener = null;
+        }
+    }
+
     private static void notifyQueueChanged() {
         if (sQueueListener != null) {
             sQueueListener.run();
         }
     }
 
+    public static final int ENQUEUE_NONE = 0;
+    public static final int ENQUEUE_QUEUED = 1;
+    public static final int ENQUEUE_STARTED = 2;
+
     /** "Spela härnäst": right after the playing episode. Starts it when nothing plays. */
-    public static void playNext(Context context, PodcastRepository.Episode episode) {
-        enqueue(context, episode, true);
+    public static int playNext(Context context, PodcastRepository.Episode episode) {
+        return enqueue(context, episode, true);
     }
 
     /** "Lägg till i kön": after the other queued episodes. Starts it when nothing plays. */
-    public static void addToQueue(Context context, PodcastRepository.Episode episode) {
-        enqueue(context, episode, false);
+    public static int addToQueue(Context context, PodcastRepository.Episode episode) {
+        return enqueue(context, episode, false);
     }
 
-    private static void enqueue(Context context, PodcastRepository.Episode episode, boolean next) {
+    private static int enqueue(Context context, PodcastRepository.Episode episode, boolean next) {
         if (episode == null || episode.audioUrl == null) {
-            return;
+            return ENQUEUE_NONE;
         }
 
-        if (!isActive()) {
+        // ended or failed: nothing would start the queued episode, so it plays now
+        if (!isActive() || sPlayer.getPlaybackState() == Player.STATE_ENDED || sPlayer.getPlaybackState() == Player.STATE_IDLE) {
             List<PodcastRepository.Episode> single = new ArrayList<>();
             single.add(episode);
+            sQueued.clear();
             play(context, single, 0);
-            return;
+            return ENQUEUE_STARTED;
         }
 
         PodcastRepository.Episode playing = current();
         if (sameEpisode(playing, episode)) {
-            return; // already playing
+            return ENQUEUE_NONE; // already playing
         }
 
         // the user picked it: it counts as not listened to again (like a tap on it)
@@ -224,6 +238,17 @@ public final class PodcastPlayer {
         sPlayer.addMediaItem(position, toMediaItem(episode));
         sQueued.add(episode);
         notifyQueueChanged();
+        return ENQUEUE_QUEUED;
+    }
+
+    /** The index of [episode] after the playing one (the same instance can also be earlier in the list). */
+    private static int indexOfUpcoming(PodcastRepository.Episode episode) {
+        for (int i = sPlayer.getCurrentMediaItemIndex() + 1; i < sQueue.size(); i++) {
+            if (sQueue.get(i) == episode) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     /** The queued episodes after the playing one, in playing order. */
@@ -277,8 +302,12 @@ public final class PodcastPlayer {
         if (sPlayer == null) {
             return;
         }
-        int index = sQueue.indexOf(episode);
+        int index = indexOfUpcoming(episode);
         if (index > sPlayer.getCurrentMediaItemIndex()) {
+            // the queued episodes it skips are left behind
+            for (int i = sPlayer.getCurrentMediaItemIndex() + 1; i < index; i++) {
+                sQueued.remove(sQueue.get(i));
+            }
             PodcastRepository.clearFinished(sContext, episode);
             sPlayer.seekToDefaultPosition(index);
             sPlayer.setPlayWhenReady(true);
@@ -292,7 +321,7 @@ public final class PodcastPlayer {
         }
         int start = sPlayer.getCurrentMediaItemIndex() + 1;
         for (int target = 0; target < order.size(); target++) {
-            int from = sQueue.indexOf(order.get(target));
+            int from = indexOfUpcoming(order.get(target));
             int to = start + target;
             if (from < start || from == to) {
                 continue;
@@ -343,6 +372,7 @@ public final class PodcastPlayer {
         sPlayer.stop();
         sPlayer.clearMediaItems();
         sQueued.clear();
+        sQueue = new ArrayList<>();
         notifyQueueChanged();
         MediaPlaybackService.unbindPodcast();
     }

@@ -42,6 +42,8 @@ public class PodcastPlayerActivity extends Activity {
     private FrameLayout mFrame;
     private FrameLayout mQueueSheet;
     private TextView mQueueButton;
+    private final Runnable mQueueListener = this::onQueueChanged;
+    private boolean mSkipQueueRefresh;
 
     private final Runnable mTick = new Runnable() {
         @Override
@@ -182,7 +184,7 @@ public class PodcastPlayerActivity extends Activity {
             return insets;
         });
         setContentView(mFrame);
-        PodcastPlayer.setQueueListener(this::onQueueChanged);
+        PodcastPlayer.setQueueListener(mQueueListener);
         update();
     }
 
@@ -243,7 +245,7 @@ public class PodcastPlayerActivity extends Activity {
     @Override
     protected void onDestroy() {
         mDestroyed = true;
-        PodcastPlayer.setQueueListener(null);
+        PodcastPlayer.removeQueueListener(mQueueListener);
         super.onDestroy();
     }
 
@@ -273,9 +275,11 @@ public class PodcastPlayerActivity extends Activity {
                 return;
             }
             mQueueButton.setText(queueLabel());
-            if (mQueueSheet != null) {
+            // after a drag the list already shows the new order (no rebuild: no jump, no flicker)
+            if (mQueueSheet != null && !mSkipQueueRefresh) {
                 refreshQueue();
             }
+            mSkipQueueRefresh = false;
         });
     }
 
@@ -340,6 +344,7 @@ public class PodcastPlayerActivity extends Activity {
 
             @Override
             public void onReordered(List<PodcastRepository.Episode> order) {
+                mSkipQueueRefresh = true;
                 PodcastPlayer.reorder(order);
             }
         });
