@@ -100,13 +100,21 @@ public class DashManifestParser2 {
             return false;
         }
 
+        int liveCount = 0;
+
         for (MediaFormat format : formats) {
+            if (!MediaFormatUtils.checkMediaUrl(format)) {
+                continue; // skipped by append() too
+            }
+
             if (!MediaFormatUtils.isLiveMedia(format)) {
                 return false;
             }
+
+            liveCount++;
         }
 
-        return true;
+        return liveCount > 0;
     }
 
     /** The visitor cookie of the last parsed format info (the fork kept it in DashManifest.visitorCookie). */
