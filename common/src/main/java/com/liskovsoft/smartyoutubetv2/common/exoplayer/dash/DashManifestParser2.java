@@ -162,7 +162,9 @@ public class DashManifestParser2 {
             append(format);
         }
 
-        if (formatInfo.getSubtitles() != null) {
+        // JoTube M3: not on a dynamic live: a subtitle file is a single (explicit) segment and Media3 stops moving the live
+        // window when any adaptation set has an explicit index (DashMediaSource.isIndexExplicit)
+        if (formatInfo.getSubtitles() != null && !mIsDynamicLive) {
             append(formatInfo.getSubtitles());
         }
 

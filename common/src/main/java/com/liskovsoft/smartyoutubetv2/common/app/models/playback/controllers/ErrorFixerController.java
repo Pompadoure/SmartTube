@@ -30,6 +30,10 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
     private VideoLoaderController mVideoLoaderController;
     private String mSabrReloadVideoId;
     private int mSabrReloadAttempts;
+    // JoTube M3: live segment 404 reloads per video (then the common handling, like before)
+    private static final int MAX_LIVE_NOT_FOUND_RELOADS = 3;
+    private String mLiveNotFoundVideoId;
+    private int mLiveNotFoundReloads;
 
     @Override
     public void onInit() {
@@ -174,6 +178,15 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
         return true;
     }
 
+    private int countLiveNotFoundReload(String videoId) {
+        if (!Helpers.equals(videoId, mLiveNotFoundVideoId)) {
+            mLiveNotFoundVideoId = videoId;
+            mLiveNotFoundReloads = 0;
+        }
+
+        return ++mLiveNotFoundReloads;
+    }
+
     private static SabrReloadPlayerError findSabrReloadPlayerError(Throwable error) {
         // Media3 wraps it: PlaybackException -> UnexpectedLoaderException -> SabrReloadPlayerError
         for (int depth = 0; error != null && depth < 10; depth++) {
@@ -234,7 +247,12 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
             showMessage = false;
 
             boolean isGeneralError = Helpers.startsWithAny(errorContent, "Response code: 429", "Response code: 500");
-            if (isGeneralError && isSubtitlesEnabled()) {
+            if (getVideo() != null && getVideo().isLive && Helpers.startsWithAny(errorContent, "Response code: 404")
+                    && countLiveNotFoundReload(getVideo().videoId) <= MAX_LIVE_NOT_FOUND_RELOADS) {
+                // JoTube M3: a live segment that isn't there (the broadcast ended or the live edge estimate is ahead):
+                // only the reload below (fresh format info and live edge), the client is fine
+                Log.d(TAG, "Live segment not found. Reloading the live stream...");
+            } else if (isGeneralError && isSubtitlesEnabled()) {
                 disableSubtitles(); // Response code: 429
             } else if (isGeneralError && getPlayerTweaksData().isHighBitrateFormatsEnabled()) {
                 getPlayerTweaksData().setHighBitrateFormatsEnabled(false); // Response code: 429
