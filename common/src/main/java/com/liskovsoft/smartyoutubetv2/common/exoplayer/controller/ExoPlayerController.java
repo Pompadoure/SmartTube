@@ -859,6 +859,9 @@ public class ExoPlayerController implements Player.Listener {
         } else if (isPausePressed) {
             mEventListener.onPause();
         } else if (isPlaybackEnded) {
+            // JoTube M3: evidence for live streams that end too early
+            Log.d(TAG, "Playback ended: position=%s duration=%s live=%s", getPositionMs(), getDurationMs(),
+                    mPlayer != null && mPlayer.isCurrentMediaItemLive());
             mEventListener.onPlayEnd();
             mIsEnded = true;
         } else if (isBuffering) {
