@@ -562,6 +562,13 @@ public class VideoLoaderController extends BasePlayerController {
             MessageHelpers.showMessage(getContext(), formatInfo.getPaidContentText());
         }
 
+        if (formatInfo.isLive()) {
+            // JoTube M3: which live sources YouTube sent (evidence for live playback problems)
+            Log.d(TAG, "Live sources: dashUrl=%s hlsUrl=%s dashFormats=%s startTimeMs=%s length=%s",
+                    formatInfo.containsDashUrl(), formatInfo.containsHlsUrl(), formatInfo.containsDashFormats(),
+                    formatInfo.getStartTimeMs(), formatInfo.getLengthSeconds());
+        }
+
         if (formatInfo.isUnplayable()) {
             if (isEmbedPlayer()) {
                 player.finish();
@@ -801,6 +808,15 @@ public class VideoLoaderController extends BasePlayerController {
         }
 
         if (formatInfo.isLive() && getPlayerTweaksData().isHlsStreamsForced() && formatInfo.containsHlsUrl()) {
+            return false;
+        }
+
+        // JoTube M3: an ongoing live stream must not use the manifest generated from the formats. It is static and
+        // its period ends at lengthSeconds at fetch time; playback starts the live buffer before that end, so Media3
+        // reaches STATE_ENDED after a few seconds and autoplay opens the next video (device log 2026-10-21: live
+        // 1LHnDtr2f5w "Loading regular video in dash format", first frame 11:46:16.7, next video 11:46:22.2).
+        // The live manifests (dash url, else hls url) are dynamic and follow the live edge.
+        if (formatInfo.isLive() && (formatInfo.containsDashUrl() || formatInfo.containsHlsUrl())) {
             return false;
         }
 
