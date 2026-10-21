@@ -89,9 +89,13 @@ public class MiniPlayerBar extends LinearLayout {
         });
         addView(mPlay, new LayoutParams(Ui.dp(activity, 48), Ui.dp(activity, 48)));
 
+        // JoTube: a light, smaller cross in the secondary text color with a round touch feedback
         ImageView close = new ImageView(activity);
-        close.setImageResource(R.drawable.ic_close);
-        close.setPadding(Ui.dp(activity, 12), Ui.dp(activity, 12), Ui.dp(activity, 12), Ui.dp(activity, 12));
+        close.setImageResource(R.drawable.ic_close_thin);
+        close.setImageTintList(android.content.res.ColorStateList.valueOf(activity.getColor(R.color.yt_text_secondary)));
+        close.setBackgroundResource(R.drawable.bg_icon_round_ripple);
+        close.setPadding(Ui.dp(activity, 13), Ui.dp(activity, 13), Ui.dp(activity, 13), Ui.dp(activity, 13));
+        close.setContentDescription(activity.getString(android.R.string.cancel));
         close.setOnClickListener(v -> {
             if (mPodcast) {
                 PodcastPlayer.stop();

@@ -16,7 +16,10 @@ import androidx.media3.exoplayer.ExoPlayer;
 import com.liskovsoft.smartyoutubetv2.mobile.ui.playback.MediaPlaybackService;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 
 /**
  * The podcast player: one process wide ExoPlayer that lives with the media service (not with a screen), so the
@@ -28,6 +31,9 @@ public final class PodcastPlayer {
     private static List<PodcastRepository.Episode> sQueue = new ArrayList<>();
     private static Context sContext;
     private static float sSpeed = 1f;
+    /** Episodes the user queued ("Spela härnäst" / "Lägg till i kön"): a block right after the playing one. */
+    private static final Set<PodcastRepository.Episode> sQueued = Collections.newSetFromMap(new IdentityHashMap<>());
+    private static Runnable sQueueListener;
 
     private PodcastPlayer() {
     }
@@ -63,6 +69,10 @@ public final class PodcastPlayer {
 
                 @Override
                 public void onMediaItemTransition(MediaItem item, int reason) {
+                    // a queued episode that starts is no longer "next"
+                    sQueued.remove(current());
+                    notifyQueueChanged();
+
                     // the next episode of the queue starts where the listener left it
                     if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK) {
                         PodcastRepository.Episode episode = current();
@@ -92,19 +102,27 @@ public final class PodcastPlayer {
         ExoPlayer player = get(context);
         sQueue = new ArrayList<>(queue);
 
+        // JoTube: the episodes the user queued stay next (after the picked one), then the rest of the list
+        List<PodcastRepository.Episode> queued = queued();
+        sQueued.clear();
+        PodcastRepository.Episode picked = sQueue.get(index);
+        for (int i = queued.size() - 1; i >= 0; i--) {
+            if (sameEpisode(queued.get(i), picked)) {
+                queued.remove(i); // the picked one plays now
+            }
+        }
+        if (!queued.isEmpty()) {
+            for (PodcastRepository.Episode episode : queued) {
+                removeByKey(sQueue, episode, picked);
+            }
+            index = sQueue.indexOf(picked);
+            sQueue.addAll(index + 1, queued);
+            sQueued.addAll(queued);
+        }
+
         List<MediaItem> items = new ArrayList<>();
         for (PodcastRepository.Episode episode : sQueue) {
-            MediaMetadata.Builder metadata = new MediaMetadata.Builder()
-                    .setTitle(episode.title)
-                    .setArtist(episode.feedTitle);
-            if (episode.image != null) {
-                metadata.setArtworkUri(Uri.parse(episode.image));
-            }
-            items.add(new MediaItem.Builder()
-                    .setMediaId(episode.guid != null ? episode.guid : episode.audioUrl)
-                    .setUri(episode.audioUrl)
-                    .setMediaMetadata(metadata.build())
-                    .build());
+            items.add(toMediaItem(episode));
         }
 
         // Only an episode the user picks counts as listened to again (not the ones that follow in the queue)
@@ -118,6 +136,171 @@ public final class PodcastPlayer {
         MediaPlaybackService.bindPodcast(sContext, player);
         sHandler.removeCallbacks(sSaveTick);
         sHandler.postDelayed(sSaveTick, 5_000);
+        notifyQueueChanged();
+    }
+
+    private static MediaItem toMediaItem(PodcastRepository.Episode episode) {
+        MediaMetadata.Builder metadata = new MediaMetadata.Builder()
+                .setTitle(episode.title)
+                .setArtist(episode.feedTitle);
+        if (episode.image != null) {
+            metadata.setArtworkUri(Uri.parse(episode.image));
+        }
+        return new MediaItem.Builder()
+                .setMediaId(key(episode))
+                .setUri(episode.audioUrl)
+                .setMediaMetadata(metadata.build())
+                .build();
+    }
+
+    private static String key(PodcastRepository.Episode episode) {
+        return episode.guid != null ? episode.guid : episode.audioUrl;
+    }
+
+    private static boolean sameEpisode(PodcastRepository.Episode a, PodcastRepository.Episode b) {
+        return a == b || (a != null && b != null && key(a) != null && key(a).equals(key(b)));
+    }
+
+    /** Removes [episode] (same guid/url) from [list], but never [keep]. */
+    private static void removeByKey(List<PodcastRepository.Episode> list, PodcastRepository.Episode episode, PodcastRepository.Episode keep) {
+        for (int i = list.size() - 1; i >= 0; i--) {
+            if (list.get(i) != keep && sameEpisode(list.get(i), episode)) {
+                list.remove(i);
+            }
+        }
+    }
+
+    ///////////////////// queue
+
+    /** The queue screen listens (one at a time). */
+    public static void setQueueListener(Runnable listener) {
+        sQueueListener = listener;
+    }
+
+    private static void notifyQueueChanged() {
+        if (sQueueListener != null) {
+            sQueueListener.run();
+        }
+    }
+
+    /** "Spela härnäst": right after the playing episode. Starts it when nothing plays. */
+    public static void playNext(Context context, PodcastRepository.Episode episode) {
+        enqueue(context, episode, true);
+    }
+
+    /** "Lägg till i kön": after the other queued episodes. Starts it when nothing plays. */
+    public static void addToQueue(Context context, PodcastRepository.Episode episode) {
+        enqueue(context, episode, false);
+    }
+
+    private static void enqueue(Context context, PodcastRepository.Episode episode, boolean next) {
+        if (episode == null || episode.audioUrl == null) {
+            return;
+        }
+
+        if (!isActive()) {
+            List<PodcastRepository.Episode> single = new ArrayList<>();
+            single.add(episode);
+            play(context, single, 0);
+            return;
+        }
+
+        PodcastRepository.Episode playing = current();
+        if (sameEpisode(playing, episode)) {
+            return; // already playing
+        }
+
+        // the user picked it: it counts as not listened to again (like a tap on it)
+        PodcastRepository.clearFinished(sContext, episode);
+
+        removeUpcoming(episode);
+        int position = sPlayer.getCurrentMediaItemIndex() + 1;
+        if (!next) {
+            while (position < sQueue.size() && sQueued.contains(sQueue.get(position))) {
+                position++;
+            }
+        }
+        sQueue.add(position, episode);
+        sPlayer.addMediaItem(position, toMediaItem(episode));
+        sQueued.add(episode);
+        notifyQueueChanged();
+    }
+
+    /** The queued episodes after the playing one, in playing order. */
+    public static List<PodcastRepository.Episode> queued() {
+        List<PodcastRepository.Episode> result = new ArrayList<>();
+        if (sPlayer == null) {
+            return result;
+        }
+        for (int i = sPlayer.getCurrentMediaItemIndex() + 1; i < sQueue.size() && sQueued.contains(sQueue.get(i)); i++) {
+            result.add(sQueue.get(i));
+        }
+        return result;
+    }
+
+    /** The episodes that follow the queued ones (from the list the episode was started from). */
+    public static List<PodcastRepository.Episode> rest() {
+        List<PodcastRepository.Episode> result = new ArrayList<>();
+        if (sPlayer == null) {
+            return result;
+        }
+        for (int i = sPlayer.getCurrentMediaItemIndex() + 1 + queued().size(); i < sQueue.size(); i++) {
+            result.add(sQueue.get(i));
+        }
+        return result;
+    }
+
+    /** Removes an upcoming episode (queued or from the list). */
+    public static void remove(PodcastRepository.Episode episode) {
+        if (removeUpcoming(episode)) {
+            notifyQueueChanged();
+        }
+    }
+
+    private static boolean removeUpcoming(PodcastRepository.Episode episode) {
+        if (sPlayer == null) {
+            return false;
+        }
+        boolean removed = false;
+        for (int i = sQueue.size() - 1; i > sPlayer.getCurrentMediaItemIndex(); i--) {
+            if (sameEpisode(sQueue.get(i), episode)) {
+                sQueued.remove(sQueue.remove(i));
+                sPlayer.removeMediaItem(i);
+                removed = true;
+            }
+        }
+        return removed;
+    }
+
+    /** Plays an upcoming episode now (it resumes where it was left, see onMediaItemTransition). */
+    public static void jumpTo(PodcastRepository.Episode episode) {
+        if (sPlayer == null) {
+            return;
+        }
+        int index = sQueue.indexOf(episode);
+        if (index > sPlayer.getCurrentMediaItemIndex()) {
+            PodcastRepository.clearFinished(sContext, episode);
+            sPlayer.seekToDefaultPosition(index);
+            sPlayer.setPlayWhenReady(true);
+        }
+    }
+
+    /** The user dragged the queued episodes: [order] is their new order. */
+    public static void reorder(List<PodcastRepository.Episode> order) {
+        if (sPlayer == null) {
+            return;
+        }
+        int start = sPlayer.getCurrentMediaItemIndex() + 1;
+        for (int target = 0; target < order.size(); target++) {
+            int from = sQueue.indexOf(order.get(target));
+            int to = start + target;
+            if (from < start || from == to) {
+                continue;
+            }
+            sQueue.add(to, sQueue.remove(from));
+            sPlayer.moveMediaItem(from, to);
+        }
+        notifyQueueChanged();
     }
 
     public static PodcastRepository.Episode current() {
@@ -159,6 +342,8 @@ public final class PodcastPlayer {
         sHandler.removeCallbacks(sSaveTick);
         sPlayer.stop();
         sPlayer.clearMediaItems();
+        sQueued.clear();
+        notifyQueueChanged();
         MediaPlaybackService.unbindPodcast();
     }
 

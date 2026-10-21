@@ -318,6 +318,21 @@ public final class PodcastsView extends LinearLayout {
         mActivity.startActivity(new Intent(mActivity, PodcastPlayerActivity.class));
     }
 
+    private void showEpisodeMenu(PodcastRepository.Episode episode) {
+        new AlertDialog.Builder(mActivity, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle(episode.title)
+                .setItems(new String[]{"Spela härnäst", "Lägg till i kön"}, (d, which) -> {
+                    boolean wasActive = PodcastPlayer.isActive();
+                    if (which == 0) {
+                        PodcastPlayer.playNext(mActivity, episode);
+                    } else {
+                        PodcastPlayer.addToQueue(mActivity, episode);
+                    }
+                    Toast.makeText(mActivity, wasActive ? (which == 0 ? "Spelas härnäst" : "Tillagd i kön") : "Spelas nu", Toast.LENGTH_SHORT).show();
+                })
+                .show();
+    }
+
     private static String formatDuration(long ms) {
         long minutes = ms / 60_000;
         return minutes >= 60 ? (minutes / 60) + " h " + (minutes % 60) + " min" : minutes + " min";
@@ -481,6 +496,11 @@ public final class PodcastsView extends LinearLayout {
                 cover.setImageDrawable(null);
             }
             row.setOnClickListener(v -> playEpisode(episode));
+            // JoTube: the podcast queue
+            row.setOnLongClickListener(v -> {
+                showEpisodeMenu(episode);
+                return true;
+            });
         }
 
         private void bindRail(RecyclerView rail, final List<PodcastRepository.Feed> feeds) {

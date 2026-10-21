@@ -23,6 +23,7 @@ import com.liskovsoft.smartyoutubetv2.mobile.R;
 import com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.RatioFrameLayout;
 import com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.Ui;
 
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -38,6 +39,9 @@ public class PodcastPlayerActivity extends Activity {
     private boolean mSeeking;
     private PodcastRepository.Episode mShown;
     private boolean mDestroyed;
+    private FrameLayout mFrame;
+    private FrameLayout mQueueSheet;
+    private TextView mQueueButton;
 
     private final Runnable mTick = new Runnable() {
         @Override
@@ -70,7 +74,10 @@ public class PodcastPlayerActivity extends Activity {
         down.setOnClickListener(v -> finish());
         top.addView(down);
         top.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1f));
-        ImageView stop = icon(R.drawable.ic_close, 48, 12);
+        // JoTube: the same light cross as the mini player
+        ImageView stop = icon(R.drawable.ic_close_thin, 48, 13);
+        stop.setImageTintList(android.content.res.ColorStateList.valueOf(getColor(R.color.yt_text_secondary)));
+        stop.setBackgroundResource(R.drawable.bg_icon_round_ripple);
         stop.setOnClickListener(v -> {
             PodcastPlayer.stop();
             finish();
@@ -155,17 +162,27 @@ public class PodcastPlayerActivity extends Activity {
         controlParams.topMargin = Ui.dp(this, 16);
         root.addView(controls, controlParams);
 
+        // JoTube: the speed and the queue side by side
+        LinearLayout extras = new LinearLayout(this);
+        extras.setGravity(Gravity.CENTER);
         mSpeed = textButton(speedLabel(), v -> cycleSpeed());
-        LinearLayout.LayoutParams speedParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        speedParams.gravity = Gravity.CENTER_HORIZONTAL;
-        speedParams.topMargin = Ui.dp(this, 8);
-        root.addView(mSpeed, speedParams);
+        extras.addView(mSpeed);
+        mQueueButton = textButton(queueLabel(), v -> showQueue(true));
+        extras.addView(mQueueButton);
+        LinearLayout.LayoutParams extrasParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        extrasParams.topMargin = Ui.dp(this, 8);
+        root.addView(extras, extrasParams);
 
-        root.setOnApplyWindowInsetsListener((v, insets) -> {
+        // the queue sheet goes over the player (same frame)
+        mFrame = new FrameLayout(this);
+        mFrame.setBackgroundColor(getColor(R.color.yt_bg));
+        mFrame.addView(root, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        mFrame.setOnApplyWindowInsetsListener((v, insets) -> {
             v.setPadding(0, insets.getSystemWindowInsetTop(), 0, insets.getSystemWindowInsetBottom());
             return insets;
         });
-        setContentView(root);
+        setContentView(mFrame);
+        PodcastPlayer.setQueueListener(this::onQueueChanged);
         update();
     }
 
@@ -226,7 +243,108 @@ public class PodcastPlayerActivity extends Activity {
     @Override
     protected void onDestroy() {
         mDestroyed = true;
+        PodcastPlayer.setQueueListener(null);
         super.onDestroy();
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (mQueueSheet != null) {
+            showQueue(false);
+            return;
+        }
+        super.onBackPressed();
+    }
+
+    ///////////////////// queue
+
+    private String queueLabel() {
+        int count = PodcastPlayer.queued().size();
+        return count > 0 ? "Kö (" + count + ")" : "Kö";
+    }
+
+    private void onQueueChanged() {
+        if (mDestroyed) {
+            return;
+        }
+        // posted: it can come from a drag that is ending (the list is rebuilt)
+        mFrame.post(() -> {
+            if (mDestroyed) {
+                return;
+            }
+            mQueueButton.setText(queueLabel());
+            if (mQueueSheet != null) {
+                refreshQueue();
+            }
+        });
+    }
+
+    private void showQueue(boolean show) {
+        if (!show) {
+            if (mQueueSheet != null) {
+                mFrame.removeView(mQueueSheet);
+                mQueueSheet = null;
+            }
+            return;
+        }
+
+        if (mQueueSheet == null) {
+            mQueueSheet = new FrameLayout(this);
+            mQueueSheet.setBackgroundColor(getColor(R.color.yt_bg));
+            mQueueSheet.setClickable(true);
+            mFrame.addView(mQueueSheet, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        }
+        refreshQueue();
+    }
+
+    private void refreshQueue() {
+        mQueueSheet.removeAllViews();
+        LinearLayout column = new LinearLayout(this);
+        column.setOrientation(LinearLayout.VERTICAL);
+
+        LinearLayout bar = new LinearLayout(this);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        ImageView close = icon(R.drawable.ic_chevron_down, 48, 12);
+        close.setOnClickListener(v -> showQueue(false));
+        bar.addView(close);
+        column.addView(bar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 52)));
+
+        List<PodcastRepository.Episode> queued = PodcastPlayer.queued();
+        List<PodcastRepository.Episode> rest = PodcastPlayer.rest();
+        View queue = PodcastQueueView.create(this, PodcastPlayer.current(), queued, rest, new PodcastQueueView.Listener() {
+            @Override
+            public void onPlay(PodcastRepository.Episode episode) {
+                if (episode != PodcastPlayer.current()) {
+                    PodcastPlayer.jumpTo(episode);
+                }
+                showQueue(false);
+            }
+
+            @Override
+            public void onLongPress(PodcastRepository.Episode episode) {
+                if (episode == PodcastPlayer.current()) {
+                    return;
+                }
+                new android.app.AlertDialog.Builder(PodcastPlayerActivity.this, android.R.style.Theme_Material_Dialog_Alert)
+                        .setTitle(episode.title)
+                        .setItems(new String[]{"Spela nu", "Ta bort ur kön"}, (d, which) -> {
+                            if (which == 0) {
+                                PodcastPlayer.jumpTo(episode);
+                                showQueue(false);
+                            } else {
+                                PodcastPlayer.remove(episode);
+                            }
+                        })
+                        .show();
+            }
+
+            @Override
+            public void onReordered(List<PodcastRepository.Episode> order) {
+                PodcastPlayer.reorder(order);
+            }
+        });
+        column.addView(queue, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        mQueueSheet.addView(column, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
     private void update() {
