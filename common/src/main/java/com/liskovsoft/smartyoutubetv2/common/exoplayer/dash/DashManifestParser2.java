@@ -88,7 +88,25 @@ public class DashManifestParser2 {
      */
     public static boolean isDynamicLive(MediaItemFormatInfo formatInfo) {
         return formatInfo.isLive() && formatInfo.getStartTimeMs() > 0 && formatInfo.getSegmentDurationUs() > 0
-                && formatInfo.getStartSegmentNum() >= 0;
+                && formatInfo.getStartSegmentNum() >= 0 && areAllLiveMedia(formatInfo.getAdaptiveFormats());
+    }
+
+    /**
+     * Only live formats get a segment template. Any other one would get an explicit index and Media3 would stop moving
+     * the live window (DashMediaSource.isIndexExplicit): then the static manifest is used, like before.
+     */
+    private static boolean areAllLiveMedia(List<MediaFormat> formats) {
+        if (formats == null || formats.isEmpty()) {
+            return false;
+        }
+
+        for (MediaFormat format : formats) {
+            if (!MediaFormatUtils.isLiveMedia(format)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /** The visitor cookie of the last parsed format info (the fork kept it in DashManifest.visitorCookie). */
