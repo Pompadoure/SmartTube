@@ -67,6 +67,11 @@ public class VideoStateController extends BasePlayerController {
 
         if (!item.equals(getVideo())) {
             mNewVideoTimeMs = System.currentTimeMillis();
+
+            // JoTube: no Live button from the previous (live) video until this one is loaded
+            if (getPlayer() != null && !item.isLive) {
+                getPlayer().setButtonState(R.id.action_live, PlayerUI.BUTTON_DISABLED);
+            }
         }
 
         setPlayEnabled(true); // video just added

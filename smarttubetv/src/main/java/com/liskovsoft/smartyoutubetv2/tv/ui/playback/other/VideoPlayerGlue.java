@@ -379,7 +379,10 @@ public class VideoPlayerGlue extends MaxControlsVideoPlayerGlue<PlayerAdapter> i
     @Override
     protected void onUpdateProgress() {
         super.onUpdateProgress();
-        updateLiveButton();
+
+        if (isControlsVisible()) {
+            updateLiveButton();
+        }
     }
 
     public void setChannelIcon(String iconUrl) {
