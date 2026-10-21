@@ -11,6 +11,7 @@ import android.graphics.Typeface;
 import androidx.core.content.res.ResourcesCompat;
 import android.os.Build.VERSION;
 import android.util.Pair;
+import android.view.Gravity;
 import android.view.View;
 import android.graphics.Outline;
 import android.view.ViewOutlineProvider;
@@ -53,6 +54,7 @@ public class VideoCardPresenter extends LongClickPresenter {
     private int mThumbQuality;
     private int mWidth;
     private int mHeight;
+    private int mDefaultTitleGravity = Integer.MIN_VALUE;
 
     @Override
     public ViewHolder onCreateViewHolder(ViewGroup parent) {
@@ -203,6 +205,7 @@ public class VideoCardPresenter extends LongClickPresenter {
         }
 
         cardView.setMainImageDimensions(mWidth, mHeight);
+        updateAvatarCardText(cardView, isAvatarCard(video));
 
         if (context instanceof Activity && ((Activity) context).isDestroyed()) {
             // Glide.with(context): IllegalArgumentException: You cannot start a load for a destroyed activity
@@ -259,14 +262,30 @@ public class VideoCardPresenter extends LongClickPresenter {
     }
 
     /**
-     * JoTube: avatar is drawn as a circle (~60% of the card height) in the middle of a square card as high as the
+     * JoTube: channel avatar cards show only the channel name, centered under the circle (no @handle/subscribers).
+     * Cards are recycled, so the normal look is restored for the other cards.
+     */
+    private void updateAvatarCardText(ComplexImageCardView cardView, boolean avatar) {
+        cardView.enableContent(isContentEnabled() && !avatar);
+
+        TextView titleText = cardView.findViewById(R.id.title_text);
+        if (titleText != null) {
+            if (mDefaultTitleGravity == Integer.MIN_VALUE) {
+                mDefaultTitleGravity = titleText.getGravity();
+            }
+            titleText.setGravity(avatar ? Gravity.CENTER_HORIZONTAL | Gravity.TOP : mDefaultTitleGravity);
+        }
+    }
+
+    /**
+     * JoTube: avatar is drawn as a circle (~45% of the card height) in the middle of a square card as high as the
      * thumbnails (the card keeps its width for the channel name, the titles line up with the video cards).
      * The source is requested in a bigger size (the default one is tiny) and scaled down: sharp result.
      */
     private void bindChannelAvatar(ComplexImageCardView cardView, Context context, Video video) {
-        // A round button about 60% of the thumbnail height like YouTube's channel shelves (the full height made the
-        // avatars too big). The card stays mHeight x mHeight, the padding centers the circle in it.
-        int size = Math.max(Math.round(mHeight * 0.6f), 1);
+        // A small round button, about 45% of the thumbnail height (the full height and 60% were too big).
+        // The card stays mHeight x mHeight, the padding centers the circle in it.
+        int size = Math.max(Math.round(mHeight * 0.45f), 1);
         int padding = (mHeight - size) / 2;
         cardView.setMainImageDimensions(mHeight, mHeight);
         ImageView imageView = cardView.getMainImageView();

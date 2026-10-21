@@ -1,5 +1,6 @@
 package com.liskovsoft.smartyoutubetv2.tv.presenter;
 
+import android.graphics.Color;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.os.Build.VERSION;
@@ -26,8 +27,8 @@ public class SettingsCardPresenter extends Presenter {
     public ViewHolder onCreateViewHolder(ViewGroup parent) {
         Context context = parent.getContext();
 
-        mDefaultBackgroundColor =
-                ContextCompat.getColor(context, Helpers.getThemeAttr(context, R.attr.cardDefaultBackground));
+        // JoTube: no card background in the menus (only the focused card is highlighted)
+        mDefaultBackgroundColor = Color.TRANSPARENT;
         mDefaultTextColor =
                 ContextCompat.getColor(context, R.color.card_default_text);
         mSelectedBackgroundColor =
