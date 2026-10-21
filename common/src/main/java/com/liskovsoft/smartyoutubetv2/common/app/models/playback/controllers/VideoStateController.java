@@ -231,6 +231,11 @@ public class VideoStateController extends BasePlayerController {
 
         // In this state video length is not undefined.
         restoreState();
+
+        // JoTube: the Live button is shown only while a live stream plays
+        if (getPlayer() != null) {
+            getPlayer().setButtonState(R.id.action_live, item != null && item.isLive ? PlayerUI.BUTTON_OFF : PlayerUI.BUTTON_DISABLED);
+        }
     }
 
     @Override
@@ -335,6 +340,9 @@ public class VideoStateController extends BasePlayerController {
     public void onButtonClicked(int buttonId, int buttonState) {
         if (buttonId == R.id.action_video_speed) {
             onSpeedClicked(buttonState == PlayerUI.BUTTON_ON);
+        } else if (buttonId == R.id.action_live) {
+            // JoTube: the Live button jumps to the live edge (nothing to do when already there)
+            seekToActualLivePosition();
         }
     }
 

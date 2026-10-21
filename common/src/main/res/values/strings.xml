@@ -492,6 +492,7 @@
     <string name="releases">Releases</string>
     <string name="prefer_avc_over_vp9">Codec selection: prefer avc over vp9</string>
     <string name="open_chat">Chat/Comments</string>
+    <string name="go_to_live">Live</string>
     <string name="open_comments">Open comments</string>
     <string name="place_chat_left">Place chat to the left</string>
     <string name="place_comments_left">Place comments to the left</string>

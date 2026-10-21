@@ -492,6 +492,7 @@
   <string name="releases">Versioner</string>
   <string name="prefer_avc_over_vp9">Val av kodek: föredra avc framför vp9</string>
   <string name="open_chat">Chatt/kommetarer</string>
+  <string name="go_to_live">Live</string>
   <string name="open_comments">Öppna kommentarer</string>
   <string name="place_chat_left">Placera chatt till vänster</string>
   <string name="place_comments_left">Placera kommentarer till vänster</string>

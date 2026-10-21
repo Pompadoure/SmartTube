@@ -40,6 +40,8 @@ import com.liskovsoft.smartyoutubetv2.tv.ui.playback.actions.ScreenDimmingAction
 import com.liskovsoft.smartyoutubetv2.tv.ui.playback.actions.SeekIntervalAction;
 import com.liskovsoft.smartyoutubetv2.tv.ui.playback.actions.ShareAction;
 import com.liskovsoft.smartyoutubetv2.tv.ui.playback.actions.SoundOffAction;
+import com.liskovsoft.smartyoutubetv2.tv.ui.playback.actions.LiveAction;
+import com.liskovsoft.smartyoutubetv2.common.app.models.playback.manager.PlayerUI;
 import com.liskovsoft.smartyoutubetv2.tv.ui.playback.actions.VideoInfoAction;
 import com.liskovsoft.smartyoutubetv2.tv.ui.playback.actions.PipAction;
 import com.liskovsoft.smartyoutubetv2.tv.ui.playback.actions.PlaybackQueueAction;
@@ -88,6 +90,10 @@ public class VideoPlayerGlue extends MaxControlsVideoPlayerGlue<PlayerAdapter> i
     private final PlayerTweaksData mPlayerTweaksData;
     private final GeneralData mGeneralData;
     private int mPreviousAction = KeyEvent.ACTION_UP;
+    // JoTube: "at the live edge" when the position is at most this far from the end of the live window
+    // (same as VideoStateController.getLiveThreshold: the live buffer + 5 s)
+    private static final long LIVE_EDGE_MS = 20_000;
+    private boolean mIsLiveButtonShown;
 
     public VideoPlayerGlue(
             Context context,
@@ -134,6 +140,7 @@ public class VideoPlayerGlue extends MaxControlsVideoPlayerGlue<PlayerAdapter> i
         putAction(new RotateAction(context));
         putAction(new FlipAction(context));
         putAction(new SoundOffAction(context));
+        putAction(new LiveAction(context));
     }
 
     @Override
@@ -321,7 +328,58 @@ public class VideoPlayerGlue extends MaxControlsVideoPlayerGlue<PlayerAdapter> i
     }
 
     public void setButtonState(int buttonId, int buttonState) {
+        if (buttonId == R.id.action_live) {
+            showLiveButton(buttonState != PlayerUI.BUTTON_DISABLED);
+            return;
+        }
+
         setActionIndex(mActions.get(buttonId), buttonState);
+    }
+
+    /**
+     * JoTube: the Live button is the last one of the row under the progress bar, only while a live stream plays.
+     */
+    private void showLiveButton(boolean show) {
+        Action liveAction = mActions.get(R.id.action_live);
+
+        if (liveAction == null || getControlsRow() == null) {
+            return;
+        }
+
+        mIsLiveButtonShown = show;
+
+        if (show) {
+            addSecondaryAction(liveAction, Integer.MAX_VALUE);
+            updateLiveButton();
+        } else {
+            removeSecondaryAction(liveAction);
+        }
+    }
+
+    /**
+     * JoTube: red dot at the live edge, grey when behind it (the progress is updated while the controls are shown).
+     */
+    private void updateLiveButton() {
+        MultiAction liveAction = (MultiAction) mActions.get(R.id.action_live);
+
+        if (!mIsLiveButtonShown || liveAction == null) {
+            return;
+        }
+
+        long durationMs = getDuration();
+        boolean atEdge = durationMs > 0 && durationMs - getCurrentPosition() <= LIVE_EDGE_MS;
+        int index = atEdge ? LiveAction.INDEX_AT_EDGE : LiveAction.INDEX_BEHIND;
+
+        if (liveAction.getIndex() != index) {
+            liveAction.setIndex(index);
+            invalidateUi(liveAction);
+        }
+    }
+
+    @Override
+    protected void onUpdateProgress() {
+        super.onUpdateProgress();
+        updateLiveButton();
     }
 
     public void setChannelIcon(String iconUrl) {
