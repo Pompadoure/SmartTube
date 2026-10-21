@@ -73,6 +73,9 @@ public final class PodcastQueueView {
         list.setItemAnimator(null);
 
         final ItemTouchHelper[] helper = new ItemTouchHelper[1];
+        // the order the player has (the list isn't rebuilt after a drag, so compare with the last reported order)
+        final List<List<PodcastRepository.Episode>> reported = new ArrayList<>();
+        reported.add(new ArrayList<>(queued));
 
         list.setAdapter(new RecyclerView.Adapter<RecyclerView.ViewHolder>() {
             @NonNull
@@ -163,7 +166,8 @@ public final class PodcastQueueView {
             public void clearView(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder) {
                 super.clearView(recyclerView, viewHolder);
                 List<PodcastRepository.Episode> now = new ArrayList<>(rows.subList(firstQueued, queuedEnd));
-                if (!now.equals(queued)) { // only when something moved
+                if (!now.equals(reported.get(0))) { // only when something moved
+                    reported.set(0, now);
                     listener.onReordered(now);
                 }
             }
