@@ -20,6 +20,8 @@ import androidx.media3.exoplayer.dash.manifest.SegmentBase.SegmentTemplate;
 import androidx.media3.exoplayer.dash.manifest.SegmentBase.SegmentTimelineElement;
 import androidx.media3.exoplayer.dash.manifest.SegmentBase.SingleSegmentBase;
 import androidx.media3.exoplayer.dash.manifest.UrlTemplate;
+import androidx.media3.exoplayer.dash.manifest.UtcTimingElement;
+import androidx.media3.common.util.Util;
 import com.liskovsoft.media3.sabr.parser.models.SabrFormatMetadata;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaFormat;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo;
@@ -32,10 +34,14 @@ import com.liskovsoft.youtubeapi.formatbuilders.utils.MediaFormatUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TimeZone;
 import java.util.TreeSet;
 
 /**
@@ -52,6 +58,9 @@ public class DashManifestParser2 {
     private static final String NULL_INDEX_RANGE = "0-0";
     private static final String NULL_CONTENT_LENGTH = "0";
     private static final int MAX_DURATION_SEC = 48 * 60 * 60;
+    /** Ongoing live: how far behind the live edge Media3 aims to play (the official app buffer). */
+    private static final long LIVE_PRESENTATION_DELAY_MS = 15_000;
+    private boolean mIsDynamicLive;
     private MediaItemFormatInfo mFormatInfo;
     private Set<MediaFormat> mMP4Videos;
     private Set<MediaFormat> mWEBMVideos;
@@ -67,7 +76,19 @@ public class DashManifestParser2 {
         mMP4Audios = new HashMap<>();
         mWEBMAudios = new HashMap<>();
         mSubs = new ArrayList<>();
+        mIsDynamicLive = isDynamicLive(formatInfo);
         return parseDashManifest(formatInfo);
+    }
+
+    /**
+     * JoTube M3: an ongoing live stream with the dash info ("seeking support": the first segment of the rewind window, its
+     * wall clock time and the segment duration) becomes a dynamic manifest. The static one ended at lengthSeconds at
+     * fetch time: Media3 reached STATE_ENDED ~5 s after the start and autoplay moved on (device logs 2026-10-16 and
+     * 2026-10-21). Dynamic: Media3 follows the live edge from the wall clock and the whole window stays seekable.
+     */
+    public static boolean isDynamicLive(MediaItemFormatInfo formatInfo) {
+        return formatInfo.isLive() && formatInfo.getStartTimeMs() > 0 && formatInfo.getSegmentDurationUs() > 0
+                && formatInfo.getStartSegmentNum() >= 0;
     }
 
     /** The visitor cookie of the last parsed format info (the fork kept it in DashManifest.visitorCookie). */
@@ -84,6 +105,17 @@ public class DashManifestParser2 {
         long publishTimeMs = C.TIME_UNSET;
         boolean dynamic = false;
         long minUpdateTimeMs = C.TIME_UNSET; // 3155690800000L, "P100Y" no refresh (there is no dash url)
+        UtcTimingElement utcTiming = null;
+
+        if (mIsDynamicLive) {
+            // The segment startSegmentNum started at startTimeMs (device clock, see DashInfoBase). The device clock is
+            // also the time source (direct UTC timing), so the live edge is lastSegmentNum like at fetch time.
+            availabilityStartTime = formatInfo.getStartTimeMs();
+            durationMs = C.TIME_UNSET;
+            dynamic = true;
+            suggestedPresentationDelayMs = LIVE_PRESENTATION_DELAY_MS;
+            utcTiming = new UtcTimingElement("urn:mpeg:dash:utc:direct:2014", formatUtc(System.currentTimeMillis()));
+        }
 
         List<Period> periods = new ArrayList<>();
 
@@ -103,10 +135,16 @@ public class DashManifestParser2 {
                 suggestedPresentationDelayMs,
                 publishTimeMs,
                 /* programInformation= */ null,
-                /* utcTiming= */ null,
+                utcTiming,
                 /* serviceDescription= */ null,
                 /* location= */ null,
                 periods);
+    }
+
+    private static String formatUtc(long timeMs) {
+        SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+        format.setTimeZone(TimeZone.getTimeZone("UTC"));
+        return format.format(new Date(timeMs));
     }
 
     private static long getDurationMs(MediaItemFormatInfo formatInfo) {
@@ -243,6 +281,25 @@ public class DashManifestParser2 {
         UrlTemplate initializationTemplate = null; // ?
 
         RangedUri initialization = parseRangedUrl(format.getSourceUrl(), format.getInit());
+
+        if (mIsDynamicLive) {
+            // No timeline, no end: segment n starts at (n - startNumber) * duration after availabilityStartTime and is
+            // available once it is complete (Media3 MultiSegmentBase.getAvailableSegmentCount). Same time mapping as the
+            // static timeline below (presentationTimeOffset = startNumber * duration).
+            return new SegmentTemplate(
+                    initialization,
+                    timescale,
+                    presentationTimeOffset,
+                    startNumber,
+                    endNumber,
+                    duration,
+                    /* segmentTimeline= */ null,
+                    /* availabilityTimeOffsetUs= */ 0,
+                    initializationTemplate,
+                    mediaTemplate,
+                    /* timeShiftBufferDepthUs= */ C.TIME_UNSET,
+                    /* periodStartUnixTimeUs= */ Util.msToUs(mFormatInfo.getStartTimeMs()));
+        }
 
         List<SegmentTimelineElement> timeline = parseSegmentTimeline(offsetUnits, segmentDurationUnits, segmentCount);
 

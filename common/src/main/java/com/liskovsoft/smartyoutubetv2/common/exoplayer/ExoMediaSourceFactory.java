@@ -7,6 +7,7 @@ import android.text.TextUtils;
 import androidx.annotation.NonNull;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
+import androidx.media3.common.MimeTypes;
 import androidx.media3.datasource.DataSpec;
 import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.datasource.DefaultHttpDataSource;
@@ -69,6 +70,8 @@ public class ExoMediaSourceFactory {
     private static DefaultBandwidthMeter sBandwidthMeter;
     private final Context mContext;
     private static final Uri DASH_MANIFEST_URI = Uri.parse("https://example.com/test.mpd");
+    // JoTube M3: one byte "manifest" for the generated dynamic live manifest (DefaultDataSource reads data: uris)
+    private static final Uri LIVE_MANIFEST_DATA_URI = Uri.parse("data:application/dash+xml;base64,AA==");
     private static final String DASH_MANIFEST_EXTENSION = "mpd";
     private static final String HLS_PLAYLIST_EXTENSION = "m3u8";
     private static final boolean USE_BANDWIDTH_METER = true; // JoTube: needed by the adaptive (fast start) selection
@@ -213,13 +216,36 @@ public class ExoMediaSourceFactory {
                         dataSpec -> isSubtitleRequest(dataSpec) ?
                                 dataSpec.withAdditionalHeaders(Collections.singletonMap("Cookie", visitorCookie)) : dataSpec),
                         MAX_SEGMENTS_PER_LOAD);
-        DashMediaSource dashSource = new DashMediaSource.Factory(
-                chunkSourceFactory,
-                null
-        )
-                .setLoadErrorHandlingPolicy(new DashDefaultLoadErrorHandlingPolicy())
-                .setSubtitleParserFactory(new JoSubtitleParserFactory()) // JoTube: the fork's WebVTT fixes
-                .createMediaSource(getManifest(formatInfo), new MediaItem.Builder().setMediaId(formatInfo.getVideoId() != null ? formatInfo.getVideoId() : MediaItem.DEFAULT_MEDIA_ID).build()); // JoTube M3: the id names the source in the Shorts queue
+        String mediaId = formatInfo.getVideoId() != null ? formatInfo.getVideoId() : MediaItem.DEFAULT_MEDIA_ID;
+        DashMediaSource dashSource;
+
+        if (DashManifestParser2.isDynamicLive(formatInfo)) {
+            // JoTube M3: an ongoing live stream (DashManifestParser2.isDynamicLive). Media3 refuses a sideloaded dynamic
+            // manifest (and wouldn't move the live window), so the generated manifest is "loaded" once from a data:
+            // uri; the parser ignores the bytes and builds it then (its direct UTC timing is the device time at load end).
+            // No refresh is needed: without a timeline Media3 moves the window itself (simulated refresh), the segments
+            // are computed from the wall clock.
+            dashSource = new DashMediaSource.Factory(
+                    chunkSourceFactory,
+                    getMediaDataSourceFactory()
+            )
+                    .setManifestParser((uri, inputStream) -> getManifest(formatInfo))
+                    .setLoadErrorHandlingPolicy(new DashDefaultLoadErrorHandlingPolicy())
+                    .setSubtitleParserFactory(new JoSubtitleParserFactory()) // JoTube: the fork's WebVTT fixes
+                    .createMediaSource(new MediaItem.Builder()
+                            .setUri(LIVE_MANIFEST_DATA_URI)
+                            .setMimeType(MimeTypes.APPLICATION_MPD)
+                            .setMediaId(mediaId)
+                            .build());
+        } else {
+            dashSource = new DashMediaSource.Factory(
+                    chunkSourceFactory,
+                    null
+            )
+                    .setLoadErrorHandlingPolicy(new DashDefaultLoadErrorHandlingPolicy())
+                    .setSubtitleParserFactory(new JoSubtitleParserFactory()) // JoTube: the fork's WebVTT fixes
+                    .createMediaSource(getManifest(formatInfo), new MediaItem.Builder().setMediaId(mediaId).build()); // JoTube M3: the id names the source in the Shorts queue
+        }
         if (mTrackErrorFixer != null) {
             dashSource.addEventListener(Utils.sHandler, mTrackErrorFixer.forVideo(formatInfo.getVideoId()));
         }
