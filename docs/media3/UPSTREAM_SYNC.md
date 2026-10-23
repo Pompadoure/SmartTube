@@ -14,7 +14,7 @@ REJECTED: eb3713bd, 615ddecb, SABR backoff as fatal error, 4 s SABR read timeout
 Checked: SmartTube up to c94f0757 (2026-10-23), MSC up to dca0e0b (upstream pin; our pin is 1b43ec7).
 
 TAKEN
-- MSC 4929ff24 (+ null-safe part of 7c2451ea) -> patch 0012: auto-dubbed videos carry an extra auto subtitle per dub
+- MSC 4929ff24 (7c2451ea null-check refactor deliberately not taken) -> patch 0012: auto-dubbed videos carry an extra auto subtitle per dub
   (`variant=timing-optimized` / language of a dubbed audio track). `findOriginTrack` took the first auto track, so the
   "translated" subtitles were machine-translated from a dub transcript. Now a real (non-dub) auto track is preferred.
   Videos without auto-dub behave exactly as before (same first auto track; fallback unchanged).
