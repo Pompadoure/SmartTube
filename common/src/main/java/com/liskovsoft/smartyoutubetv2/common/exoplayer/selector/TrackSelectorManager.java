@@ -16,6 +16,7 @@ import androidx.media3.exoplayer.trackselection.ExoTrackSelection;
 import androidx.media3.exoplayer.trackselection.ExoTrackSelection.Definition;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.sharedutils.mylogger.Log;
+import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.track.AudioTrack;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.track.MediaTrack;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.track.VideoTrack;
@@ -783,11 +784,56 @@ public class TrackSelectorManager implements TrackSelectorCallback {
             if ((result instanceof AudioTrack || result instanceof VideoTrack) && result.isEmpty() && tmpResult != null) {
                 result = tmpResult;
             }
+
+            result = preferAacForShorts(result, filterByLanguage(renderer.mediaTracks, originTrack));
         }
 
         Log.d(TAG, "findBestMatch: Found: " + result.format);
 
         return result;
+    }
+
+    /**
+     * JoTube: Shorts play with AAC audio. Media3 keeps an AAC decoder from one Short to the next (same codec data:
+     * reuse with a flush), an Opus decoder is created again for every Short (its initialization data differs per
+     * video): device log 2026-10-23, preloaded Shorts: "audio decoder c2.android.opus.decoder init" 38-746 ms (mostly
+     * 230-290 ms) on every swipe, the first frame waits for it (+410..740 ms; the video decoder is reused at ~+290 ms).
+     */
+    private MediaTrack preferAacForShorts(MediaTrack result, MediaTrack[][] tracks) {
+        if (!ShortsTransitionState.isShortsMode() || !(result instanceof AudioTrack) || result.format == null
+                || isAac(result.format) || tracks == null) {
+            return result;
+        }
+
+        MediaTrack best = null;
+        for (MediaTrack[] group : tracks) {
+            if (group == null) {
+                continue;
+            }
+            for (MediaTrack track : group) {
+                if (track == null || track.format == null || !isAac(track.format) || isDrc(track.format) || hasPlaybackGlitch(track)) {
+                    continue;
+                }
+                if (best == null || track.format.bitrate > best.format.bitrate) {
+                    best = track;
+                }
+            }
+        }
+
+        if (best != null) {
+            Log.d(TAG, "findBestMatch: Shorts: AAC instead of %s (the decoder is kept between Shorts)", result.format.codecs);
+            return best;
+        }
+
+        return result;
+    }
+
+    private static boolean isAac(Format format) {
+        return format.codecs != null && format.codecs.startsWith("mp4a");
+    }
+
+    private static boolean isDrc(Format format) {
+        return format.id != null && format.id.contains("drc");
     }
 
     private void applyOverride(int rendererIndex) {
