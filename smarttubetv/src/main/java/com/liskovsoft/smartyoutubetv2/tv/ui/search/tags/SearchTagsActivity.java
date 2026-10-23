@@ -31,7 +31,7 @@ public class SearchTagsActivity extends LeanbackActivity {
     @Override
     public void onBackPressed() {
         // JoTube: BACK on the keyboard after a search: the keyboard collapses and the results get the focus
-        if (mFragment != null && mFragment.collapseKeyboardToResults()) {
+        if (mFragment != null && mFragment.isKeyboardFocused() && mFragment.collapseKeyboardToResults()) {
             return;
         }
         super.onBackPressed();

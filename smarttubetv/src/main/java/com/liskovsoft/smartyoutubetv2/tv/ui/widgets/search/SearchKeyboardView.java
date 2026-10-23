@@ -16,6 +16,7 @@ import com.liskovsoft.smartyoutubetv2.tv.R;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * JoTube: on-screen keyboard for the search (the Android keyboard never pops up), laid out like the official
@@ -38,7 +39,7 @@ public class SearchKeyboardView extends LinearLayout {
     }
 
     private static final int COLUMNS = 8;
-    private static final String DELETE = "⌫";
+    private static final String DELETE = "\b"; // a vector icon (the glyph isn't in every font)
     private static final String LAYER_SYMBOLS = "&123";
     private static final String LAYER_LETTERS = "ABC";
     // 4 rows x 8 cells. Special cells: DELETE and the layer switch.
@@ -168,11 +169,33 @@ public class SearchKeyboardView extends LinearLayout {
             for (int col = 0; col < COLUMNS; col++) {
                 TextView key = mGridKeys.get(row * COLUMNS + col);
                 String label = layer[row][col];
-                boolean special = label.length() > 1 || DELETE.equals(label);
-                key.setText(label.length() == 1 && Character.isLetter(label.charAt(0)) ? label.toUpperCase() : label);
-                key.setTextSize(TypedValue.COMPLEX_UNIT_SP, special ? (DELETE.equals(label) ? 20 : 14) : 21);
+                if (DELETE.equals(label)) {
+                    setDeleteIcon(key);
+                    continue;
+                }
+                boolean special = label.length() > 1;
+                key.setText(label.length() == 1 && Character.isLetter(label.charAt(0)) ? label.toUpperCase(Locale.ROOT) : label);
+                key.setTextSize(TypedValue.COMPLEX_UNIT_SP, special ? 14 : 21);
             }
         }
+    }
+
+    private void setDeleteIcon(TextView key) {
+        key.setText("");
+        if (key.getCompoundDrawablesRelative()[0] != null) {
+            return;
+        }
+        android.graphics.drawable.Drawable icon = androidx.core.content.ContextCompat.getDrawable(key.getContext(), R.drawable.ic_key_backspace);
+        if (icon == null) {
+            key.setText("DEL");
+            return;
+        }
+        icon = androidx.core.graphics.drawable.DrawableCompat.wrap(icon.mutate());
+        androidx.core.graphics.drawable.DrawableCompat.setTintList(icon, key.getTextColors()); // dark when focused
+        key.setCompoundDrawablesRelativeWithIntrinsicBounds(icon, null, null, null);
+        int keyWidth = key.getLayoutParams().width;
+        key.setPaddingRelative(Math.max(0, (keyWidth - icon.getIntrinsicWidth()) / 2), 0, 0, 0);
+        key.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
     }
 
     private LinearLayout createLine(Context context) {

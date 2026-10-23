@@ -27,8 +27,8 @@
             android:layout_gravity="top|start"
             android:layout_marginTop="@dimen/search_suggestions_margin_top"
             android:layout_marginStart="@dimen/search_suggestions_margin_start"
-            android:clipChildren="false"
-            android:clipToPadding="false"
+            android:clipChildren="true"
+            android:clipToPadding="true"
             android:visibility="invisible"/>
     <com.liskovsoft.smartyoutubetv2.tv.ui.widgets.search.SearchKeyboardView
             android:id="@+id/search_keyboard"

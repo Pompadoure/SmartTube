@@ -478,8 +478,10 @@ public class SearchSupportFragment extends Fragment {
 
         VerticalGridView list = mRowsSupportFragment.getVerticalGridView();
         setupResultsLeftKey(list);
-        int mContainerListAlignTop =
-                getResources().getDimensionPixelSize(R.dimen.lb_search_browse_rows_align_top);
+        // JoTube: the results frame starts under the field (search_results_margin_top): the first row stays where it was
+        int mContainerListAlignTop = Math.max(0,
+                getResources().getDimensionPixelSize(R.dimen.lb_search_browse_rows_align_top)
+                - getResources().getDimensionPixelSize(com.liskovsoft.smartyoutubetv2.tv.R.dimen.search_results_margin_top));
         list.setItemAlignmentOffset(0);
         list.setItemAlignmentOffsetPercent(VerticalGridView.ITEM_ALIGN_OFFSET_PERCENT_DISABLED);
         list.setWindowAlignmentOffset(mContainerListAlignTop);
@@ -883,7 +885,7 @@ public class SearchSupportFragment extends Fragment {
     }
 
     /**
-     * The suggestions (tags) are shown in a strip above the keyboard.
+     * The suggestions (tags) are shown as a column of pills left of the keyboard.
      */
     protected void setSuggestions(ObjectAdapter adapter) {
         if (mSuggestionGrid == null || adapter == null) {
@@ -914,7 +916,10 @@ public class SearchSupportFragment extends Fragment {
 
         if (mSuggestionGrid != null) {
             mSuggestionGrid.setItemSpacing(Math.round(8 * getResources().getDisplayMetrics().density));
-            mSuggestionGrid.setWindowAlignment(VerticalGridView.WINDOW_ALIGN_NO_EDGE);
+            // the first pill at the top, the list scrolls only when the focus goes past the end
+            mSuggestionGrid.setWindowAlignment(VerticalGridView.WINDOW_ALIGN_BOTH_EDGE);
+            // UP from the first pill = the field, DOWN from the last = the results
+            mSuggestionGrid.setFocusOutAllowed(true, true);
             // RIGHT from a pill goes to the keyboard (the pills have different widths)
             mSuggestionGrid.setOnKeyInterceptListener(event -> {
                 if (event.getAction() == android.view.KeyEvent.ACTION_DOWN
