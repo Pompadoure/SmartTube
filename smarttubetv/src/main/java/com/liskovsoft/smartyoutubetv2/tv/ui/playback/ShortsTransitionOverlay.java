@@ -500,6 +500,16 @@ public class ShortsTransitionOverlay {
     }
 
     private void holdForCut(int swipeId) {
+        // JoTube: the old picture (snapshot) is on screen now: the page takes the new Short's shape behind it at once
+        // (frame, background, panel), the snapshot is fitted into the new frame. When the first frame comes the video
+        // is already in its shape: before, the reshape ran at the cut (a layout on the busy main thread), so the new
+        // video showed stretched in the old frame and the frame jumped late (owner: stretched, jerky, slow).
+        mOutFrozen = false;
+        if (mOutFramePending) {
+            applyOutFrame();
+        }
+        flushAtSlideStart();
+
         if (mFirstFrameRendered) {
             cut(swipeId);
             return;
