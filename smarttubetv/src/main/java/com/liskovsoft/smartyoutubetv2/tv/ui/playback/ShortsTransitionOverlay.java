@@ -55,9 +55,15 @@ public class ShortsTransitionOverlay {
     private final Runnable mFailsafeHide = () -> hide(false);
     private Video mPendingVideo;
     private Video mTargetVideo; // JoTube: the Short sliding in (its blurred background covers it until its frame)
+    private boolean mPendingAsCover; // JoTube: the late cover is the Short's blurred cover, not black
     private final Runnable mPendingShow = () -> {
         if (mPendingVideo != null) {
-            show(mPendingVideo, ShortsTransitionState.DIRECTION_NONE);
+            Video video = mPendingVideo;
+            boolean asCover = mPendingAsCover;
+            show(video, ShortsTransitionState.DIRECTION_NONE);
+            if (asCover && mIn != null && video.isShorts) {
+                ShortsBackground.loadCover(mIn, video);
+            }
         }
     };
     private FrameLayout mContainer; // the whole screen, holds the two images
@@ -251,6 +257,14 @@ public class ShortsTransitionOverlay {
     }
 
     /**
+     * JoTube: like {@link #showIfSlow} but a late Short gets its blurred cover (not black).
+     */
+    public void showCoverIfSlow(Video video, long delayMs) {
+        showIfSlow(video, delayMs);
+        mPendingAsCover = mPendingVideo != null;
+    }
+
+    /**
      * Runs when the slide starts (or at once if there is no slide: hide, a newer swipe, a timeout), so the background,
      * the frame and the panel change at the same moment as the picture moves instead of at the key press.
      */
@@ -282,6 +296,7 @@ public class ShortsTransitionOverlay {
     private void cancelPendingShow() {
         mHandler.removeCallbacks(mPendingShow);
         mPendingVideo = null;
+        mPendingAsCover = false;
     }
 
     /**

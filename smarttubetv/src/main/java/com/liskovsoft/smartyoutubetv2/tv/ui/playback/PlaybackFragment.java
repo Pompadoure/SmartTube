@@ -1884,18 +1884,15 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         if (video != null && ShortsQueue.getQueuedFormatInfo(video.videoId) != null) {
             // Preloaded Short: it's already in the player, keep everything as is (no black screen, no reset).
             // The swipe covers the moment until the new video's first frame is rendered.
-            if (swipe && !mShortsTransition.isSlideEnabled()) {
+            final float directAspect = getQueuedAspect(video);
+            if (swipe && !mShortsTransition.isSlideEnabled() && directAspect > 0
+                    && Math.abs(directAspect - mShortsPanel.getVideoAspect()) < 0.01f) {
                 // JoTube: no slide = like the phone app: no overlay at all. The old frame stays on the surface until the
                 // (reused) decoder renders the new one, so the switch doesn't wait for the main thread (the first frame
-                // callback came 150-350 ms after the frame while the main thread was busy: device log 2026-10-23)
+                // callback came 150-350 ms after the frame while the main thread was busy: device log 2026-10-23).
+                // Only for the same frame shape (otherwise the old picture would be shown stretched: the cut below).
                 mShortsTransition.hide(false);
-                if (!isInPIPMode()) {
-                    mShortsTransition.showIfSlow(video, 700); // a late frame: not a frozen old picture for long
-                }
-                final float queuedAspect = getQueuedAspect(video);
-                if (queuedAspect > 0) {
-                    mShortsPanel.setVideoAspect(queuedAspect);
-                }
+                mShortsTransition.showCoverIfSlow(video, 700); // a late frame: its blurred cover, not a frozen picture
                 updateShortsBackground(video);
             } else if (swipe) {
                 // The old video is still on the surface: its last frame slides out
