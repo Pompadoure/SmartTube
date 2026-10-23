@@ -1884,7 +1884,20 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         if (video != null && ShortsQueue.getQueuedFormatInfo(video.videoId) != null) {
             // Preloaded Short: it's already in the player, keep everything as is (no black screen, no reset).
             // The swipe covers the moment until the new video's first frame is rendered.
-            if (swipe) {
+            if (swipe && !mShortsTransition.isSlideEnabled()) {
+                // JoTube: no slide = like the phone app: no overlay at all. The old frame stays on the surface until the
+                // (reused) decoder renders the new one, so the switch doesn't wait for the main thread (the first frame
+                // callback came 150-350 ms after the frame while the main thread was busy: device log 2026-10-23)
+                mShortsTransition.hide(false);
+                if (!isInPIPMode()) {
+                    mShortsTransition.showIfSlow(video, 700); // a late frame: not a frozen old picture for long
+                }
+                final float queuedAspect = getQueuedAspect(video);
+                if (queuedAspect > 0) {
+                    mShortsPanel.setVideoAspect(queuedAspect);
+                }
+                updateShortsBackground(video);
+            } else if (swipe) {
                 // The old video is still on the surface: its last frame slides out
                 mShortsTransition.swipe(previous, video, direction, getSurfaceView());
                 // Background, frame shape and panel change together with the slide (the format info of a preloaded
