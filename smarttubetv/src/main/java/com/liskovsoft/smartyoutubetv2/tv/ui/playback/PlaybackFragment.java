@@ -1394,7 +1394,12 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         Video video = getVideo();
 
         if (ratio > 0 && video != null && video.isShorts && !video.isLive) {
-            mShortsPanel.setVideoAspect(ratio); // the frame is shaped before the first frame
+            // the frame is shaped before the first frame, but not before the old picture is covered (stretched)
+            if (mShortsTransition != null && android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+                mShortsTransition.runReshape(() -> mShortsPanel.setVideoAspect(ratio));
+            } else {
+                mShortsPanel.setVideoAspect(ratio);
+            }
         }
 
         setAspect(ratio);
