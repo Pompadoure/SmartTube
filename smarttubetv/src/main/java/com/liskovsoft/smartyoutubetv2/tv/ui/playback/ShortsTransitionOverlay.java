@@ -331,7 +331,7 @@ public class ShortsTransitionOverlay {
                 long duration = android.os.SystemClock.uptimeMillis() - mStartMs;
                 if (duration >= WATCH_MIN_MS) {
                     Log.d(TAG, "Slow main thread message %s ms (+%s ms after swipe): %s", duration,
-                            mStartMs - mDiagCallMs, mWhat.length() > 150 ? mWhat.substring(0, 150) : mWhat);
+                            mStartMs - mDiagCallMs, mWhat.length() > 260 ? mWhat.substring(0, 260) : mWhat);
                 }
                 mWhat = null;
             }

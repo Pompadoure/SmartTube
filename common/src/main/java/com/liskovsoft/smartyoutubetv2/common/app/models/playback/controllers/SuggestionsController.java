@@ -31,6 +31,7 @@ import com.liskovsoft.smartyoutubetv2.common.app.presenters.PlaybackPresenter;
 import com.liskovsoft.smartyoutubetv2.common.misc.BrowseProcessorManager;
 import com.liskovsoft.smartyoutubetv2.common.misc.MediaServiceManager;
 import com.liskovsoft.smartyoutubetv2.common.prefs.GeneralData;
+import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
 import com.liskovsoft.smartyoutubetv2.common.utils.Utils;
 import com.liskovsoft.youtubeapi.service.YouTubeServiceManager;
 import io.reactivex.Observable;
@@ -71,10 +72,24 @@ public class SuggestionsController extends BasePlayerController {
         mContentService = YouTubeServiceManager.instance().getContentService();
     }
 
+    // JoTube: in the Shorts feed the suggestions are loaded only after the swipe (they aren't on screen there). Device
+    // log 2026-10-23: their result (rows of cards) took the main thread 100-292 ms plus a 120-196 ms layout frame
+    // in the middle of the switch, which delayed the first frame callback and so the switch (+440..640 ms).
+    private static final long SHORTS_SUGGESTIONS_DELAY_MS = 900;
+    private Video mDelayedSuggestionsVideo;
+    private final Runnable mLoadDelayedSuggestions = () -> {
+        Video video = mDelayedSuggestionsVideo;
+        mDelayedSuggestionsVideo = null;
+        if (video != null && getPlayer() != null && video.equals(getVideo())) {
+            loadSuggestions(video);
+        }
+    };
+
     @Override
     public void onNewVideo(Video video) {
         // Remote control fix. Slow network fix. Suggestions may still be loading.
         // This could lead to changing current video info (title, id etc) to wrong one.
+        cancelDelayedSuggestions();
         disposeActions();
         //mCurrentGroup = video.getGroup(); // disable garbage collected
         //appendNextSectionVideoIfNeeded(video); // ConcurrentModificationException error
@@ -85,7 +100,19 @@ public class SuggestionsController extends BasePlayerController {
      */
     @Override
     public void onVideoLoaded(Video item) {
+        if (item != null && item.isShorts && ShortsTransitionState.isShortsMode() && !isEmbedPlayer()) {
+            cancelDelayedSuggestions();
+            mDelayedSuggestionsVideo = item;
+            Utils.postDelayed(mLoadDelayedSuggestions, SHORTS_SUGGESTIONS_DELAY_MS);
+            return;
+        }
+
         loadSuggestions(item);
+    }
+
+    private void cancelDelayedSuggestions() {
+        Utils.removeCallbacks(mLoadDelayedSuggestions);
+        mDelayedSuggestionsVideo = null;
     }
 
     // Could make negative impact on the video load time.
@@ -96,11 +123,13 @@ public class SuggestionsController extends BasePlayerController {
 
     @Override
     public void onEngineReleased() {
+        cancelDelayedSuggestions();
         disposeActions();
     }
 
     @Override
     public void onFinish() {
+        cancelDelayedSuggestions();
         disposeActions();
     }
 
