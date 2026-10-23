@@ -136,14 +136,18 @@ public final class ShortsQueue {
             // switch: the preload manager works on the playback thread (the player's looper) and its track selections
             // and loads delayed the switch (device log 2026-10-23: renderers enabled +180..300 ms after setMediaSource,
             // first frame +357..605 ms). Failsafe: released after PRELOAD_HOLD_MAX_MS anyway.
+            // Not re-armed by quick consecutive swipes: the hold ends at most PRELOAD_HOLD_MAX_MS after the first one
+            if (!mHoldTimerArmed) {
+                mHoldTimerArmed = true;
+                com.liskovsoft.smartyoutubetv2.common.utils.Utils.postDelayed(mReleaseHold, PRELOAD_HOLD_MAX_MS);
+            }
             mPreloadHeld = true;
-            com.liskovsoft.smartyoutubetv2.common.utils.Utils.removeCallbacks(mReleaseHold);
-            com.liskovsoft.smartyoutubetv2.common.utils.Utils.postDelayed(mReleaseHold, PRELOAD_HOLD_MAX_MS);
         }
     }
 
     private static final long PRELOAD_HOLD_MAX_MS = 1_500;
     private final Runnable mReleaseHold = this::releasePreloadHold;
+    private boolean mHoldTimerArmed;
 
     // Bounds the memory of a long session: a played Short far behind isn't swiped back to
     private void removeFarBehind(int current) {
@@ -213,6 +217,7 @@ public final class ShortsQueue {
      */
     void releasePreloadHold() {
         com.liskovsoft.smartyoutubetv2.common.utils.Utils.removeCallbacks(mReleaseHold);
+        mHoldTimerArmed = false;
 
         if (!mPreloadHeld) {
             return;
