@@ -48,12 +48,20 @@ public class TagPresenter extends LongClickPresenter {
         return new ViewHolder(cardView);
     }
 
+    // JoTube: a pill like the official app: soft grey, white when focused (dark text and icon)
     private static void updateCardBackgroundColor(TagCardView view, boolean selected) {
-        view.setBackgroundColor(selected ? sSelectedBackgroundColor : sDefaultBackgroundColor);
+        android.graphics.drawable.GradientDrawable pill = new android.graphics.drawable.GradientDrawable();
+        pill.setCornerRadius(100 * view.getResources().getDisplayMetrics().density);
+        pill.setColor(selected ? sSelectedBackgroundColor : 0x40FFFFFF);
+        view.setBackground(pill);
     }
 
     private static void updateCardTextColor(TagCardView view, boolean selected) {
         view.setTextColor(selected ? sSelectedTextColor : sDefaultTextColor);
+        android.widget.ImageView icon = view.findViewById(R.id.image_icon);
+        if (icon != null) {
+            icon.setColorFilter(selected ? sSelectedTextColor : sDefaultTextColor);
+        }
     }
 
     @Override
@@ -66,7 +74,7 @@ public class TagPresenter extends LongClickPresenter {
 
             if (post.tag != null) {
                 cardView.setCardText(post.tag);
-                //cardView.setCardIcon(R.drawable.ic_tag);
+                cardView.setCardIcon(R.drawable.lb_ic_in_app_search); // JoTube: like the official suggestions
             }
         } else if (item instanceof User) {
             User post = (User) item;

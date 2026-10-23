@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- MOD (JoTube): built-in keyboard on the left, suggestions and results on the right -->
+<!-- MOD (JoTube): like the official YouTube TV search: the field on top, the suggestions as a column on the left,
+     the keyboard on the right, the results below them (peeking). When the results get the focus the keyboard and the
+     suggestions collapse and the results move up under the field (SearchSupportFragment.setLeftColumnHidden). -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
              android:id="@+id/lb_search_frame"
              android:layout_width="match_parent"
@@ -9,21 +11,22 @@
             android:id="@+id/lb_results_frame"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_marginStart="@dimen/search_keyboard_area_width"/>
+            android:layout_marginTop="@dimen/search_results_margin_top"
+            android:translationY="@dimen/search_results_peek_offset"/>
     <androidx.leanback.widget.SearchBar
             android:id="@+id/lb_search_bar"
             android:layout_marginTop="@dimen/lb_search_bar_padding_top"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:clipChildren="false"/>
-    <!-- JoTube: the suggestions sit between the search field and the keyboard -->
-    <androidx.leanback.widget.HorizontalGridView
+    <!-- JoTube: the suggestions: a column of pills under the field -->
+    <androidx.leanback.widget.VerticalGridView
             android:id="@+id/search_suggestions"
-            android:layout_width="416dp"
-            android:layout_height="48dp"
+            android:layout_width="@dimen/search_suggestions_width"
+            android:layout_height="@dimen/search_suggestions_height"
             android:layout_gravity="top|start"
             android:layout_marginTop="@dimen/search_suggestions_margin_top"
-            android:layout_marginStart="@dimen/search_keyboard_margin_start"
+            android:layout_marginStart="@dimen/search_suggestions_margin_start"
             android:clipChildren="false"
             android:clipToPadding="false"
             android:visibility="invisible"/>

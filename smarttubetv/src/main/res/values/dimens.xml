@@ -58,10 +58,16 @@
     <dimen name="lb_search_bar_items_width">600dp</dimen>
 
     <!-- JoTube: built-in search keyboard -->
-    <dimen name="search_keyboard_area_width">480dp</dimen>
-    <dimen name="search_suggestions_margin_top">92dp</dimen>
-    <dimen name="search_keyboard_margin_top">148dp</dimen>
-    <dimen name="search_keyboard_margin_start">56dp</dimen>
+    <!-- JoTube: search like the official app: suggestions left, keyboard right, results below (peeking) -->
+    <dimen name="search_suggestions_margin_top">100dp</dimen>
+    <dimen name="search_suggestions_margin_start">56dp</dimen>
+    <dimen name="search_suggestions_width">420dp</dimen>
+    <dimen name="search_suggestions_height">250dp</dimen>
+    <dimen name="search_keyboard_margin_top">100dp</dimen>
+    <dimen name="search_keyboard_margin_start">520dp</dimen>
+    <!-- the results frame starts under the field; it is moved down by the peek offset while the keyboard is shown -->
+    <dimen name="search_results_margin_top">96dp</dimen>
+    <dimen name="search_results_peek_offset">264dp</dimen>
 
     <!-- Increase player time text size -->
     <dimen name="lb_playback_controls_time_text_size">18sp</dimen>
