@@ -88,6 +88,7 @@ public class ShortsTransitionOverlay {
     private boolean mPreviewEnabled;
     private boolean mPreviewActive; // the preview slides in with this swipe
     private Runnable mAtSlideStart; // the page (background, frame shape, panel) changes together with the slide
+    private Runnable mHeldReshape; // a frame reshape from the format info that came before the old picture was covered
     private final Runnable mAtSlideStartTimeout = this::flushAtSlideStart;
     private boolean mOutFrozen; // a swipe is on: the outgoing picture keeps its shape
     private boolean mOutFramePending; // the new frame shape waits until the outgoing picture is gone
@@ -215,6 +216,11 @@ public class ShortsTransitionOverlay {
         mCutPending = false;
         mSnapshotTimeout = null;
         mAtSlideStart = null;
+        Runnable heldReshape = mHeldReshape;
+        mHeldReshape = null;
+        if (heldReshape != null) {
+            heldReshape.run();
+        }
         mPreviewActive = false;
         if (mPreview != null) {
             mPreview.detach();
@@ -277,6 +283,11 @@ public class ShortsTransitionOverlay {
             action.run();
             return;
         }
+        if (!mSlideEnabled && mCutPending) {
+            // The old picture already covers the video (the hold ran before this was registered): change at once
+            action.run();
+            return;
+        }
         mAtSlideStart = action;
         mHandler.removeCallbacks(mAtSlideStartTimeout);
         // without the slide the page changes with the picture: not before the late cover (CUT_COVER_AFTER_MS)
@@ -291,6 +302,28 @@ public class ShortsTransitionOverlay {
         if (action != null) {
             action.run();
         }
+
+        Runnable reshape = mHeldReshape;
+        mHeldReshape = null;
+        if (reshape != null) {
+            reshape.run();
+        }
+    }
+
+    /**
+     * JoTube: a frame reshape (new aspect from the format info). While the old picture is still being copied, or the
+     * page change waits for the slide start / the cut, it waits too: otherwise the old video is shown stretched in the
+     * new frame shape before the snapshot covers it.
+     */
+    public void runReshape(Runnable reshape) {
+        if (reshape == null) {
+            return;
+        }
+        if (mContainer != null && (mSnapshotTimeout != null || mAtSlideStart != null)) {
+            mHeldReshape = reshape; // only the newest shape counts
+            return;
+        }
+        reshape.run();
     }
 
     private void cancelPendingShow() {
@@ -500,6 +533,16 @@ public class ShortsTransitionOverlay {
     }
 
     private void holdForCut(int swipeId) {
+        // JoTube: the old picture (snapshot) is on screen now: the page takes the new Short's shape behind it at once
+        // (frame, background, panel), the snapshot is fitted into the new frame. When the first frame comes the video
+        // is already in its shape: before, the reshape ran at the cut (a layout on the busy main thread), so the new
+        // video showed stretched in the old frame and the frame jumped late (owner: stretched, jerky, slow).
+        mOutFrozen = false;
+        if (mOutFramePending) {
+            applyOutFrame();
+        }
+        flushAtSlideStart();
+
         if (mFirstFrameRendered) {
             cut(swipeId);
             return;
