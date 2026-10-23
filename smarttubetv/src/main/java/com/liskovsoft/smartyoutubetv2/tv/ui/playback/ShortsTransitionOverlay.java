@@ -61,8 +61,8 @@ public class ShortsTransitionOverlay {
             Video video = mPendingVideo;
             boolean asCover = mPendingAsCover;
             show(video, ShortsTransitionState.DIRECTION_NONE);
-            if (asCover && mIn != null && video.isShorts) {
-                ShortsBackground.loadCover(mIn, video);
+            if (asCover && this.mIn != null && video.isShorts) { // this.: the field is declared below
+                ShortsBackground.loadCover(this.mIn, video);
             }
         }
     };

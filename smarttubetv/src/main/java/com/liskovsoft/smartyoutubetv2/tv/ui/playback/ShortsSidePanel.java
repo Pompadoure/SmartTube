@@ -701,10 +701,6 @@ public class ShortsSidePanel {
      * JoTube: default frame is 9:16. A wider video (square, landscape) widens the frame to the left,
      * as far as the video's own aspect (and the free room on the left) allows.
      */
-    public float getVideoAspect() {
-        return mVideoAspect;
-    }
-
     public void setVideoAspect(float aspect) {
         float newAspect = aspect > 0 ? aspect : DEFAULT_ASPECT;
 
@@ -721,6 +717,10 @@ public class ShortsSidePanel {
         } else {
             mHandler.post(mUpdatePosition);
         }
+    }
+
+    public float getVideoAspect() {
+        return mVideoAspect;
     }
 
     private int getFrameWidth(int rootHeight) {
