@@ -226,6 +226,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
         // Above the video surface, below the controls
         mShortsTransition.setPreview(mShortsPreview, getPlayerTweaksData().isShortsPreviewPlayerEnabled());
+        mShortsTransition.setSlideEnabled(getPlayerTweaksData().isShortsSlideEnabled());
         mShortsTransition.attach((ViewGroup) root);
         mShortsBackground.attach((ViewGroup) root);
         mShortsPanel.attach((ViewGroup) root, new ShortsSidePanel.Callback() {
@@ -1889,7 +1890,8 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                 // Background, frame shape and panel change together with the slide (the format info of a preloaded
                 // Short is known already, so its frame doesn't reshape in the middle of the slide)
                 final float queuedAspect = getQueuedAspect(video);
-                final int slideDirection = direction;
+                // no slide: the page changes at once with the picture (no cross-fade, no moving panel)
+                final int slideDirection = mShortsTransition.isSlideEnabled() ? direction : ShortsTransitionState.DIRECTION_NONE;
                 mShortsTransition.runAtSlideStart(() -> {
                     if (queuedAspect > 0) {
                         mShortsPanel.setVideoAspect(queuedAspect);
@@ -1930,7 +1932,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             }
         });
         if (swipe) {
-            final int slideDirection = direction;
+            final int slideDirection = mShortsTransition.isSlideEnabled() ? direction : ShortsTransitionState.DIRECTION_NONE;
             mShortsTransition.runAtSlideStart(() -> updateShortsBackground(video, slideDirection));
         } else {
             updateShortsBackground(video);

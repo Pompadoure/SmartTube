@@ -42,6 +42,11 @@ public class ShortsTransitionOverlay {
     // mostly while it is still moving.
     private static final int HOLD_TIMEOUT_MS = 0;
     private static final String TAG = "ShortsTransition";
+    // JoTube: without the slide the old picture stays until the new Short's first frame; if that takes longer,
+    // the new Short's blurred cover is shown after this time (a frozen old picture would look like a hang)
+    private static final int CUT_COVER_AFTER_MS = 500;
+    private boolean mSlideEnabled = true;
+    private boolean mCutPending; // no slide: waiting for the new first frame to switch at once
     private static final int GAP_DP = 16; // space between the outgoing and the incoming Short
     private static final Interpolator SWIPE_INTERPOLATOR = new FastOutSlowIn();
     private final Handler mHandler = new Handler(Looper.getMainLooper());
@@ -83,6 +88,18 @@ public class ShortsTransitionOverlay {
     private long mDiagLastFrameMs;
     private long mDiagMaxGapMs;
     private int mDiagFrames;
+
+    /**
+     * JoTube: off = no slide between Shorts: the old picture stays until the new Short's first frame, then the new
+     * one is simply there (a cut, like a channel change).
+     */
+    public void setSlideEnabled(boolean enabled) {
+        mSlideEnabled = enabled;
+    }
+
+    public boolean isSlideEnabled() {
+        return mSlideEnabled;
+    }
 
     public void setPreview(ShortsPreview preview, boolean enabled) {
         mPreview = preview;
@@ -187,6 +204,7 @@ public class ShortsTransitionOverlay {
         mHandler.removeCallbacksAndMessages(null);
         mPendingVideo = null;
         mHoldStart = null;
+        mCutPending = false;
         mSnapshotTimeout = null;
         mAtSlideStart = null;
         mPreviewActive = false;
@@ -446,6 +464,11 @@ public class ShortsTransitionOverlay {
         mOut.setTranslationY(mOutStart);
         mOut.setVisibility(View.VISIBLE);
 
+        if (!mSlideEnabled) {
+            holdForCut(swipeId);
+            return;
+        }
+
         if (mFirstFrameRendered) {
             startSwipe(swipeId, direction, distance);
             return;
@@ -456,6 +479,64 @@ public class ShortsTransitionOverlay {
             startSwipe(swipeId, direction, distance);
         };
         mHandler.postDelayed(mHoldStart, HOLD_TIMEOUT_MS);
+    }
+
+    private void holdForCut(int swipeId) {
+        if (mFirstFrameRendered) {
+            cut(swipeId);
+            return;
+        }
+
+        mCutPending = true;
+        mHoldStart = () -> {
+            mHoldStart = null;
+            showTargetCover(swipeId);
+        };
+        mHandler.postDelayed(mHoldStart, CUT_COVER_AFTER_MS);
+    }
+
+    /**
+     * No slide: the new Short's first frame is on screen, the old picture goes at once.
+     */
+    private void cut(int swipeId) {
+        if (mContainer == null || swipeId != mSwipeId) {
+            return;
+        }
+
+        Log.d(TAG, "Cut: +%s ms after swipe()", android.os.SystemClock.uptimeMillis() - mDiagCallMs);
+        mCutPending = false;
+        if (mHoldStart != null) {
+            mHandler.removeCallbacks(mHoldStart);
+            mHoldStart = null;
+        }
+        flushAtSlideStart(); // background, frame shape and panel change together with the picture
+        mHandler.removeCallbacks(mFailsafeHide);
+        mIsShown = false;
+        mSwipeId++;
+        cancelAnimations();
+        reset();
+    }
+
+    /**
+     * No slide, and the new first frame is late: the new Short's blurred cover instead of the frozen old picture.
+     * The cover fades out when the frame comes (hide).
+     */
+    private void showTargetCover(int swipeId) {
+        if (mContainer == null || swipeId != mSwipeId) {
+            return;
+        }
+
+        Log.d(TAG, "Cut: first frame late, cover at +%s ms", android.os.SystemClock.uptimeMillis() - mDiagCallMs);
+        mCutPending = false;
+        flushAtSlideStart();
+        mOut.setVisibility(View.GONE);
+        clearImage(mIn);
+        if (mTargetVideo != null) {
+            ShortsBackground.loadCover(mIn, mTargetVideo);
+        }
+        mIn.setAlpha(1f);
+        mIn.setTranslationY(0);
+        mIn.setVisibility(View.VISIBLE);
     }
 
     /**
@@ -651,6 +732,7 @@ public class ShortsTransitionOverlay {
             mHandler.removeCallbacks(mHoldStart);
             mHoldStart = null;
         }
+        mCutPending = false;
 
         mContainer.setVisibility(View.VISIBLE);
         mContainer.setAlpha(1f);
@@ -708,6 +790,12 @@ public class ShortsTransitionOverlay {
             return;
         }
 
+        if (animate && mCutPending) {
+            // No slide: the new frame is there, switch now
+            cut(mSwipeId);
+            return;
+        }
+
         if (animate && mHoldStart != null) {
             // The new video is ready: slide now
             Runnable start = mHoldStart;
@@ -741,6 +829,7 @@ public class ShortsTransitionOverlay {
             mHandler.removeCallbacks(mHoldStart);
             mHoldStart = null;
         }
+        mCutPending = false;
 
         if (!animate) {
             reset();
