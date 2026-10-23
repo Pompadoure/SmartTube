@@ -45,6 +45,8 @@ public class ShortsTransitionOverlay {
     // JoTube: without the slide the old picture stays until the new Short's first frame; if that takes longer,
     // the new Short's blurred cover is shown after this time (a frozen old picture would look like a hang)
     private static final int CUT_COVER_AFTER_MS = 500;
+    // a very short fade instead of a hard step: hides a frame of SurfaceView composition lag after the first frame
+    private static final int CUT_FADE_MS = 60;
     private boolean mSlideEnabled = true;
     private boolean mCutPending; // no slide: waiting for the new first frame to switch at once
     private static final int GAP_DP = 16; // space between the outgoing and the incoming Short
@@ -263,7 +265,8 @@ public class ShortsTransitionOverlay {
         }
         mAtSlideStart = action;
         mHandler.removeCallbacks(mAtSlideStartTimeout);
-        mHandler.postDelayed(mAtSlideStartTimeout, AT_SLIDE_START_TIMEOUT_MS);
+        // without the slide the page changes with the picture: not before the late cover (CUT_COVER_AFTER_MS)
+        mHandler.postDelayed(mAtSlideStartTimeout, mSlideEnabled ? AT_SLIDE_START_TIMEOUT_MS : CUT_COVER_AFTER_MS + 50);
     }
 
     private void flushAtSlideStart() {
@@ -514,7 +517,12 @@ public class ShortsTransitionOverlay {
         mIsShown = false;
         mSwipeId++;
         cancelAnimations();
-        reset();
+        setSurfaceOffset(0);
+        mContainer.animate()
+                .alpha(0f)
+                .setDuration(CUT_FADE_MS)
+                .withEndAction(this::reset)
+                .start();
     }
 
     /**
