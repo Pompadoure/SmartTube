@@ -794,10 +794,11 @@ public class TrackSelectorManager implements TrackSelectorCallback {
     }
 
     /**
-     * JoTube: Shorts play with AAC audio. Media3 keeps an AAC decoder from one Short to the next (same codec data:
-     * reuse with a flush), an Opus decoder is created again for every Short (its initialization data differs per
-     * video): device log 2026-10-23, preloaded Shorts: "audio decoder c2.android.opus.decoder init" 38-746 ms (mostly
-     * 230-290 ms) on every swipe, the first frame waits for it (+410..740 ms; the video decoder is reused at ~+290 ms).
+     * JoTube: Shorts play with AAC audio. Media3 keeps an AAC decoder from one Short to the next (same rate, channels
+     * and codec data: reuse with a flush), it never reuses an Opus decoder (MediaCodecInfo.needsAdaptationFlushWorkaround).
+     * Device log 2026-10-23, preloaded Shorts: "audio decoder c2.android.opus.decoder init" 38-746 ms (mostly 230-290 ms)
+     * on every swipe; the decoder is created on the playback thread, which blocks the video render too (first frame
+     * +410..740 ms, while the video decoder is reused at ~+290 ms). Same language and the same DRC choice as the result.
      */
     private MediaTrack preferAacForShorts(MediaTrack result, MediaTrack[][] tracks) {
         if (!ShortsTransitionState.isShortsMode() || !(result instanceof AudioTrack) || result.format == null
@@ -811,7 +812,9 @@ public class TrackSelectorManager implements TrackSelectorCallback {
                 continue;
             }
             for (MediaTrack track : group) {
-                if (track == null || track.format == null || !isAac(track.format) || isDrc(track.format) || hasPlaybackGlitch(track)) {
+                if (track == null || track.format == null || !isAac(track.format) || hasPlaybackGlitch(track)
+                        || TrackSelectorUtil.isDrc(track.format) != TrackSelectorUtil.isDrc(result.format)
+                        || !Helpers.equals(track.format.language, result.format.language)) {
                     continue;
                 }
                 if (best == null || track.format.bitrate > best.format.bitrate) {
@@ -830,10 +833,6 @@ public class TrackSelectorManager implements TrackSelectorCallback {
 
     private static boolean isAac(Format format) {
         return format.codecs != null && format.codecs.startsWith("mp4a");
-    }
-
-    private static boolean isDrc(Format format) {
-        return format.id != null && format.id.contains("drc");
     }
 
     private void applyOverride(int rendererIndex) {
