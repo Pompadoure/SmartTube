@@ -918,8 +918,7 @@ public class SearchSupportFragment extends Fragment {
             mSuggestionGrid.setItemSpacing(Math.round(8 * getResources().getDisplayMetrics().density));
             // the first pill at the top, the list scrolls only when the focus goes past the end
             mSuggestionGrid.setWindowAlignment(VerticalGridView.WINDOW_ALIGN_BOTH_EDGE);
-            // UP from the first pill = the field, DOWN from the last = the results
-            mSuggestionGrid.setFocusOutAllowed(true, true);
+            // UP from the first pill = the field, DOWN from the last = the results: focusOutFront/End in the layout
             // RIGHT from a pill goes to the keyboard (the pills have different widths)
             mSuggestionGrid.setOnKeyInterceptListener(event -> {
                 if (event.getAction() == android.view.KeyEvent.ACTION_DOWN

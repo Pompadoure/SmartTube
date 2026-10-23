@@ -3,6 +3,7 @@
      the keyboard on the right, the results below them (peeking). When the results get the focus the keyboard and the
      suggestions collapse and the results move up under the field (SearchSupportFragment.setLeftColumnHidden). -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+             xmlns:app="http://schemas.android.com/apk/res-auto"
              android:id="@+id/lb_search_frame"
              android:layout_width="match_parent"
              android:layout_height="match_parent"
@@ -29,6 +30,8 @@
             android:layout_marginStart="@dimen/search_suggestions_margin_start"
             android:clipChildren="true"
             android:clipToPadding="true"
+            app:focusOutFront="true"
+            app:focusOutEnd="true"
             android:visibility="invisible"/>
     <com.liskovsoft.smartyoutubetv2.tv.ui.widgets.search.SearchKeyboardView
             android:id="@+id/search_keyboard"
