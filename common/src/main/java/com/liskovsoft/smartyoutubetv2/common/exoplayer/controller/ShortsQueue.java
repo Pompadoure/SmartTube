@@ -126,16 +126,24 @@ public final class ShortsQueue {
 
     void setCurrentIndex(int index) {
         mCurrentIndex = index;
-        mPreloadHeld = false; // the user moved on: the next Shorts are wanted now
 
         if (!mReleased && index >= 0 && index < mEntries.size()) {
             publish();
             notifyChanged();
             removeFarBehind(index);
             mPreloadManager.setCurrentPlayingIndex(mEntries.get(index).key);
-            mPreloadManager.invalidate(); // preload around the new position
+            // JoTube: the neighbours are preloaded once the new Short plays (READY: releasePreloadHold), not during the
+            // switch: the preload manager works on the playback thread (the player's looper) and its track selections
+            // and loads delayed the switch (device log 2026-10-23: renderers enabled +180..300 ms after setMediaSource,
+            // first frame +357..605 ms). Failsafe: released after PRELOAD_HOLD_MAX_MS anyway.
+            mPreloadHeld = true;
+            com.liskovsoft.smartyoutubetv2.common.utils.Utils.removeCallbacks(mReleaseHold);
+            com.liskovsoft.smartyoutubetv2.common.utils.Utils.postDelayed(mReleaseHold, PRELOAD_HOLD_MAX_MS);
         }
     }
+
+    private static final long PRELOAD_HOLD_MAX_MS = 1_500;
+    private final Runnable mReleaseHold = this::releasePreloadHold;
 
     // Bounds the memory of a long session: a played Short far behind isn't swiped back to
     private void removeFarBehind(int current) {
@@ -204,6 +212,8 @@ public final class ShortsQueue {
      * The playing Short has started (ready): the manager may preload the queued ones now.
      */
     void releasePreloadHold() {
+        com.liskovsoft.smartyoutubetv2.common.utils.Utils.removeCallbacks(mReleaseHold);
+
         if (!mPreloadHeld) {
             return;
         }
@@ -253,6 +263,7 @@ public final class ShortsQueue {
     }
 
     private void release() {
+        com.liskovsoft.smartyoutubetv2.common.utils.Utils.removeCallbacks(mReleaseHold);
         if (!mReleased) {
             mReleased = true;
             mPreloadManager.removeListener(mPreloadListener); // the manager outlives the queue
