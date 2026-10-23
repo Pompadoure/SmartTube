@@ -1029,6 +1029,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         super.onVideoSizeChanged(width, height);
 
         if (height > 0) {
+            // Not via runReshape: this comes with the new video's own frame, which must get its shape at once
             mShortsPanel.setVideoAspect((float) width / height);
         }
     }
