@@ -115,6 +115,14 @@ public class ExoPlayerController implements Player.Listener {
         cancelItemEnd();
     }
 
+    /** JoTube role swap: no swap (the live switch fell back): the playing Short's end counts again. */
+    public void onSwapCancelled() {
+        if (mSwapPending) {
+            mSwapPending = false;
+            scheduleItemEnd();
+        }
+    }
+
     public void setShortsAdopter(ShortsAdopter adopter) {
         mAdopter = adopter;
     }
@@ -205,8 +213,6 @@ public class ExoPlayerController implements Player.Listener {
         mTrackSelectorManager.setTrackSelector(trackSelector);
         mTrackSelectorManager.invalidate(); // the cache is built again from the new player's tracks
         // The spare's selection didn't fill the cache (another period then): a delayed re-selection does (same result)
-        mTrackSelectorManager.onQueuedSourceSwitch();
-        mTrackSelectorManager.syncWithPlayingPeriod();
         mSwapPending = false;
 
         sSourceGeneration++;
@@ -232,6 +238,9 @@ public class ExoPlayerController implements Player.Listener {
         onTimelineChanged(player.getCurrentTimeline(), Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED);
         onTracksChanged(player.getCurrentTracks());
         onPlayerStateChanged(player.getPlayWhenReady(), player.getPlaybackState());
+        // The spare's selection didn't fill the track cache (another period then): a delayed re-selection does (same result)
+        mTrackSelectorManager.onQueuedSourceSwitch();
+        mTrackSelectorManager.syncWithPlayingPeriod();
     }
 
     /** JoTube role swap: the spare player selects its tracks with the same rules (quality, Shorts cap, audio). */
@@ -1105,7 +1114,14 @@ public class ExoPlayerController implements Player.Listener {
      * Without this also you'll have problems with track quality switching(??).
      */
     public void resetPlayerState() {
-        ShortsQueue.setActive(null);
+        resetPlayerState(false);
+    }
+
+    /** @param keepQueue JoTube role swap: a queued Short is opened from a new source: the queue (preloads) stays */
+    public void resetPlayerState(boolean keepQueue) {
+        if (!keepQueue || canPlayPreloaded()) {
+            ShortsQueue.setActive(null);
+        }
         cancelItemEnd();
 
         if (containsMedia()) {

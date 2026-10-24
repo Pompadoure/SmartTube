@@ -176,6 +176,13 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                 mExoPlayerController.onSwapPending();
             }
         }
+
+        @Override
+        public void onLiveFallBack() {
+            if (mExoPlayerController != null) {
+                mExoPlayerController.onSwapCancelled();
+            }
+        }
     });
     private final ShortsSidePanel mShortsPanel = new ShortsSidePanel();
     private Video mLastVideo; // the video before the current one (for the Shorts swipe)
@@ -2183,9 +2190,11 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         // The player reset releases the decoder's last frame: only after the snapshot (at most 150 ms), and only if
         // the new video hasn't been opened meanwhile (its source opening resets the player itself)
         final int generation = ExoPlayerController.getSourceGeneration();
+        // JoTube role swap: a queued Short on the player that can't play the preloaded sources: the queue stays
+        final boolean keepQueue = video != null && video.isShorts && ShortsQueue.isQueued(video.videoId);
         mShortsTransition.runAfterSnapshot(() -> {
             if (mExoPlayerController != null && ExoPlayerController.getSourceGeneration() == generation) {
-                mExoPlayerController.resetPlayerState();
+                mExoPlayerController.resetPlayerState(keepQueue);
                 // Hide last frame of the previous video
                 showBackgroundColor(R.color.player_background);
             }

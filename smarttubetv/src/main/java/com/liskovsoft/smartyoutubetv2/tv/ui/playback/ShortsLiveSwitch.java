@@ -57,6 +57,9 @@ final class ShortsLiveSwitch {
 
         /** The slide is over, the core opens the Short now (the old Short's end must not count any more). */
         void onLiveOpening();
+
+        /** No swap: the main player plays on as before (its end counts again). */
+        void onLiveFallBack();
     }
 
     private enum State {IDLE, SLIDING, WAITING, ADOPTED}
@@ -462,6 +465,7 @@ final class ShortsLiveSwitch {
         if (preview != null) {
             preview.consumed(); // stops the spare player and parks its frame
         }
+        mHost.onLiveFallBack();
 
         mHandler.removeCallbacks(mDetachDiag);
         mHandler.postDelayed(mDetachDiag, DIAG_AFTER_MS);
