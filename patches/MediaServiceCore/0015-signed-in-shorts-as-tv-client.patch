@@ -1,0 +1,63 @@
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseApiHelper.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseApiHelper.kt
+index 6b5d297..a84fe1e 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseApiHelper.kt
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseApiHelper.kt
+@@ -118,6 +118,10 @@ internal object BrowseApiHelper {
+         return PostDataHelper.createQueryWeb(REEL)
+     }
+ 
++    fun getReelQuery(client: AppClient): String {
++        return PostDataHelper.createQuery(client.browseTemplate, REEL)
++    }
++
+     fun getMusicQuery(client: AppClient): String {
+         return PostDataHelper.createQuery(client.browseTemplate, MUSIC)
+     }
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
+index a634eb3..5e6d617 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
+@@ -231,8 +231,8 @@ internal open class BrowseService2 {
+         // JoTube: signed in when possible (personalized by the account's history). No subscriptions shelf prepended.
+         return withShortsAuth<MediaGroup>(if (seedVideoId != null) "seeded feed" else "feed", { isEmptyShorts(it) }) { auth ->
+             val query = if (seedVideoId != null && seedParams != null)
+-                BrowseApiHelper.getReelDetailsQuery(AppClient.WEB, seedVideoId, seedParams)
+-            else BrowseApiHelper.getReelQuery()
++                BrowseApiHelper.getReelDetailsQuery(shortsClient(auth), seedVideoId, seedParams)
++            else if (auth) BrowseApiHelper.getReelQuery(shortsClient(true)) else BrowseApiHelper.getReelQuery()
+             val firstResult = mBrowseApi.getReelResult(query)
+             val firstItemOrNull = if (auth) getShortsSignedInLogged(firstResult) else RetrofitHelper.get(firstResult, false)
+ 
+@@ -283,6 +283,14 @@ internal open class BrowseService2 {
+         return body
+     }
+ 
++    /**
++     * JoTube: the account's OAuth token belongs to the TV client; reel requests with the WEB client body and that token
++     * got HTTP 400 INVALID_ARGUMENT (device log 2026-10-24). So signed-in requests are made as the TV client.
++     */
++    private fun shortsClient(auth: Boolean): AppClient {
++        return if (auth) AppClient.TV else AppClient.WEB
++    }
++
+     private fun isEmptyShorts(group: MediaGroup?): Boolean {
+         return group == null || group.mediaItems.isNullOrEmpty()
+     }
+@@ -419,7 +427,7 @@ internal open class BrowseService2 {
+             return null
+         }
+ 
+-        val continuation = mBrowseApi?.getReelContinuationResult(BrowseApiHelper.getReelContinuationQuery(AppClient.WEB, continuationKey))
++        val continuation = mBrowseApi?.getReelContinuationResult(BrowseApiHelper.getReelContinuationQuery(shortsClient(auth), continuationKey))
+ 
+         return RetrofitHelper.get(continuation, auth)?.let {
+             val result = mutableListOf<MediaItem?>()
+@@ -436,7 +444,7 @@ internal open class BrowseService2 {
+                 val params = reel?.params
+                 sShortsDetailsExecutor.submit(Callable<ReelResult?> {
+                     if (videoId == null || params == null) null
+-                    else RetrofitHelper.get(mBrowseApi?.getReelResult(BrowseApiHelper.getReelDetailsQuery(AppClient.WEB, videoId, params)), auth)
++                    else RetrofitHelper.get(mBrowseApi?.getReelResult(BrowseApiHelper.getReelDetailsQuery(shortsClient(auth), videoId, params)), auth)
+                 })
+             }
+ 
