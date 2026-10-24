@@ -1138,6 +1138,9 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         mShortLikeLabel.setText(likes);
         mShortLikeLabel.setVisibility(likes.isEmpty() ? View.GONE : View.VISIBLE);
         mShortLikeIcon.setColorFilter(liked ? 0xFFFF4E45 : 0xFFFFFFFF);
+        if (mMusicView != null) {
+            mMusicView.refreshButtons();
+        }
     }
 
     private void applyOrientation(Configuration config) {
@@ -1906,6 +1909,73 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
             @Override
             public List<Video> rest() {
                 return restSongs();
+            }
+
+            @Override
+            public long buffered() {
+                Player player = MediaPlaybackService.getPlayer();
+                return player != null ? player.getBufferedPosition() : 0;
+            }
+
+            @Override
+            public float speed() {
+                return mExoPlayerController != null ? mExoPlayerController.getSpeed() : 1f;
+            }
+
+            @Override
+            public boolean hasLikes() {
+                return true;
+            }
+
+            @Override
+            public int likeState() {
+                return getButtonState(ID_LIKE) == BUTTON_ON ? 1 : getButtonState(ID_DISLIKE) == BUTTON_ON ? -1 : 0;
+            }
+
+            @Override
+            public String likeCount() {
+                Video video = getVideo();
+                return video != null ? video.likeCount : null;
+            }
+
+            @Override
+            public void like(boolean up) {
+                int id = up ? ID_LIKE : ID_DISLIKE;
+                mPlaybackPresenter.onButtonClicked(id, getButtonState(id));
+            }
+
+            @Override
+            public boolean shuffle() {
+                return com.liskovsoft.smartyoutubetv2.mobile.ui.music.MusicMenu.isShuffle();
+            }
+
+            @Override
+            public void setShuffle(boolean on) {
+                com.liskovsoft.smartyoutubetv2.mobile.ui.music.MusicMenu.setShuffle(on);
+            }
+
+            @Override
+            public boolean repeatOne() {
+                return com.liskovsoft.smartyoutubetv2.mobile.ui.music.MusicMenu.isRepeatOne(PlaybackActivity.this);
+            }
+
+            @Override
+            public void setRepeatOne(boolean on) {
+                com.liskovsoft.smartyoutubetv2.mobile.ui.music.MusicMenu.setRepeatOne(PlaybackActivity.this, on);
+            }
+
+            @Override
+            public String queueTitle() {
+                return com.liskovsoft.smartyoutubetv2.mobile.ui.music.MusicMenu.queueTitle();
+            }
+
+            @Override
+            public void startRadio() {
+                Video video = getVideo();
+                if (video != null) {
+                    com.liskovsoft.smartyoutubetv2.mobile.ui.music.MusicMenu.startRadio(PlaybackActivity.this, video, true);
+                    android.widget.Toast.makeText(PlaybackActivity.this, "Radio från " + video.getTitle(), android.widget.Toast.LENGTH_SHORT).show();
+                }
             }
         });
     }

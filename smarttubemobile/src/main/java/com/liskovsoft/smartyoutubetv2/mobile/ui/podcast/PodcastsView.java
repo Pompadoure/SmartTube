@@ -48,7 +48,17 @@ public final class PodcastsView extends LinearLayout {
     private int mRefreshGeneration; // only the latest refresh round updates the list (Poddar may be shown again meanwhile)
     private boolean mDestroyed;
 
-    private static final int TYPE_RAIL = 0, TYPE_HEADER = 1, TYPE_EPISODE = 2, TYPE_EMPTY = 3;
+    private static final int TYPE_RAIL = 0, TYPE_HEADER = 1, TYPE_EPISODE = 2, TYPE_EMPTY = 3, TYPE_NEW_RAIL = 4;
+    private static final int NEW_EPISODES = 12;
+
+    /** "Dina nya avsnitt": big cards of the latest episodes not listened to yet, like YouTube Music. */
+    private static final class NewRail {
+        final List<PodcastRepository.Episode> episodes;
+
+        NewRail(List<PodcastRepository.Episode> episodes) {
+            this.episodes = episodes;
+        }
+    }
 
     private static final class Rail {
         final List<PodcastRepository.Feed> feeds;
@@ -157,7 +167,22 @@ public final class PodcastsView extends LinearLayout {
         } else {
             mItems.add("Dina poddar");
             mItems.add(new Rail(feeds));
-            mItems.add(mSelectedFeed == null ? "Senaste avsnitt" : "Avsnitt");
+            if (mSelectedFeed == null) {
+                List<PodcastRepository.Episode> fresh = new ArrayList<>();
+                for (PodcastRepository.Episode episode : mEpisodes) {
+                    if (!PodcastRepository.isFinished(mActivity, episode)) {
+                        fresh.add(episode);
+                    }
+                    if (fresh.size() >= NEW_EPISODES) {
+                        break;
+                    }
+                }
+                if (!fresh.isEmpty()) {
+                    mItems.add("Dina nya avsnitt");
+                    mItems.add(new NewRail(fresh));
+                }
+            }
+            mItems.add(mSelectedFeed == null ? "Alla avsnitt" : "Avsnitt");
             if (mEpisodes.isEmpty()) {
                 mItems.add(new Empty(mLoading ? "Hämtar avsnitt…" : "Inga avsnitt hittades."));
             } else {
@@ -331,6 +356,24 @@ public final class PodcastsView extends LinearLayout {
                 .show();
     }
 
+    /** 1:14:35 */
+    private static String clock(long ms) {
+        long total = ms / 1000;
+        long h = total / 3600, m = (total % 3600) / 60, sec = total % 60;
+        return h > 0 ? String.format(java.util.Locale.US, "%d:%02d:%02d", h, m, sec) : String.format(java.util.Locale.US, "%d:%02d", m, sec);
+    }
+
+    /** The small feed icon in front of a show's name, like YouTube Music. */
+    private static android.graphics.drawable.Drawable podcastIcon(Context c) {
+        android.graphics.drawable.Drawable icon = c.getDrawable(R.drawable.ic_podcast);
+        if (icon != null) {
+            icon = icon.mutate();
+            icon.setTint(c.getColor(R.color.yt_text_secondary));
+            icon.setBounds(0, 0, Ui.dp(c, 14), Ui.dp(c, 14));
+        }
+        return icon;
+    }
+
     private static String formatDuration(long ms) {
         long minutes = ms / 60_000;
         return minutes >= 60 ? (minutes / 60) + " h " + (minutes % 60) + " min" : minutes + " min";
@@ -342,6 +385,9 @@ public final class PodcastsView extends LinearLayout {
             Object item = mItems.get(position);
             if (item instanceof Rail) {
                 return TYPE_RAIL;
+            }
+            if (item instanceof NewRail) {
+                return TYPE_NEW_RAIL;
             }
             if (item instanceof String) {
                 return TYPE_HEADER;
@@ -360,11 +406,11 @@ public final class PodcastsView extends LinearLayout {
         @Override
         public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
             Context c = parent.getContext();
-            if (viewType == TYPE_RAIL) {
+            if (viewType == TYPE_RAIL || viewType == TYPE_NEW_RAIL) {
                 RecyclerView rail = new RecyclerView(c);
                 rail.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
                 rail.setLayoutManager(new LinearLayoutManager(c, LinearLayoutManager.HORIZONTAL, false));
-                rail.setPadding(Ui.dp(c, 12), 0, Ui.dp(c, 12), Ui.dp(c, 4));
+                rail.setPadding(Ui.dp(c, 16), 0, Ui.dp(c, 8), Ui.dp(c, 8));
                 rail.setClipToPadding(false);
                 return new RecyclerView.ViewHolder(rail) {
                 };
@@ -373,9 +419,9 @@ public final class PodcastsView extends LinearLayout {
                 TextView header = new TextView(c);
                 header.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
                 header.setTextColor(c.getColor(R.color.yt_text));
-                header.setTextSize(18);
+                header.setTextSize(22);
                 header.setTypeface(Typeface.DEFAULT_BOLD);
-                header.setPadding(Ui.dp(c, 16), Ui.dp(c, 16), Ui.dp(c, 16), Ui.dp(c, 8));
+                header.setPadding(Ui.dp(c, 16), Ui.dp(c, 20), Ui.dp(c, 16), Ui.dp(c, 12));
                 return new RecyclerView.ViewHolder(header) {
                 };
             }
@@ -450,6 +496,8 @@ public final class PodcastsView extends LinearLayout {
                 ((TextView) holder.itemView).setText(((Empty) item).text);
             } else if (item instanceof Rail) {
                 bindRail((RecyclerView) holder.itemView, ((Rail) item).feeds);
+            } else if (item instanceof NewRail) {
+                bindNewRail((RecyclerView) holder.itemView, ((NewRail) item).episodes);
             } else {
                 bindEpisode(holder.itemView, (PodcastRepository.Episode) item);
             }
@@ -501,6 +549,117 @@ public final class PodcastsView extends LinearLayout {
             });
         }
 
+        private void bindNewRail(RecyclerView rail, final List<PodcastRepository.Episode> episodes) {
+            rail.setAdapter(new RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+                @Override
+                public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+                    Context c = parent.getContext();
+                    int width = Math.min(Ui.dp(c, 340), c.getResources().getDisplayMetrics().widthPixels - Ui.dp(c, 64));
+                    int height = width * 9 / 16;
+                    LinearLayout cell = new LinearLayout(c);
+                    cell.setOrientation(LinearLayout.VERTICAL);
+                    RecyclerView.LayoutParams params = new RecyclerView.LayoutParams(width, ViewGroup.LayoutParams.WRAP_CONTENT);
+                    params.setMarginEnd(Ui.dp(c, 14));
+                    cell.setLayoutParams(params);
+
+                    // the cover in the middle of a dark box, the length in the corner
+                    android.widget.FrameLayout box = new android.widget.FrameLayout(c);
+                    box.setBackgroundColor(c.getColor(R.color.yt_surface));
+                    Ui.makeRounded(box, Ui.dp(c, 8));
+                    ImageView cover = new ImageView(c);
+                    cover.setId(R.id.mobile_thumb);
+                    cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                    box.addView(cover, new android.widget.FrameLayout.LayoutParams(height, height, Gravity.CENTER));
+                    TextView badge = new TextView(c);
+                    badge.setId(R.id.mobile_badge);
+                    badge.setTextColor(0xFFFFFFFF);
+                    badge.setTextSize(12);
+                    badge.setTypeface(Typeface.DEFAULT_BOLD);
+                    badge.setBackgroundResource(R.drawable.bg_badge);
+                    badge.setPadding(Ui.dp(c, 6), Ui.dp(c, 2), Ui.dp(c, 6), Ui.dp(c, 2));
+                    android.widget.FrameLayout.LayoutParams badgeParams = new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.END);
+                    badgeParams.setMargins(0, 0, Ui.dp(c, 8), Ui.dp(c, 8));
+                    box.addView(badge, badgeParams);
+                    // how far it was listened to
+                    View fill = new View(c);
+                    fill.setId(R.id.mobile_progress);
+                    fill.setBackgroundColor(c.getColor(R.color.yt_red));
+                    box.addView(fill, new android.widget.FrameLayout.LayoutParams(0, Ui.dp(c, 3), Gravity.BOTTOM | Gravity.START));
+                    cell.addView(box, new LinearLayout.LayoutParams(width, height));
+
+                    TextView title = new TextView(c);
+                    title.setId(R.id.mobile_title);
+                    title.setTextColor(c.getColor(R.color.yt_text));
+                    title.setTextSize(15);
+                    title.setTypeface(Typeface.DEFAULT_BOLD);
+                    title.setMaxLines(2);
+                    title.setEllipsize(TextUtils.TruncateAt.END);
+                    title.setPadding(0, Ui.dp(c, 10), 0, 0);
+                    cell.addView(title);
+                    TextView meta = new TextView(c);
+                    meta.setId(R.id.mobile_meta);
+                    meta.setTextColor(c.getColor(R.color.yt_text_secondary));
+                    meta.setTextSize(13);
+                    meta.setMaxLines(1);
+                    meta.setEllipsize(TextUtils.TruncateAt.END);
+                    meta.setCompoundDrawablePadding(Ui.dp(c, 6));
+                    meta.setPadding(0, Ui.dp(c, 3), 0, 0);
+                    cell.addView(meta);
+                    return new RecyclerView.ViewHolder(cell) {
+                    };
+                }
+
+                @Override
+                public void onBindViewHolder(RecyclerView.ViewHolder h, int pos) {
+                    final PodcastRepository.Episode episode = episodes.get(pos);
+                    Context c = h.itemView.getContext();
+                    ((TextView) h.itemView.findViewById(R.id.mobile_title)).setText(episode.title);
+                    StringBuilder meta = new StringBuilder();
+                    if (episode.dateMs > 0) {
+                        meta.append(DateUtils.getRelativeTimeSpanString(episode.dateMs, System.currentTimeMillis(), DateUtils.DAY_IN_MILLIS));
+                    }
+                    if (episode.feedTitle != null) {
+                        meta.append(meta.length() > 0 ? " • " : "").append(episode.feedTitle);
+                    }
+                    TextView metaView = h.itemView.findViewById(R.id.mobile_meta);
+                    metaView.setText(meta);
+                    metaView.setCompoundDrawablesRelative(podcastIcon(c), null, null, null);
+
+                    TextView badge = h.itemView.findViewById(R.id.mobile_badge);
+                    long duration = episode.durationMs > 0 ? episode.durationMs : PodcastRepository.getDurationMs(c, episode);
+                    badge.setText(duration > 0 ? clock(duration) : "");
+                    badge.setVisibility(duration > 0 ? View.VISIBLE : View.GONE);
+
+                    View fill = h.itemView.findViewById(R.id.mobile_progress);
+                    float fraction = PodcastRepository.getProgress(c, episode);
+                    ViewGroup.LayoutParams fillParams = fill.getLayoutParams();
+                    View box = (View) fill.getParent();
+                    int boxWidth = ((ViewGroup.MarginLayoutParams) box.getLayoutParams()).width;
+                    fillParams.width = (int) (boxWidth * fraction);
+                    fill.setLayoutParams(fillParams);
+                    fill.setVisibility(fraction > 0 ? View.VISIBLE : View.GONE);
+
+                    ImageView cover = h.itemView.findViewById(R.id.mobile_thumb);
+                    if (episode.image != null) {
+                        Glide.with(cover).load(episode.image).into(cover);
+                    } else {
+                        Glide.with(cover).clear(cover);
+                        cover.setImageDrawable(null);
+                    }
+                    h.itemView.setOnClickListener(v -> playEpisode(episode));
+                    h.itemView.setOnLongClickListener(v -> {
+                        showEpisodeMenu(episode);
+                        return true;
+                    });
+                }
+
+                @Override
+                public int getItemCount() {
+                    return episodes.size();
+                }
+            });
+        }
+
         private void bindRail(RecyclerView rail, final List<PodcastRepository.Feed> feeds) {
             rail.setAdapter(new RecyclerView.Adapter<RecyclerView.ViewHolder>() {
                 @Override
@@ -508,23 +667,33 @@ public final class PodcastsView extends LinearLayout {
                     Context c = parent.getContext();
                     LinearLayout cell = new LinearLayout(c);
                     cell.setOrientation(LinearLayout.VERTICAL);
-                    RecyclerView.LayoutParams params = new RecyclerView.LayoutParams(Ui.dp(c, 96), ViewGroup.LayoutParams.WRAP_CONTENT);
-                    params.setMarginEnd(Ui.dp(c, 10));
+                    RecyclerView.LayoutParams params = new RecyclerView.LayoutParams(Ui.dp(c, 168), ViewGroup.LayoutParams.WRAP_CONTENT);
+                    params.setMarginEnd(Ui.dp(c, 14));
                     cell.setLayoutParams(params);
                     ImageView cover = new ImageView(c);
                     cover.setId(R.id.mobile_thumb);
                     cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
                     cover.setBackgroundColor(c.getColor(R.color.yt_surface));
-                    Ui.makeRounded(cover, Ui.dp(c, 10));
-                    cell.addView(cover, new LinearLayout.LayoutParams(Ui.dp(c, 96), Ui.dp(c, 96)));
+                    Ui.makeRounded(cover, Ui.dp(c, 6));
+                    cell.addView(cover, new LinearLayout.LayoutParams(Ui.dp(c, 168), Ui.dp(c, 168)));
                     TextView name = new TextView(c);
                     name.setId(R.id.mobile_title);
                     name.setTextColor(c.getColor(R.color.yt_text));
-                    name.setTextSize(12);
-                    name.setMaxLines(2);
+                    name.setTextSize(15);
+                    name.setTypeface(Typeface.DEFAULT_BOLD);
+                    name.setMaxLines(1);
                     name.setEllipsize(TextUtils.TruncateAt.END);
-                    name.setPadding(0, Ui.dp(c, 6), 0, 0);
+                    name.setPadding(0, Ui.dp(c, 8), 0, 0);
                     cell.addView(name);
+                    TextView author = new TextView(c);
+                    author.setId(R.id.mobile_meta);
+                    author.setTextColor(c.getColor(R.color.yt_text_secondary));
+                    author.setTextSize(13);
+                    author.setMaxLines(1);
+                    author.setEllipsize(TextUtils.TruncateAt.END);
+                    author.setCompoundDrawablePadding(Ui.dp(c, 6));
+                    author.setPadding(0, Ui.dp(c, 2), 0, 0);
+                    cell.addView(author);
                     return new RecyclerView.ViewHolder(cell) {
                     };
                 }
@@ -533,6 +702,9 @@ public final class PodcastsView extends LinearLayout {
                 public void onBindViewHolder(RecyclerView.ViewHolder h, int pos) {
                     final PodcastRepository.Feed feed = feeds.get(pos);
                     ((TextView) h.itemView.findViewById(R.id.mobile_title)).setText(feed.title);
+                    TextView author = h.itemView.findViewById(R.id.mobile_meta);
+                    author.setText(feed.author != null && !feed.author.isEmpty() ? feed.author : "Podd");
+                    author.setCompoundDrawablesRelative(podcastIcon(author.getContext()), null, null, null);
                     ImageView cover = h.itemView.findViewById(R.id.mobile_thumb);
                     if (feed.image != null) {
                         Glide.with(cover).load(feed.image).into(cover);
