@@ -312,6 +312,14 @@ public class ShortsSidePanel {
             return;
         }
 
+        if (mPendingBind != null && mPendingBind != video) {
+            // a direct bind during the fade of bindAnimated: this one wins, the fade stops
+            mPendingBind = null;
+            mTitle.animate().cancel();
+            mChannelRow.animate().cancel();
+            resetTextMotion();
+        }
+
         String title = video.getTitleFull() != null ? video.getTitleFull() : video.getTitle();
         mTitle.setText(title != null ? title : "");
         String author = video.getAuthor();

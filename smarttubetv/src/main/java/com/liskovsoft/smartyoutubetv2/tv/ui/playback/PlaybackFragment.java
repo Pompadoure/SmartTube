@@ -192,7 +192,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     private final Player.Listener mTransitionStateListener = new Player.Listener() {
         @Override
         public void onPlayerError(androidx.media3.common.PlaybackException error) {
-            mLiveSwitch.swap();
+            mLiveSwitch.onMainError();
             mShortsTransition.hide(false);
         }
 
@@ -259,6 +259,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         mShortsTransition.setPreview(mShortsPreview, getPlayerTweaksData().isShortsPreviewPlayerEnabled() ||
                 getPlayerTweaksData().isShortsSlideEnabled());
         mSurfaceRoot = root.findViewById(R.id.surface_root);
+        mShortsPreview.setLiveProblemListener(mLiveSwitch::onSecondPlayerProblem);
         mShortsTransition.setSlideEnabled(getPlayerTweaksData().isShortsSlideEnabled());
         mShortsTransition.setSlideListener(new ShortsTransitionOverlay.SlideListener() {
             @Override
@@ -385,6 +386,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     @Override
     public void onPause() {
         super.onPause();
+        mLiveSwitch.abort(); // JoTube: the second player must not go on (sound) when the screen is left
 
         // NOTE: don't move this into another place! Multiple components rely on it.
         mPlaybackPresenter.onViewPaused();
@@ -1307,6 +1309,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
     @Override
     public void setPlayWhenReady(boolean play) {
+        mLiveSwitch.onCorePlayWhenReady(play); // JoTube: the second player (on screen during the switch) follows
         mExoPlayerController.setPlayWhenReady(play);
     }
 
@@ -1395,11 +1398,13 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
     @Override
     public float getSpeed() {
-        return mExoPlayerController.getSpeed();
+        // JoTube: during the live switch the main player's speed is changed to catch up: the core's speed
+        return mLiveSwitch.isActive() ? mLiveSwitch.getBaseSpeed() : mExoPlayerController.getSpeed();
     }
 
     @Override
     public void setSpeed(float speed) {
+        mLiveSwitch.onCoreSpeed(speed);
         mExoPlayerController.setSpeed(speed);
         // NOTE: Real speed isn't changed immediately, so use supplied speed data
         setButtonState(R.id.action_video_speed, speed != 1.0f ? PlayerUI.BUTTON_ON : PlayerUI.BUTTON_OFF);
@@ -1417,11 +1422,14 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
     @Override
     public float getVolume() {
-        return mExoPlayerController.getVolume();
+        return mLiveSwitch.isActive() ? mLiveSwitch.getVolume() : mExoPlayerController.getVolume();
     }
 
     @Override
     public void setVolume(float volume) {
+        if (mLiveSwitch.onCoreVolume(volume)) {
+            return; // JoTube: the main player stays silent until it takes over (with this volume)
+        }
         mExoPlayerController.setVolume(volume);
     }
 
@@ -1934,7 +1942,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
     @Override
     public boolean isShortsLiveSwitchSliding() {
-        return mLiveSwitch.isSliding();
+        return mLiveSwitch.isBusy();
     }
 
     @Override

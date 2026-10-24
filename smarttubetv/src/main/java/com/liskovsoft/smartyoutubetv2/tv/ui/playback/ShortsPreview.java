@@ -54,6 +54,7 @@ public class ShortsPreview {
     private boolean mEnabled;
     private boolean mLive; // JoTube: it plays the Short on screen (live switch) until the main player takes over
     private float mAspectRatio; // the prepared Short's picture (width / height), 0 = not known yet
+    private Runnable mLiveProblem; // JoTube: the live Short failed or ended (the main player must take over)
 
     private final Player.Listener mListener = new Player.Listener() {
         @Override
@@ -73,9 +74,19 @@ public class ShortsPreview {
         }
 
         @Override
+        public void onPlaybackStateChanged(int state) {
+            if (mLive && state == Player.STATE_ENDED && mLiveProblem != null) {
+                mLiveProblem.run();
+            }
+        }
+
+        @Override
         public void onPlayerError(PlaybackException error) {
             Log.e(TAG, "Preview failed for %s: %s", mVideoId, error.getMessage());
             mFrameRendered = false;
+            if (mLive && mLiveProblem != null) {
+                mLiveProblem.run();
+            }
             // A failed one is not retried until the next Short comes
         }
     };
@@ -134,7 +145,15 @@ public class ShortsPreview {
      * Same size as the incoming picture (the Shorts frame): 0 = whole container.
      */
     public void setFrame(int width, int height, int offsetX) {
-        if (mHolder == null || !(mHolder.getLayoutParams() instanceof FrameLayout.LayoutParams)) {
+        setFrame(width, height, offsetX, false);
+    }
+
+    /**
+     * @param force also while live (the live switch sets the frame of the incoming Short itself; the frame updates of
+     *              the playing one must not change it meanwhile)
+     */
+    public void setFrame(int width, int height, int offsetX, boolean force) {
+        if (mHolder == null || !(mHolder.getLayoutParams() instanceof FrameLayout.LayoutParams) || (mLive && !force)) {
             return;
         }
 
@@ -292,6 +311,10 @@ public class ShortsPreview {
 
     public boolean isLive() {
         return mLive;
+    }
+
+    public void setLiveProblemListener(Runnable listener) {
+        mLiveProblem = listener;
     }
 
     /**
