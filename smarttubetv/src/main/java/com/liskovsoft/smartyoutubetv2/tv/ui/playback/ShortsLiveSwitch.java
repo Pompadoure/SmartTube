@@ -51,6 +51,7 @@ final class ShortsLiveSwitch {
     private long mSyncTarget;
     private int mRetries;
     private long mPlayCommandMs;
+    private long mCommandDelta;
     private boolean mMainHeld;
     private boolean mCorePlay = true;
 
@@ -252,11 +253,23 @@ final class ShortsLiveSwitch {
 
     /** Play / pause from the core (remote, button): the second player, which is the one on screen, follows. */
     void onCorePlayWhenReady(boolean play) {
-        mCorePlay = play;
+        if (mState != State.IDLE) {
+            mCorePlay = play;
+        }
         ShortsPreview preview = mHost.preview();
         if (mState != State.IDLE && preview != null && preview.getPlayer() != null) {
             preview.getPlayer().setPlayWhenReady(play);
         }
+    }
+
+    /** The main player is held paused until the meeting point: the core's play/pause calls must not reach it. */
+    boolean isMainHeld() {
+        return mState != State.IDLE && mMainHeld;
+    }
+
+    /** What the core wants (play/pause), also while the main player is held. */
+    boolean getCorePlay() {
+        return mCorePlay;
     }
 
     /** The second player failed, ended or stopped: the main player takes over at once. */
@@ -483,6 +496,7 @@ final class ShortsLiveSwitch {
             main.setPlayWhenReady(true);
             mMainHeld = false;
             mPlayCommandMs = now;
+            mCommandDelta = delta;
             mSyncPhase = SyncPhase.PLAYING;
             mHandler.postDelayed(mPoll, SYNC_POLL_MS);
             return;
@@ -498,8 +512,10 @@ final class ShortsLiveSwitch {
             mPlayingSinceMs = now;
             // learn the start time: main ahead of the second player = it started faster than assumed
             long ahead = main.getCurrentPosition() - second.getCurrentPosition();
-            float latency = sPlayLatencyMs - 0.5f * ahead;
-            sPlayLatencyMs = Math.max(0f, Math.min(400f, latency));
+            if (mCommandDelta >= -40) { // a late start (the second player had passed) says nothing about the start time
+                float latency = sPlayLatencyMs - 0.5f * ahead;
+                sPlayLatencyMs = Math.max(0f, Math.min(400f, latency));
+            }
             Log.d(TAG, "The main player plays %s ms after the start command, %s ms apart (next start time %s ms)",
                     now - mPlayCommandMs, ahead, (long) sPlayLatencyMs);
         }
@@ -563,7 +579,7 @@ final class ShortsLiveSwitch {
             if (mMainHeld) {
                 // Taken over before the meeting: the held main player goes to where the second player is and plays on
                 mMainHeld = false;
-                if (second != null && mState == State.SYNCING) {
+                if (second != null) {
                     main.seekTo(second.getCurrentPosition());
                 }
                 main.setPlayWhenReady(mCorePlay);
