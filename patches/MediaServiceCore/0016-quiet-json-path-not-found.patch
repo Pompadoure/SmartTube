@@ -1,0 +1,13 @@
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/googlecommon/common/converters/jsonpath/typeadapter/JsonPathTypeAdapter.java b/youtubeapi/src/main/java/com/liskovsoft/googlecommon/common/converters/jsonpath/typeadapter/JsonPathTypeAdapter.java
+index cb75524..bf1ac65 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/googlecommon/common/converters/jsonpath/typeadapter/JsonPathTypeAdapter.java
++++ b/youtubeapi/src/main/java/com/liskovsoft/googlecommon/common/converters/jsonpath/typeadapter/JsonPathTypeAdapter.java
+@@ -127,7 +127,7 @@ public class JsonPathTypeAdapter<T> {
+                 jsonVal = parser.read(path);
+                 break;
+             } catch (PathNotFoundException e) {
+-                Log.d(TAG, type.getSimpleName() + ": Path not found: " + path);
++                // JoTube: no log: an absent optional field is normal (~150 lines a second while Shorts load)
+             }
+         }
+ 

@@ -786,6 +786,7 @@ public class TrackSelectorManager implements TrackSelectorCallback {
             }
 
             result = preferAacForShorts(result, filterByLanguage(renderer.mediaTracks, originTrack));
+            result = capVideoForShorts(result, renderer.mediaTracks);
         }
 
         Log.d(TAG, "findBestMatch: Found: " + result.format);
@@ -829,6 +830,65 @@ public class TrackSelectorManager implements TrackSelectorCallback {
         }
 
         return result;
+    }
+
+    /** JoTube: Shorts picture at most 1280 px on the long side (720p). */
+    private static final int SHORTS_MAX_SIDE = 1280;
+
+    /**
+     * JoTube: Shorts play at most at 720p. A Short is shown in a frame about 608x1080 px on a 1080p screen, so 720x1280
+     * is still sharper than the frame. During a live switch two players decode the same Short at once; device log
+     * 2026-10-24 (Streamer, c2.mtk.vp9.decoder): with 1080p60 (itag 303) in both, the visible player dropped 50 frames
+     * in 0.9-1.8 s and its sound ran dry ("hack in the beginning"). 720p60 is ~2.25x fewer pixels per player.
+     */
+    private MediaTrack capVideoForShorts(MediaTrack result, MediaTrack[][] tracks) {
+        if (!ShortsTransitionState.isShortsMode() || !(result instanceof VideoTrack) || result.format == null
+                || maxSide(result.format) <= SHORTS_MAX_SIDE || tracks == null) {
+            return result;
+        }
+
+        MediaTrack best = null;
+        for (MediaTrack[] group : tracks) {
+            if (group == null) {
+                continue;
+            }
+            for (MediaTrack track : group) {
+                if (track == null || track.format == null || hasPlaybackGlitch(track) || maxSide(track.format) > SHORTS_MAX_SIDE
+                        || track.format.width <= 0 || track.format.height <= 0
+                        || !Helpers.equals(track.format.sampleMimeType, result.format.sampleMimeType)
+                        || TrackSelectorUtil.isHdrFormat(track.format) != TrackSelectorUtil.isHdrFormat(result.format)) {
+                    continue;
+                }
+                if (best == null || isBetterShortsTrack(track.format, best.format, result.format)) {
+                    best = track;
+                }
+            }
+        }
+
+        if (best != null) {
+            Log.d(TAG, "findBestMatch: Shorts: %sx%s instead of %sx%s (two players decode at a switch)",
+                    best.format.width, best.format.height, result.format.width, result.format.height);
+            return best;
+        }
+
+        return result;
+    }
+
+    private static int maxSide(Format format) {
+        return Math.max(format.width, format.height);
+    }
+
+    /** Larger picture first, then the frame rate of the wanted track, then the bitrate. */
+    private static boolean isBetterShortsTrack(Format candidate, Format best, Format wanted) {
+        if (maxSide(candidate) != maxSide(best)) {
+            return maxSide(candidate) > maxSide(best);
+        }
+        float candidateFps = Math.abs(candidate.frameRate - wanted.frameRate);
+        float bestFps = Math.abs(best.frameRate - wanted.frameRate);
+        if (candidateFps != bestFps) {
+            return candidateFps < bestFps;
+        }
+        return candidate.bitrate > best.bitrate;
     }
 
     private static boolean isAac(Format format) {

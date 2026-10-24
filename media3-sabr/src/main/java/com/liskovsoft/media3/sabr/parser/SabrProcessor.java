@@ -52,6 +52,7 @@ import java.util.Set;
 
 public class SabrProcessor {
     private static final String TAG = SabrProcessor.class.getSimpleName();
+    private static final boolean VERBOSE = false; // JoTube: hundreds of lines a second during playback (CPU on weak boxes)
     private static final int NO_VALUE = -1;
     private final String videoPlaybackUstreamerConfig;
     private final ClientInfo clientInfo;
@@ -263,7 +264,7 @@ public class SabrProcessor {
             );
         }
 
-        Log.d(TAG, "Initialized Media Header %s for sequence %s. Segment: %s",
+        if (VERBOSE) Log.d(TAG, "Initialized Media Header %s for sequence %s. Segment: %s",
                 Utils.toLong(mediaHeader.getHeaderId()), sequenceNumber, segment);
 
         return result;
@@ -282,7 +283,7 @@ public class SabrProcessor {
         ProcessMediaResult result = new ProcessMediaResult();
 
         if (!segment.discard) {
-            Log.d(TAG, "processMedia: part created. contentLength: %s", contentLength);
+            if (VERBOSE) Log.d(TAG, "processMedia: part created. contentLength: %s", contentLength);
             result.sabrPart = new MediaSegmentDataSabrPart(
                     segment.initializedFormat.formatSelector,
                     segment.formatId,
@@ -295,7 +296,7 @@ public class SabrProcessor {
                     segmentStartBytes
             );
         } else {
-            Log.d(TAG, "processMedia: part discarded. contentLength: %s, itag: %s", contentLength, segment.formatId.getItag());
+            if (VERBOSE) Log.d(TAG, "processMedia: part discarded. contentLength: %s, itag: %s", contentLength, segment.formatId.getItag());
             data.skipFully(contentLength);
         }
 
@@ -313,7 +314,7 @@ public class SabrProcessor {
             initializedFormats.put(segment.mediaHeader.getItag(), segment.mediaHeader);
         }
 
-        Log.d(TAG, "MediaEnd for %s (sequence %s, data length = %s)",
+        if (VERBOSE) Log.d(TAG, "MediaEnd for %s (sequence %s, data length = %s)",
                 segment.formatId, segment.sequenceNumber, segment.receivedDataLength);
 
         // MOD: remove. receivedDataLength != segment.contentLength
@@ -353,7 +354,7 @@ public class SabrProcessor {
                     segment.durationMs
             );
         } else {
-            Log.d(TAG, "Discarding media for %s", segment.initializedFormat.formatId);
+            if (VERBOSE) Log.d(TAG, "Discarding media for %s", segment.initializedFormat.formatId);
         }
 
         if (segment.isInitSegment) {
@@ -364,7 +365,7 @@ public class SabrProcessor {
 
         if (segment.initializedFormat.currentSegment != null && isLive()) {
             Segment previousSegment = segment.initializedFormat.currentSegment;
-            Log.d(TAG, "Previous segment %s for format %s " +
+            if (VERBOSE) Log.d(TAG, "Previous segment %s for format %s " +
                     "estimated duration difference from this segment (%s): %sms",
                     previousSegment.sequenceNumber, segment.formatId, segment.sequenceNumber,
                     segment.startMs - (previousSegment.startMs + previousSegment.durationMs));
@@ -376,7 +377,7 @@ public class SabrProcessor {
             // Segment is already consumed, do not create a new consumed range. It was probably discarded.
             // This can be expected to happen in the case of video-only, where we discard the audio track (and mark it as entirely buffered)
             // We still want to create/update consumed range for discarded media IF it is not already consumed
-            Log.d(TAG, "%s} segment %s already consumed, not creating or updating consumed range (discard=%s)",
+            if (VERBOSE) Log.d(TAG, "%s} segment %s already consumed, not creating or updating consumed range (discard=%s)",
                     segment.formatId, segment.sequenceNumber, segment.discard);
             return result;
         }
@@ -393,7 +394,7 @@ public class SabrProcessor {
                     segment.sequenceNumber,
                     segment.sequenceNumber
             ));
-            Log.d(TAG, "Created new consumed range for %s %s",
+            if (VERBOSE) Log.d(TAG, "Created new consumed range for %s %s",
                     segment.initializedFormat.formatId, segment.initializedFormat.consumedRanges.get(segment.initializedFormat.consumedRanges.size() - 1));
             return result;
         }
@@ -522,7 +523,7 @@ public class SabrProcessor {
 
     public void processNextRequestPolicy(NextRequestPolicy nextRequestPolicy) {
         this.nextRequestPolicy = nextRequestPolicy;
-        Log.d(TAG, "Registered new NextRequestPolicy: %s", nextRequestPolicy);
+        if (VERBOSE) Log.d(TAG, "Registered new NextRequestPolicy: %s", nextRequestPolicy);
     }
 
     public ProcessLiveMetadataResult processLiveMetadata(LiveMetadata liveMetadata) {
@@ -611,7 +612,7 @@ public class SabrProcessor {
         if (sabrCtxUpdate.hasSendByDefault()) {
             sabrContextsToSend.add(sabrCtxUpdate.getType());
         }
-        Log.d(TAG, "Registered SabrContextUpdate %s", sabrCtxUpdate);
+        if (VERBOSE) Log.d(TAG, "Registered SabrContextUpdate %s", sabrCtxUpdate);
     }
 
     public void processSabrContextSendingPolicy(SabrContextSendingPolicy sabrCtxSendingPolicy) {

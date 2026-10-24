@@ -47,6 +47,7 @@ import java.util.Set;
 
 public class SabrStream {
     private static final String TAG = SabrStream.class.getSimpleName();
+    private static final boolean VERBOSE = false; // JoTube: hundreds of lines a second during playback (CPU on weak boxes)
     private final int[] KNOWN_PARTS = {
             UMPPartId.MEDIA_HEADER,
             UMPPartId.MEDIA,
@@ -268,7 +269,7 @@ public class SabrStream {
             unknownPartTypes.add(part.partId);
         }
 
-        Log.d(TAG, "Unhandled part type %s", part.partId);
+        if (VERBOSE) Log.d(TAG, "Unhandled part type %s", part.partId);
 
         return null;
     }
@@ -338,7 +339,7 @@ public class SabrStream {
     private MediaSegmentEndSabrPart processMediaEnd(UMPPart part) {
         try {
             long headerId = decoder.readVarInt(part.data);
-            Log.d(TAG, "Header ID: %s", headerId);
+            if (VERBOSE) Log.d(TAG, "Header ID: %s", headerId);
 
             ProcessMediaEndResult result = processor.processMediaEnd(headerId);
 
@@ -361,7 +362,7 @@ public class SabrStream {
             throw new IllegalStateException(e);
         }
 
-        Log.d(TAG, "Process StreamProtectionStatus: %s", sps);
+        if (VERBOSE) Log.d(TAG, "Process StreamProtectionStatus: %s", sps);
         ProcessStreamProtectionStatusResult result = processor.processStreamProtectionStatus(sps);
 
         return result.sabrPart;
@@ -395,7 +396,7 @@ public class SabrStream {
             throw new IllegalStateException(e);
         }
 
-        Log.d(TAG, "Process FormatInitializationMetadata: %s", fmtInitMetadata);
+        if (VERBOSE) Log.d(TAG, "Process FormatInitializationMetadata: %s", fmtInitMetadata);
         ProcessFormatInitializationMetadataResult result = processor.processFormatInitializationMetadata(fmtInitMetadata);
 
         return result.sabrPart;
@@ -410,7 +411,7 @@ public class SabrStream {
             throw new IllegalStateException(e);
         }
 
-        Log.d(TAG, "Process NextRequestPolicy: %s", nextRequestPolicy);
+        if (VERBOSE) Log.d(TAG, "Process NextRequestPolicy: %s", nextRequestPolicy);
         processor.processNextRequestPolicy(nextRequestPolicy);
         policyReceivedInInitLoad = true;
     }
@@ -437,7 +438,7 @@ public class SabrStream {
             throw new IllegalStateException(e);
         }
 
-        Log.d(TAG, "Process SabrContextUpdate: %s", sabrCtxUpdate);
+        if (VERBOSE) Log.d(TAG, "Process SabrContextUpdate: %s", sabrCtxUpdate);
         processor.processSabrContextUpdate(sabrCtxUpdate);
     }
 
@@ -450,7 +451,7 @@ public class SabrStream {
             throw new IllegalStateException(e);
         }
 
-        Log.d(TAG, "Process SabrContextSendingPolicy: %s", sabrCtxSendingPolicy);
+        if (VERBOSE) Log.d(TAG, "Process SabrContextSendingPolicy: %s", sabrCtxSendingPolicy);
         processor.processSabrContextSendingPolicy(sabrCtxSendingPolicy);
     }
 
@@ -532,7 +533,7 @@ public class SabrStream {
 
             // Normal reading: 47, 58. 52, 53, 42, 35, 20, 21, 22, 20...
             if (contains(KNOWN_PARTS, part.partId)) {
-                Log.d(TAG, "Found known part: id=%s, size=%s, position=%s", part.partId, part.size, part.data.getPosition());
+                if (VERBOSE) Log.d(TAG, "Found known part: id=%s, size=%s, position=%s", part.partId, part.size, part.data.getPosition());
                 break;
             } else {
                 String msg = String.format("Unknown part encountered: id=%s, size=%s, position=%s", part.partId, part.size, part.data.getPosition());

@@ -260,7 +260,7 @@ public class ShortsPreview {
             // main player takes over a few seconds later: no change of sharpness at that moment)
             trackSelector.setParameters(trackSelector.buildUponParameters()
                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                    .setMaxVideoSize(1920, 1920)
+                    .setMaxVideoSize(1280, 1280) // the same 720p cap as the main player for Shorts (TrackSelectorManager)
                     .setPreferredAudioLanguage(java.util.Locale.getDefault().getLanguage())
                     .setAllowVideoMixedMimeTypeAdaptiveness(false));
             DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
