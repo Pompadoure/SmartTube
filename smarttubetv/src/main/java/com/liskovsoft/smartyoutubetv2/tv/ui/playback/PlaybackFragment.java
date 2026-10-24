@@ -1315,12 +1315,14 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     @Override
     public void setPlayWhenReady(boolean play) {
         mLiveSwitch.onCorePlayWhenReady(play); // JoTube: the second player (on screen during the switch) follows
-        mExoPlayerController.setPlayWhenReady(play);
+        if (!mLiveSwitch.isMainHeld()) { // the held main player starts when the second player gets to it
+            mExoPlayerController.setPlayWhenReady(play);
+        }
     }
 
     @Override
     public boolean getPlayWhenReady() {
-        return mExoPlayerController.getPlayWhenReady();
+        return mLiveSwitch.isMainHeld() ? mLiveSwitch.getCorePlay() : mExoPlayerController.getPlayWhenReady();
     }
 
     @Override
