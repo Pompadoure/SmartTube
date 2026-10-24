@@ -1,0 +1,15 @@
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
+index 81a55ef..62e9290 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
+@@ -831,7 +831,9 @@ private const val SHORTS_TAG = "BrowseService2"
+ 
+ // JoTube: signed-in reel requests turned out not to work in this run
+ private val sShortsAuthBroken = AtomicBoolean(false)
+-private const val SHORTS_SIGNED_IN = false
++// JoTube: on again (owner: the Shorts feed should follow the account like the official app). The check of 2026-10-10 said
++// signed-in reel requests return nothing: if that is still so, the log says it once and the run goes on anonymous.
++private const val SHORTS_SIGNED_IN = true
+ private const val SHORTS_SEEDED_FEEDS = false
+ 
+ // JoTube: seeded new feeds that gave nothing in a row (then the usual feed only, no extra round trips)
