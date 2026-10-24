@@ -2153,7 +2153,15 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
             return;
         }
 
+        int sectionId = getCurrentSection() != null ? getCurrentSection().getId() : -1;
+        boolean onlyShorts = sectionId == SidebarService.TYPE_SHORTS_HISTORY;
+        boolean noShorts = sectionId == MediaGroup.TYPE_HISTORY && getSidebarService().isSectionPinned(SidebarService.TYPE_SHORTS_HISTORY);
+
         for (State state : stateService.getStates()) {
+            if (state.video != null && ((onlyShorts && !state.video.isShorts) || (noShorts && state.video.isShorts))) {
+                continue; // the Shorts have a tab of their own
+            }
+
             if (lastHistoryItem == null || state.timestamp > stateService.getSessionStartTimeMs()) {
                 videoGroup.add(0, state.video);
             }

@@ -37,7 +37,7 @@ final class ShortsLiveSwitch {
     static final int SLIDE_MS = 420;
     private static final int GAP_DP = 24;
     private static final long SYNC_POLL_MS = 32;
-    private static final long SYNC_TIMEOUT_MS = 4_000; // the main player doesn't catch up: take over anyway
+    private static final long SYNC_TIMEOUT_MS = 5_000; // the main player doesn't catch up: take over anyway
     private static final long LOAD_TIMEOUT_MS = 8_000; // no first frame of the main player at all
     private static final long SYNC_TOLERANCE_MS = 25; // under one frame at 30 fps
     private static final long SYNC_NEAR_MS = 80; // closer than this: only gentle speed changes
@@ -78,6 +78,7 @@ final class ShortsLiveSwitch {
     private float mPitch = 1f;
     private long mLastDiagMs;
     private long mSeekIssuedMs;
+    private long mPlayingSinceMs = -1;
     private boolean mSeekLatencyMeasured;
     private boolean mProblemInSlide; // the second player failed while sliding
     private int mSettledPolls; // polls in a row at the same moment (at the normal speed)
@@ -358,8 +359,13 @@ final class ShortsLiveSwitch {
         mHandler.removeCallbacks(mLoadTimeout);
         main.setVolume(0f);
         long target = second.getCurrentPosition() + Math.round(sSeekLatencyMs) + SEEK_MARGIN_MS;
+        long duration = main.getDuration();
+        if (duration > 0 && target > duration - 400) {
+            target = Math.max(0, duration - 400); // not past the end of the Short
+        }
         mSeekIssuedMs = SystemClock.uptimeMillis();
         mSeekLatencyMeasured = false;
+        mPlayingSinceMs = -1;
         Log.d(TAG, "Main player ready +%s ms: seeks to %s ms to meet the second player", SystemClock.uptimeMillis() - mStartMs, target);
         main.seekTo(target);
         mState = State.SYNCING;
@@ -405,17 +411,21 @@ final class ShortsLiveSwitch {
                     second.isPlaying(), second.getPlaybackState(), second.getCurrentPosition(), mSettledPolls);
         }
 
+        // The seek latency: from the seek until the main player plays again (not counting a second player that is
+        // paused by the user or buffering)
+        if (!mSeekLatencyMeasured && main.isPlaying()) {
+            mSeekLatencyMeasured = true;
+            if (second.isPlaying()) {
+                float latency = SystemClock.uptimeMillis() - mSeekIssuedMs;
+                sSeekLatencyMs = Math.max(300f, Math.min(2_500f, 0.5f * sSeekLatencyMs + 0.5f * latency));
+                Log.d(TAG, "The main player plays again %s ms after its seek (next lead %s ms)", (long) latency, (long) sSeekLatencyMs);
+            }
+        }
+
         if (!main.isPlaying() || !second.isPlaying()) {
             mSettledPolls = 0;
             mHandler.postDelayed(mPoll, SYNC_POLL_MS); // buffering after the seek, or paused by the user
             return;
-        }
-
-        if (!mSeekLatencyMeasured) {
-            mSeekLatencyMeasured = true;
-            float latency = SystemClock.uptimeMillis() - mSeekIssuedMs;
-            sSeekLatencyMs = Math.max(300f, Math.min(2_500f, 0.5f * sSeekLatencyMs + 0.5f * latency));
-            Log.d(TAG, "The main player plays again %s ms after its seek (next lead %s ms)", (long) latency, (long) sSeekLatencyMs);
         }
 
         long diff = main.getCurrentPosition() - second.getCurrentPosition();
@@ -423,7 +433,11 @@ final class ShortsLiveSwitch {
         float factor;
 
         // The longer it takes, the less exact it must be (a few frames' difference is invisible, a long wait is not)
-        long tolerance = sinceSync > 1500 ? 80 : sinceSync > 800 ? 45 : SYNC_TOLERANCE_MS;
+        if (mPlayingSinceMs < 0) {
+            mPlayingSinceMs = SystemClock.uptimeMillis();
+        }
+        long playing = SystemClock.uptimeMillis() - mPlayingSinceMs; // the ramp counts from when both play
+        long tolerance = playing > 1200 ? 80 : playing > 500 ? 45 : SYNC_TOLERANCE_MS;
         if (distance <= tolerance) {
             factor = 1f; // the normal speed before the take-over (its sound must not be time-stretched then)
             if (++mSettledPolls >= 3) {
