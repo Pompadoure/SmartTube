@@ -27,6 +27,10 @@ public class FastStartLoadControl implements LoadControl {
     private static final long SHORTS_BACK_BUFFER_US = 10 * 60 * 1_000_000L; // keep played Shorts (instant "previous")
     private static final long VOD_MIN_BUFFER_US = 30_000_000; // 30 s
     private static final long VOD_START_BUFFER_US = 1_000_000; // 1 s
+    // JoTube role swap: the spare player prepares the next Short while the other one plays: only a few seconds of it
+    // (network and CPU belong to the playing Short)
+    private static final long SPARE_MAX_BUFFER_US = 6_000_000;
+    private volatile boolean mSpare;
     private final LoadControl mDelegate;
     private final int mShortsMaxBufferBytes;
     private final int mMaxBufferBytes;
@@ -38,6 +42,11 @@ public class FastStartLoadControl implements LoadControl {
         mDelegate = delegate;
         mShortsMaxBufferBytes = maxBufferBytes > 0 ? Math.min(SHORTS_MAX_BUFFER_BYTES, maxBufferBytes) : SHORTS_MAX_BUFFER_BYTES;
         mMaxBufferBytes = maxBufferBytes > 0 ? maxBufferBytes : SHORTS_MAX_BUFFER_BYTES;
+    }
+
+    /** JoTube role swap: true while the player is the spare one (prepares the next Short), false while it plays. */
+    public void setSpare(boolean spare) {
+        mSpare = spare;
     }
 
     @Override
@@ -101,6 +110,10 @@ public class FastStartLoadControl implements LoadControl {
     public boolean shouldContinueLoading(Parameters parameters) {
         long bufferedDurationUs = parameters.bufferedDurationUs;
         Allocator allocator = getAllocator(parameters.playerId);
+
+        if (mSpare) {
+            return bufferedDurationUs < SPARE_MAX_BUFFER_US;
+        }
 
         if (ShortsTransitionState.isShortsMode()) {
             return bufferedDurationUs < SHORTS_MIN_BUFFER_US || (bufferedDurationUs < SHORTS_MAX_BUFFER_US &&

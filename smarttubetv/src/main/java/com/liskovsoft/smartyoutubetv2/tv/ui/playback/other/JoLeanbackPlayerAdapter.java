@@ -44,7 +44,8 @@ import androidx.media3.common.util.Util;
 public final class JoLeanbackPlayerAdapter extends PlayerAdapter implements Runnable {
 
   private final Context context;
-  private final Player player;
+  private Player player; // JoTube role swap: the players of two Shorts swap ({@link #setPlayer})
+  @Nullable private Surface surface;
   private final Handler handler;
   private final PlayerListener playerListener;
   private final int updatePeriodMs;
@@ -108,6 +109,38 @@ public final class JoLeanbackPlayerAdapter extends PlayerAdapter implements Runn
     callback.onBufferingStateChanged(this, false);
     callback.onPlayStateChanged(this);
     maybeNotifyPreparedStateChanged(callback);
+  }
+
+  /**
+   * JoTube role swap (Shorts): another player becomes the one shown and controlled. The old one leaves the surface
+   * first (a surface has one producer at a time; ExoPlayer waits until it is detached), then the new one takes it.
+   */
+  /** JoTube role swap: the main surface exists (a player can be moved onto it). */
+  public boolean hasVideoSurface() {
+    return surface != null;
+  }
+
+  public void setPlayer(Player newPlayer) {
+    if (newPlayer == null || newPlayer == player) {
+      return;
+    }
+    Player old = player;
+    old.removeListener(playerListener);
+    if (surface != null) {
+      old.clearVideoSurface(surface);
+    }
+    player = newPlayer;
+    if (surface != null) {
+      newPlayer.setVideoSurface(surface);
+    }
+    newPlayer.addListener(playerListener);
+    Callback callback = getCallback();
+    if (callback != null) {
+      notifyStateChanged();
+      callback.onDurationChanged(this);
+      callback.onCurrentPositionChanged(this);
+      callback.onBufferedPositionChanged(this);
+    }
   }
 
   @Override
@@ -192,6 +225,7 @@ public final class JoLeanbackPlayerAdapter extends PlayerAdapter implements Runn
   @SuppressWarnings("nullness:argument.type.incompatible")
   void setVideoSurface(@Nullable Surface surface) {
     hasSurface = surface != null;
+    this.surface = surface;
     player.setVideoSurface(surface);
     if (hasSurface && progressUpdatingEnabled) { // MOD: run() stopped while there was no surface, restart it
       handler.removeCallbacks(this);

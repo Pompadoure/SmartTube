@@ -114,7 +114,11 @@ public class DebugInfoMediaCodecVideoRenderer extends MediaCodecVideoRenderer {
         // Null surface error on Android 9 (VERSION.SDK_INT >= 28) and above (appears on background audio playback)
         // Need to be enabled on older version of ExoPlayer (e.g. 2.10.6).
         // It's because there's no tweaks for modern devices.
-        return mIsSetOutputSurfaceWorkaroundEnabled || super.codecNeedsSetOutputSurfaceWorkaround(name);
+        // JoTube role swap: in the Shorts feed a playing player moves to another surface; the forced workaround would
+        // release and re-create its decoder there (freeze). Media3's own device list still applies.
+        boolean forced = mIsSetOutputSurfaceWorkaroundEnabled &&
+                !com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState.isShortsMode();
+        return forced || super.codecNeedsSetOutputSurfaceWorkaround(name);
     }
 
     /**

@@ -27,6 +27,10 @@ public class ExoPlayerInitializer {
     private DefaultPreloadManager mPreloadManager;
     private final ShortsPreloadControl mPreloadControl = new ShortsPreloadControl();
     private static AudioAttributes sAudioAttributes;
+    // JoTube role swap: the load control of every player built here (the spare one loads only a few seconds)
+    private final java.util.Map<ExoPlayer, FastStartLoadControl> mLoadControls = new java.util.HashMap<>();
+    private ExoPlayer mSparePlayer;
+    private VolumeBooster mSpareVolumeBooster;
 
     public ExoPlayerInitializer(Context context) {
         mPlayerData = PlayerData.instance(context);
@@ -67,6 +71,7 @@ public class ExoPlayerInitializer {
             // control and bandwidth meter (DefaultPreloadManager.Builder.buildExoPlayer). The factory is called for the
             // player first, then for the preload manager.
             final boolean[] playerSelectorGiven = {false};
+            FastStartLoadControl preloadLoadControl = new FastStartLoadControl(loadControl, mMaxBufferBytes);
             DefaultPreloadManager.Builder builder = new DefaultPreloadManager.Builder(context, new DefaultPreloadManager.SimpleRankingDataComparator() {
                         @Override
                         public int compare(Integer key1, Integer key2) {
@@ -74,7 +79,7 @@ public class ExoPlayerInitializer {
                         }
                     }, mPreloadControl)
                     .setRenderersFactory(renderersFactory)
-                    .setLoadControl(new FastStartLoadControl(loadControl, mMaxBufferBytes))
+                    .setLoadControl(preloadLoadControl)
                     .setBandwidthMeter(ExoMediaSourceFactory.getBandwidthMeter(context))
                     .setTrackSelectorFactory(ctx -> {
                         if (!playerSelectorGiven[0]) {
@@ -85,13 +90,16 @@ public class ExoPlayerInitializer {
                     });
             player = builder.buildExoPlayer(new ExoPlayer.Builder(context).setLivePlaybackSpeedControl(createFixedLiveSpeedControl()));
             mPreloadManager = builder.build();
+            mLoadControls.put(player, preloadLoadControl);
         } else {
+            FastStartLoadControl playerLoadControl = new FastStartLoadControl(loadControl, mMaxBufferBytes);
             player = new ExoPlayer.Builder(context, renderersFactory)
                     .setTrackSelector(trackSelector)
-                    .setLoadControl(new FastStartLoadControl(loadControl, mMaxBufferBytes))
+                    .setLoadControl(playerLoadControl)
                     .setBandwidthMeter(ExoMediaSourceFactory.getBandwidthMeter(context))
                     .setLivePlaybackSpeedControl(createFixedLiveSpeedControl())
                     .build();
+            mLoadControls.put(player, playerLoadControl);
         }
 
         // JoTube M3: 2.10 never asked the display for a frame rate; the app's own AFR (UhdHelper) does it. Without this
@@ -121,6 +129,65 @@ public class ExoPlayerInitializer {
         mPlayer = player;
 
         return player;
+    }
+
+    /**
+     * JoTube role swap (Shorts): a second player built like the main one (renderers, load control, fixes, volume boost),
+     * on a playback thread of its own (a shared thread would stall one player while the other starts a decoder). It
+     * prepares the next Short; on a swipe it keeps playing it and becomes the main player (the other one the spare).
+     * It doesn't take the audio focus until it becomes the main player ({@link #moveAudioFocus}).
+     */
+    public ExoPlayer createSparePlayer(Context context, DefaultRenderersFactory renderersFactory, DefaultTrackSelector trackSelector) {
+        FastStartLoadControl loadControl = new FastStartLoadControl(createLoadControl(), mMaxBufferBytes);
+        loadControl.setSpare(true);
+        ExoPlayer player = new ExoPlayer.Builder(context, renderersFactory)
+                .setTrackSelector(trackSelector)
+                .setLoadControl(loadControl)
+                .setBandwidthMeter(ExoMediaSourceFactory.getBandwidthMeter(context))
+                .setLivePlaybackSpeedControl(createFixedLiveSpeedControl())
+                .build();
+        player.setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF);
+        applyPlaybackFixes(player);
+        if (mPlayerTweaksData.isAudioFocusEnabled()) {
+            try {
+                player.setAudioAttributes(getAudioAttributes(), false);
+            } catch (SecurityException e) {
+                e.printStackTrace();
+            }
+        }
+        float volume = mPlayerTweaksData.isPlayerAutoVolumeEnabled() ? mPlayerData.getPlayerVolume() * 2.0f : mPlayerData.getPlayerVolume();
+        if (volume > 1f && Build.VERSION.SDK_INT >= 19) {
+            mSpareVolumeBooster = new VolumeBooster(true, volume, player);
+            player.addListener(mSpareVolumeBooster);
+        }
+        mLoadControls.put(player, loadControl);
+        mSparePlayer = player;
+        return player;
+    }
+
+    /** JoTube role swap: the spare player loads only a few seconds of the next Short. */
+    public void setSpare(ExoPlayer player, boolean spare) {
+        FastStartLoadControl loadControl = player != null ? mLoadControls.get(player) : null;
+        if (loadControl != null) {
+            loadControl.setSpare(spare);
+        }
+    }
+
+    /** JoTube role swap: the new main player takes the audio focus (if the app handles it), the old one lets it go. */
+    public void moveAudioFocus(ExoPlayer from, ExoPlayer to) {
+        if (!mPlayerTweaksData.isAudioFocusEnabled()) {
+            return;
+        }
+        try {
+            if (from != null) {
+                from.setAudioAttributes(getAudioAttributes(), false);
+            }
+            if (to != null) {
+                to.setAudioAttributes(getAudioAttributes(), true);
+            }
+        } catch (SecurityException e) {
+            e.printStackTrace();
+        }
     }
 
     /**
@@ -264,6 +331,15 @@ public class ExoPlayerInitializer {
 
         mVolumeBooster = null;
         mPlayer = null;
+        if (mSpareVolumeBooster != null) {
+            mSpareVolumeBooster.release();
+            if (mSparePlayer != null) {
+                mSparePlayer.removeListener(mSpareVolumeBooster);
+            }
+        }
+        mSpareVolumeBooster = null;
+        mSparePlayer = null;
+        mLoadControls.clear();
         if (mPreloadManager != null) {
             mPreloadManager.release();
             mPreloadManager = null;

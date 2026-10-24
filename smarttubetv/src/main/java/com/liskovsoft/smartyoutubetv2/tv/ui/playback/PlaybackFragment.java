@@ -107,6 +107,12 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     private static final int SUGGESTIONS_START_INDEX = 1;
     private VideoPlayerGlue mPlayerGlue;
     private ExoPlayer mPlayer;
+    // JoTube role swap (Shorts): the main player's selector, the spare player (prepares the next Short) and its selector.
+    // On a swipe the spare player becomes mPlayer and the old one the spare (docs/media3/ROLE_SWAP.md).
+    private RestoreTrackSelector mPlayerSelector;
+    private ExoPlayer mSparePlayer;
+    private RestoreTrackSelector mSpareSelector;
+    private JoLeanbackPlayerAdapter mPlayerAdapter;
     private PlaybackPresenter mPlaybackPresenter;
     private ArrayObjectAdapter mRowsAdapter;
     private ListRowPresenter mRowPresenter;
@@ -162,6 +168,20 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         @Override
         public void onLiveCancelled() {
             updateShortsBackground(getVideo());
+        }
+
+        @Override
+        public void onLiveOpening() {
+            if (mExoPlayerController != null) {
+                mExoPlayerController.onSwapPending();
+            }
+        }
+
+        @Override
+        public void onLiveFallBack() {
+            if (mExoPlayerController != null) {
+                mExoPlayerController.onSwapCancelled();
+            }
         }
     });
     private final ShortsSidePanel mShortsPanel = new ShortsSidePanel();
@@ -588,7 +608,26 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             mPlayer.removeListener(mTransitionStateListener);
         }
         mShortsTransition.hide(false);
+        mLiveSwitch.release();
+        // JoTube role swap: the spare player belongs to this screen like the main one
+        mShortsPreview.setPlayer(null);
+        mExoPlayerController.setShortsAdopter(null);
+        ExoPlayer spare = mSparePlayer;
+        mSparePlayer = null;
+        mSpareSelector = null;
+        mPlayerSelector = null;
+        mPlayerAdapter = null;
         mPlayerInitializer.release();
+        if (spare != null) {
+            try {
+                spare.stop();
+                spare.clearMediaItems();
+                spare.clearVideoSurface();
+                spare.release();
+            } catch (RuntimeException e) {
+                Log.e(TAG, "Spare player release: %s", e.getMessage());
+            }
+        }
         // Fix access calls when player isn't initialized
         mExoPlayerController.release();
         mPlayer = null;
@@ -635,7 +674,8 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         // JoTube: fast start. Quality goes up as soon as 3 s is buffered and the measured bandwidth allows it.
         // M3: the bandwidth meter isn't passed to the factory any more: ExoPlayer hands its own meter (set in
         // ExoPlayerInitializer: ExoMediaSourceFactory.getBandwidthMeter) to the track selector.
-        DefaultTrackSelector trackSelector = newTrackSelector();
+        RestoreTrackSelector trackSelector = newTrackSelector();
+        mPlayerSelector = trackSelector;
         mExoPlayerController.setTrackSelector(trackSelector);
 
         DefaultRenderersFactory renderersFactory = new CustomOverridesRenderersFactory(getContext());
@@ -650,10 +690,126 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
         mExoPlayerController.setPlayer(mPlayer);
         mExoPlayerController.setPreloadManager(mPlayerInitializer.getPreloadManager(), mPlayerInitializer.getPreloadControl());
+        createSparePlayer();
+    }
+
+    /**
+     * JoTube role swap: the spare player is built like the main one (same renderers, rules for the tracks, load control,
+     * volume boost). Only when the second player is used (live switch / real first frame).
+     */
+    private void createSparePlayer() {
+        if (!mShortsPreview.isEnabled() || getContext() == null) {
+            return;
+        }
+
+        try {
+            RestoreTrackSelector spareSelector = newTrackSelector();
+            mExoPlayerController.addSpareTrackSelector(spareSelector);
+            mSparePlayer = mPlayerInitializer.createSparePlayer(getContext(), new CustomOverridesRenderersFactory(getContext()), spareSelector);
+            mSpareSelector = spareSelector;
+            mShortsPreview.setPlayer(mSparePlayer);
+            mExoPlayerController.setShortsAdopter(new ExoPlayerController.ShortsAdopter() {
+                @Override
+                public boolean adopt(MediaItemFormatInfo formatInfo) {
+                    return adoptLiveShort(formatInfo);
+                }
+
+                @Override
+                public void onOtherOpen() {
+                    mLiveSwitch.onOtherOpen();
+                }
+            });
+        } catch (RuntimeException e) {
+            Log.e(TAG, "Can't create the spare player: %s", e.getMessage());
+            mSparePlayer = null;
+            mSpareSelector = null;
+        }
+    }
+
+    /**
+     * JoTube role swap: the core opens the Short that the spare player plays on top already (live switch). The spare
+     * player becomes the main player: the main surface, the screen's listeners, the controller (track rules, events),
+     * the session and the overlay go to it. It keeps playing: no new source, no seek. The old main player stops and
+     * becomes the spare (it gets the preview's surface once the main surface shows the new one).
+     */
+    private boolean adoptLiveShort(MediaItemFormatInfo formatInfo) {
+        if (mPlayer == null || mSparePlayer == null || mPlayerAdapter == null || formatInfo == null
+                || !mPlayerAdapter.hasVideoSurface() || mShortsPreview.getPlayer() != mSparePlayer) {
+            return false; // the live switch (if any) ends the usual way (onOtherOpen)
+        }
+
+        ExoPlayer incoming = mLiveSwitch.takeForAdoption(formatInfo.getVideoId());
+
+        if (incoming == null) {
+            return false;
+        }
+
+        final ExoPlayer old = mPlayer;
+        RestoreTrackSelector oldSelector = mPlayerSelector;
+        RestoreTrackSelector incomingSelector = mSpareSelector;
+
+        old.removeListener(mFirstFrameListener);
+        old.removeListener(mTransitionStateListener);
+        if (mSubtitleManager != null) {
+            old.removeListener(mSubtitleManager);
+        }
+
+        mPlayer = incoming;
+        mPlayerSelector = incomingSelector;
+        mSparePlayer = old;
+        mSpareSelector = oldSelector;
+
+        mPlayerInitializer.setSpare(incoming, false);
+        mPlayerInitializer.setSpare(old, true);
+        mPlayerInitializer.moveAudioFocus(old, incoming);
+
+        incoming.addListener(mFirstFrameListener);
+        incoming.addListener(mTransitionStateListener);
+        if (mSubtitleManager != null) {
+            incoming.addListener(mSubtitleManager);
+        }
+
+        // The core: same events as after an open of the Short (the Short keeps playing live on the spare frame meanwhile)
+        mExoPlayerController.adoptPlayer(incoming, incomingSelector, formatInfo);
+
+        if (mMediaSession != null) {
+            try {
+                SessionPlayer sessionPlayer = newSessionPlayer(incoming);
+                mMediaSession.setPlayer(sessionPlayer);
+                mSessionPlayer = sessionPlayer;
+            } catch (RuntimeException e) {
+                Log.e(TAG, "Role swap: the session keeps the old player: %s", e.getMessage());
+            }
+        }
+        if (mYouTubeOverlay != null) {
+            mYouTubeOverlay.player(incoming);
+        }
+        if (mDebugInfoManager != null) {
+            mDebugInfoManager.show(false);
+            mDebugInfoManager = null;
+        }
+
+        // The old main player: the previous Short ends here (stopped before it leaves the surface: no decoder work there)
+        old.setPlayWhenReady(false);
+        old.stop();
+        old.clearMediaItems();
+        old.setVolume(0f);
+
+        // The main surface last: the old player leaves it, the new one moves onto it (seamless output switch; it is still
+        // covered by the spare frame until the main surface shows its frame)
+        mPlayerAdapter.setPlayer(incoming);
+
+        mLiveSwitch.onAdopted(() -> {
+            if (mSparePlayer == old) {
+                mShortsPreview.setPlayer(old); // the next Short is prepared on it
+            }
+        });
+        return true;
     }
 
     private void createPlayerGlue() {
-        PlayerAdapter playerAdapter = new JoLeanbackPlayerAdapter(getContext(), mPlayer, UPDATE_DELAY_MS); // NOTE: possible context memory leak. M3: copy with the no-surface fix
+        JoLeanbackPlayerAdapter playerAdapter = new JoLeanbackPlayerAdapter(getContext(), mPlayer, UPDATE_DELAY_MS);
+        mPlayerAdapter = playerAdapter; // NOTE: possible context memory leak. M3: copy with the no-surface fix
 
         OnActionClickedListener playerActionListener = new PlayerActionListener();
         mPlayerGlue = new VideoPlayerGlue(getContext(), playerAdapter, playerActionListener); // NOTE: possible context memory leak
@@ -797,22 +953,9 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         }
     }
 
-    private void createMediaSession() {
-        if (getContext() == null || mPlayer == null) {
-            return;
-        }
-
-        // NOTE: No way to disable only a notifications. We need to disable the media session instead.
-        // M3: a media3 MediaSession is always active, so a disabled one isn't created at all (was setActive(false)).
-        if (getPlayerTweaksData().isPlaybackNotificationsDisabled()) {
-            return;
-        }
-
-        // M3: the MediaSessionConnector parts (metadata provider, queue navigator, control dispatcher) live in a
-        // ForwardingPlayer the session talks to. The session reads the metadata only on onMediaMetadataChanged, so
-        // setVideo() calls notifyMediaMetadataChanged() (MediaSessionConnector re-read it on every player event).
-        // The duration comes from the player itself.
-        SessionPlayer sessionPlayer = new SessionPlayer(mPlayer) {
+    /** M3: the session's player (JoTube role swap: made again for the other player when the players swap). */
+    private SessionPlayer newSessionPlayer(Player player) {
+        return new SessionPlayer(player) {
             @Override
             public MediaMetadata getMediaMetadata() {
                 Video video = getVideo();
@@ -880,6 +1023,24 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                 }
             }
         };
+    }
+
+    private void createMediaSession() {
+        if (getContext() == null || mPlayer == null) {
+            return;
+        }
+
+        // NOTE: No way to disable only a notifications. We need to disable the media session instead.
+        // M3: a media3 MediaSession is always active, so a disabled one isn't created at all (was setActive(false)).
+        if (getPlayerTweaksData().isPlaybackNotificationsDisabled()) {
+            return;
+        }
+
+        // M3: the MediaSessionConnector parts (metadata provider, queue navigator, control dispatcher) live in a
+        // ForwardingPlayer the session talks to. The session reads the metadata only on onMediaMetadataChanged, so
+        // setVideo() calls notifyMediaMetadataChanged() (MediaSessionConnector re-read it on every player event).
+        // The duration comes from the player itself.
+        SessionPlayer sessionPlayer = newSessionPlayer(mPlayer);
 
         try {
             mMediaSession = new MediaSession.Builder(getContext().getApplicationContext(), sessionPlayer)
@@ -1314,15 +1475,13 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
     @Override
     public void setPlayWhenReady(boolean play) {
-        mLiveSwitch.onCorePlayWhenReady(play); // JoTube: the second player (on screen during the switch) follows
-        if (!mLiveSwitch.isMainHeld()) { // the held main player starts when the second player gets to it
-            mExoPlayerController.setPlayWhenReady(play);
-        }
+        mLiveSwitch.onCorePlayWhenReady(play); // JoTube: the spare player (on screen during the switch) follows
+        mExoPlayerController.setPlayWhenReady(play);
     }
 
     @Override
     public boolean getPlayWhenReady() {
-        return mLiveSwitch.isMainHeld() ? mLiveSwitch.getCorePlay() : mExoPlayerController.getPlayWhenReady();
+        return mExoPlayerController.getPlayWhenReady();
     }
 
     @Override
@@ -1405,7 +1564,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
     @Override
     public float getSpeed() {
-        // JoTube: during the live switch the main player's speed is changed to catch up: the core's speed
+        // JoTube: during the live switch the core's speed (the spare player plays with it)
         return mLiveSwitch.isActive() ? mLiveSwitch.getBaseSpeed() : mExoPlayerController.getSpeed();
     }
 
@@ -1435,7 +1594,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     @Override
     public void setVolume(float volume) {
         if (mLiveSwitch.onCoreVolume(volume)) {
-            return; // JoTube: the main player stays silent until it takes over (with this volume)
+            return; // JoTube: the spare player plays the Short on top with this volume (the old one is silent)
         }
         mExoPlayerController.setVolume(volume);
     }
@@ -1967,10 +2126,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
         mShortsPreview.onMainStarting();
         if (mLiveSwitch.onMainStarting(video)) {
-            // JoTube live switch: the second player shows this Short already; the main player loads it behind, silent
-            if (ShortsQueue.getQueuedFormatInfo(video.videoId) == null && mExoPlayerController != null) {
-                mExoPlayerController.resetPlayerState(); // not preloaded: the usual reset (hidden)
-            }
+            // JoTube live switch: the spare player plays this Short already; the controller adopts it (role swap)
             mShortsTransition.hide(false);
             updateShortsBackground(video);
             setChatReceiver(null);
@@ -1978,7 +2134,10 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             setSeekPreviewTitle(null);
             return;
         }
-        if (video != null && ShortsQueue.getQueuedFormatInfo(video.videoId) != null) {
+        if (video != null && !video.isShorts && !mShortsPreview.isLive()) {
+            mShortsPreview.consumed(); // JoTube role swap: no prepared Short (decoder, buffer) next to a regular video
+        }
+        if (video != null && ShortsQueue.getQueuedFormatInfo(video.videoId) != null && mExoPlayerController.canPlayPreloadedNow()) {
             // Preloaded Short: it's already in the player, keep everything as is (no black screen, no reset).
             // The swipe covers the moment until the new video's first frame is rendered.
             final float directAspect = getQueuedAspect(video);
@@ -2031,9 +2190,11 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         // The player reset releases the decoder's last frame: only after the snapshot (at most 150 ms), and only if
         // the new video hasn't been opened meanwhile (its source opening resets the player itself)
         final int generation = ExoPlayerController.getSourceGeneration();
+        // JoTube role swap: a queued Short on the player that can't play the preloaded sources: the queue stays
+        final boolean keepQueue = video != null && video.isShorts && ShortsQueue.isQueued(video.videoId);
         mShortsTransition.runAfterSnapshot(() -> {
             if (mExoPlayerController != null && ExoPlayerController.getSourceGeneration() == generation) {
-                mExoPlayerController.resetPlayerState();
+                mExoPlayerController.resetPlayerState(keepQueue);
                 // Hide last frame of the previous video
                 showBackgroundColor(R.color.player_background);
             }

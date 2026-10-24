@@ -48,7 +48,6 @@ public class ShortsPreview {
     private static final int QUIET_AFTER_TAKEOVER_MS = 2_500;
     private long mQuietUntilMs;
 
-    private VolumeBooster mVolumeBooster;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private final Runnable mRefresh = this::refresh;
     private Context mContext;
@@ -246,41 +245,72 @@ public class ShortsPreview {
 
     @Nullable
     private ExoPlayer ensurePlayer() {
-        if (mPlayer != null) {
-            return mPlayer;
+        return mSurface != null ? mPlayer : null;
+    }
+
+    /**
+     * JoTube role swap: the spare player (built and released by the player screen like the main one). It prepares the
+     * next Short here; on a swipe it plays it live and is handed to the core ({@link #handOverLive}); the core's old
+     * player comes back here as the new spare.
+     */
+    public void setPlayer(@Nullable ExoPlayer player) {
+        if (mPlayer == player) {
+            return;
         }
 
-        if (mContext == null || mSurface == null) {
+        if (mPlayer != null) {
+            try {
+                mPlayer.removeListener(mListener);
+                if (mSurface != null) {
+                    mPlayer.clearVideoSurfaceView(mSurface);
+                }
+            } catch (RuntimeException e) {
+                // released already
+            }
+        }
+
+        mPlayer = player;
+        mLive = false;
+        mVideoId = null;
+        mFrameRendered = false;
+        mAspectRatio = 0;
+
+        if (player != null) {
+            player.setVolume(0f);
+            player.setPlayWhenReady(false);
+            player.addListener(mListener);
+            if (mSurface != null) {
+                player.setVideoSurfaceView(mSurface);
+            }
+        }
+    }
+
+    /**
+     * JoTube role swap: the live Short's player goes to the core (it stays on screen here until the core's surface shows
+     * it; {@link #park} then). This preview has no player until {@link #setPlayer} gives it the old one.
+     */
+    @Nullable
+    public ExoPlayer handOverLive() {
+        ExoPlayer player = mPlayer;
+
+        if (player == null || !mLive) {
             return null;
         }
 
-        try {
-            DefaultTrackSelector trackSelector = new DefaultTrackSelector(mContext);
-            // JoTube live switch: with its sound (silent until it is shown) and the main player's picture size (the
-            // main player takes over a few seconds later: no change of sharpness at that moment)
-            trackSelector.setParameters(trackSelector.buildUponParameters()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                    .setMaxVideoSize(1280, 1280) // the same 720p cap as the main player for Shorts (TrackSelectorManager)
-                    .setPreferredAudioLanguage(java.util.Locale.getDefault().getLanguage())
-                    .setAllowVideoMixedMimeTypeAdaptiveness(false));
-            DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(2_500, 8_000, 250, 250)
-                    .build();
-            mPlayer = new ExoPlayer.Builder(mContext, new DefaultRenderersFactory(mContext).setEnableDecoderFallback(true))
-                    .setTrackSelector(trackSelector)
-                    .setLoadControl(loadControl)
-                    .setBandwidthMeter(ExoMediaSourceFactory.getBandwidthMeter(mContext))
-                    .build();
-            mPlayer.setVolume(0f);
-            mPlayer.setVideoSurfaceView(mSurface);
-            mPlayer.addListener(mListener);
-            setupVolumeBoost();
-        } catch (RuntimeException e) {
-            Log.e(TAG, "Can't create the preview player: %s", e.getMessage());
-            mPlayer = null;
-        }
+        player.removeListener(mListener);
+        mPlayer = null;
+        mLive = false;
+        mVideoId = null;
+        mFrameRendered = false;
+        mAspectRatio = 0;
+        mHandler.removeCallbacks(mRefresh);
+        return player;
+    }
 
-        return mPlayer;
+    /** JoTube role swap: the live Short is on the core's surface now: the preview frame goes away. */
+    public void onHandedOver() {
+        park();
+        mQuietUntilMs = android.os.SystemClock.uptimeMillis() + QUIET_AFTER_TAKEOVER_MS;
     }
 
     /**
@@ -392,29 +422,8 @@ public class ShortsPreview {
         }
     }
 
-    /** The same boost as the main player has (the second player is the one heard during a live switch). */
-    private void setupVolumeBoost() {
-        float volume = PlayerTweaksData.instance(mContext).isPlayerAutoVolumeEnabled() ?
-                PlayerData.instance(mContext).getPlayerVolume() * 2.0f : PlayerData.instance(mContext).getPlayerVolume();
-        if (volume > 1f && android.os.Build.VERSION.SDK_INT >= 19) {
-            mVolumeBooster = new VolumeBooster(true, volume, mPlayer);
-            mPlayer.addListener(mVolumeBooster);
-        }
-    }
-
+    /** JoTube role swap: the player isn't this one's (the player screen releases it): only let it go. */
     private void releasePlayer() {
-        if (mVolumeBooster != null) {
-            mVolumeBooster.release();
-            mVolumeBooster = null;
-        }
-        if (mPlayer != null) {
-            try {
-                mPlayer.removeListener(mListener);
-                mPlayer.release();
-            } catch (RuntimeException e) {
-                // ignore
-            }
-            mPlayer = null;
-        }
+        setPlayer(null);
     }
 }
