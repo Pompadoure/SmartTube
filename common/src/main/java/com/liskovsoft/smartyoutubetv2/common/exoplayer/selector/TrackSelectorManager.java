@@ -854,7 +854,9 @@ public class TrackSelectorManager implements TrackSelectorCallback {
             }
             for (MediaTrack track : group) {
                 if (track == null || track.format == null || hasPlaybackGlitch(track) || maxSide(track.format) > SHORTS_MAX_SIDE
-                        || !Helpers.equals(track.format.sampleMimeType, result.format.sampleMimeType)) {
+                        || track.format.width <= 0 || track.format.height <= 0
+                        || !Helpers.equals(track.format.sampleMimeType, result.format.sampleMimeType)
+                        || TrackSelectorUtil.isHdrFormat(track.format) != TrackSelectorUtil.isHdrFormat(result.format)) {
                     continue;
                 }
                 if (best == null || isBetterShortsTrack(track.format, best.format, result.format)) {

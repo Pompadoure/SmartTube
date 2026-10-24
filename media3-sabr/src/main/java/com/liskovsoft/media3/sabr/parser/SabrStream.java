@@ -269,7 +269,7 @@ public class SabrStream {
             unknownPartTypes.add(part.partId);
         }
 
-        Log.d(TAG, "Unhandled part type %s", part.partId);
+        if (VERBOSE) Log.d(TAG, "Unhandled part type %s", part.partId);
 
         return null;
     }

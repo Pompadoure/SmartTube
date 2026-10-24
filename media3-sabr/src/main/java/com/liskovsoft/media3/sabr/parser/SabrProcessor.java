@@ -354,7 +354,7 @@ public class SabrProcessor {
                     segment.durationMs
             );
         } else {
-            Log.d(TAG, "Discarding media for %s", segment.initializedFormat.formatId);
+            if (VERBOSE) Log.d(TAG, "Discarding media for %s", segment.initializedFormat.formatId);
         }
 
         if (segment.isInitSegment) {
