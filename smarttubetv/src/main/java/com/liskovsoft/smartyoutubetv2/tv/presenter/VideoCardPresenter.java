@@ -165,8 +165,10 @@ public class VideoCardPresenter extends LongClickPresenter {
                 if (round) {
                     outline.setShape(GradientDrawable.OVAL);
                     // Avatar: the ring goes around the circle, not around the (padded) square card
-                    int inset = view.getMainImageView().getPaddingLeft();
-                    wrapper.setForeground(inset > 0 ? new InsetDrawable(outline, inset) : outline);
+                    ImageView avatar = view.getMainImageView();
+                    wrapper.setForeground(avatar.getPaddingLeft() > 0 || avatar.getPaddingTop() > 0 ?
+                            new InsetDrawable(outline, avatar.getPaddingLeft(), avatar.getPaddingTop(),
+                                    avatar.getPaddingRight(), avatar.getPaddingBottom()) : outline);
                 } else {
                     outline.setCornerRadius(12 * d);
                     wrapper.setForeground(outline);
@@ -283,13 +285,17 @@ public class VideoCardPresenter extends LongClickPresenter {
      * The source is requested in a bigger size (the default one is tiny) and scaled down: sharp result.
      */
     private void bindChannelAvatar(ComplexImageCardView cardView, Context context, Video video) {
-        // A small round button, about 45% of the thumbnail height (the full height and 60% were too big).
-        // The card stays mHeight x mHeight, the padding centers the circle in it.
-        int size = Math.max(Math.round(mHeight * 0.45f), 1);
-        int padding = (mHeight - size) / 2;
-        cardView.setMainImageDimensions(mHeight, mHeight);
+        // A small round button (~35% of the thumbnail height; 45% and more were too big). The card is only a bit wider
+        // than the circle and as high as the circle plus a margin: the name sits close under it and is centered on it.
+        float density = context.getResources().getDisplayMetrics().density;
+        int size = Math.max(Math.round(mHeight * 0.35f), 1);
+        int cardWidth = Math.min(Math.round(size * 1.9f), mWidth);
+        int margin = Math.round(6 * density);
+        int cardHeight = size + 2 * margin;
+        int paddingX = (cardWidth - size) / 2;
+        cardView.setMainImageDimensions(cardWidth, cardHeight);
         ImageView imageView = cardView.getMainImageView();
-        imageView.setPadding(padding, padding, padding, padding);
+        imageView.setPadding(paddingX, margin, paddingX, margin);
         imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
         imageView.setOutlineProvider(new ViewOutlineProvider() {
             @Override

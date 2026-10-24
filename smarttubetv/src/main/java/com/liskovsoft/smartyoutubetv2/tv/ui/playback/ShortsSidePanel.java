@@ -915,15 +915,13 @@ public class ShortsSidePanel {
             boolean focused = mFocus == item;
             boolean on = isOn(item);
 
-            // JoTube: like the player's buttons (lb_control_button_primary): a soft translucent circle, brighter when
-            // focused; the icon stays white (the highlight color when on)
-            GradientDrawable background = new GradientDrawable();
-            background.setShape(GradientDrawable.OVAL);
-            background.setColor(focused ? 0x66FFFFFF : 0x26FFFFFF);
-            button.setBackground(background);
+            // JoTube: no background (owner: ugly). The icon alone: a bit dimmed, white and bigger when focused (the
+            // highlight color when on)
+            button.setBackground(null);
+            button.setAlpha(focused || on ? 1f : 0.75f);
 
             button.setColorFilter(on ? highlight : Color.WHITE, PorterDuff.Mode.SRC_IN);
-            float scale = focused ? 1.08f : 1f;
+            float scale = focused ? 1.25f : 1f;
             Object target = button.getTag(R.id.action_thumbs_up); // the scale it animates to (not the value right now)
             if (!(target instanceof Float) || (Float) target != scale) {
                 button.setTag(R.id.action_thumbs_up, scale);
