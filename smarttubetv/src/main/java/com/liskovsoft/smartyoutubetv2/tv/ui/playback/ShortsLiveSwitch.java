@@ -10,10 +10,12 @@ import android.view.View;
 import android.view.animation.PathInterpolator;
 
 import androidx.media3.common.PlaybackParameters;
+import androidx.media3.common.Player;
 import androidx.media3.exoplayer.ExoPlayer;
 
 import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
+import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerTweaksData;
 
 /**
  * JoTube: the Shorts switch with two players (owner 2026-10-24: "no stills, no black frames, it must be smooth").
@@ -53,6 +55,9 @@ final class ShortsLiveSwitch {
 
         /** The page of the new Short (background, title, channel): at the start of the slide. */
         void onLivePage(Video next);
+
+        /** The slide was cut short before the new Short was opened: the page goes back to the one that stays. */
+        void onLiveCancelled();
     }
 
     private enum State {IDLE, SLIDING, LOADING, SYNCING}
@@ -67,6 +72,7 @@ final class ShortsLiveSwitch {
     private float mVolume = 1f; // the volume the core wants (kept while the main player is silent)
     private float mBaseSpeed = 1f; // the speed the core wants (the main player's own speed is changed to catch up)
     private float mPitch = 1f;
+    private boolean mProblemInSlide; // the second player failed while sliding
     private int mSettledPolls; // polls in a row at the same moment (at the normal speed)
     private long mSyncStartMs;
     private long mStartMs;
@@ -122,6 +128,7 @@ final class ShortsLiveSwitch {
         mTarget = next;
         mTargetAspect = aspect;
         mOpen = open;
+        mProblemInSlide = false;
         mVolume = main.getVolume();
         mBaseSpeed = main.getPlaybackParameters().speed;
         mPitch = main.getPlaybackParameters().pitch;
@@ -204,6 +211,10 @@ final class ShortsLiveSwitch {
         }
         mBaseSpeed = speed;
         ShortsPreview preview = mHost.preview();
+        if (preview != null && preview.getView() != null
+                && !PlayerTweaksData.instance(preview.getView().getContext()).isAudioTimeStretchingEnabled()) {
+            mPitch = speed; // same rule as in the player controller
+        }
         if (preview != null && preview.getPlayer() != null) {
             preview.getPlayer().setPlaybackParameters(new PlaybackParameters(speed, mPitch));
         }
@@ -223,7 +234,9 @@ final class ShortsLiveSwitch {
 
     /** The second player failed, ended or stopped: the main player takes over at once. */
     void onSecondPlayerProblem() {
-        if (mState == State.LOADING || mState == State.SYNCING) {
+        if (mState == State.SLIDING) {
+            mProblemInSlide = true; // handled when the slide ends
+        } else if (mState == State.LOADING || mState == State.SYNCING) {
             Log.w(TAG, "The second player stopped: the main player takes over");
             swap(true);
         }
@@ -270,6 +283,11 @@ final class ShortsLiveSwitch {
         mOpen = null;
         if (open != null) {
             open.run(); // the core opens the Short now (the heavy part)
+        }
+        if (mProblemInSlide && mState == State.LOADING) {
+            mProblemInSlide = false;
+            Log.w(TAG, "The second player stopped during the slide: the main player takes over");
+            swap(true);
         }
     }
 
@@ -344,6 +362,12 @@ final class ShortsLiveSwitch {
         }
 
         main.setVolume(0f); // the core may set it while loading
+
+        if (second.getPlayerError() != null || second.getPlaybackState() == Player.STATE_ENDED) {
+            Log.w(TAG, "The second player stopped: take over now");
+            swap(true);
+            return;
+        }
 
         if (SystemClock.uptimeMillis() - mSyncStartMs > SYNC_TIMEOUT_MS) {
             Log.w(TAG, "No meeting point in time: take over now");
@@ -477,8 +501,12 @@ final class ShortsLiveSwitch {
             return;
         }
         Log.d(TAG, "Live switch aborted in state %s", mState);
+        boolean slid = mState == State.SLIDING;
         mOpen = null; // not opened: the user left
         swap(true);
+        if (slid) {
+            mHost.onLiveCancelled();
+        }
     }
 
     /** The screen goes away. */

@@ -158,6 +158,11 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         public void onLivePage(Video next) {
             updateShortsBackground(next, ShortsTransitionState.DIRECTION_NEXT);
         }
+
+        @Override
+        public void onLiveCancelled() {
+            updateShortsBackground(getVideo());
+        }
     });
     private final ShortsSidePanel mShortsPanel = new ShortsSidePanel();
     private Video mLastVideo; // the video before the current one (for the Shorts swipe)
