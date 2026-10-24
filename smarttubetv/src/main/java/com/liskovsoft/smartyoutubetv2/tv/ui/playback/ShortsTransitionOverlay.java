@@ -92,6 +92,7 @@ public class ShortsTransitionOverlay {
     private Runnable mRevealEnd;
     private SlideListener mSlideListener;
     private boolean mPageAside; // the frame stepped aside for the slide (onSlideStart without onSlideEnd yet)
+    private boolean mInIsTarget; // mIn shows mTargetVideo's picture (not the black cover of show())
 
     /** JoTube: the frame and its border stand still while the pictures move: they step aside for the slide. */
     public interface SlideListener {
@@ -180,6 +181,7 @@ public class ShortsTransitionOverlay {
             }
         });
         image.setClipToOutline(true);
+        image.setHasOverlappingRendering(false); // the outgoing picture's alpha: no extra layer per frame
         image.setVisibility(View.GONE);
         container.addView(image, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
@@ -358,7 +360,7 @@ public class ShortsTransitionOverlay {
         if (reshape == null) {
             return;
         }
-        if (mContainer != null && (mSnapshotTimeout != null || mAtSlideStart != null)) {
+        if (mContainer != null && (mSnapshotTimeout != null || mAtSlideStart != null || mSlideActive)) {
             mHeldReshape = reshape; // only the newest shape counts
             return;
         }
@@ -383,6 +385,8 @@ public class ShortsTransitionOverlay {
 
         prepare();
         setSurfaceOffset(0);
+        pageBack();
+        mInIsTarget = false;
         mFirstFrameRendered = false;
         // JoTube: black, never the thumbnail (a still image that pops away when the video starts)
         clearImage(mIn);
@@ -467,12 +471,14 @@ public class ShortsTransitionOverlay {
 
         // JoTube: pressed again while the pictures move or the next Short's picture waits for its video: that picture
         // leaves from where it is now (the video is still out of sight)
-        if (mSlideEnabled && mIsShown && (mSlideActive || (mIn.getVisibility() == View.VISIBLE && mRevealEnd == null))) {
+        if (mSlideEnabled && mIsShown && mInIsTarget && (mSlideActive || (mIn.getVisibility() == View.VISIBLE && mRevealEnd == null))) {
             float outStart = currentInOffset();
             prepare();
             mOutStart = outStart;
             mFirstFrameRendered = false;
             final int swipeId = ++mSwipeId;
+            applyOutFrame(); // the shape of the picture that is leaving (mIn's)
+            mOutFrozen = true;
             clearImage(mOut);
             if (previousTarget != null) {
                 loadThumbnail(mOut, previousTarget);
@@ -613,8 +619,10 @@ public class ShortsTransitionOverlay {
             if (done.await(SNAPSHOT_SYNC_MS, java.util.concurrent.TimeUnit.MILLISECONDS) && result[0] == PixelCopy.SUCCESS) {
                 return bitmap;
             }
-        } catch (IllegalArgumentException | InterruptedException e) {
+        } catch (IllegalArgumentException e) {
             // the surface is gone: the thumbnail
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
         // Late or failed: the copy may still write into this bitmap later, never use it again
         for (int i = 0; i < mSnapshotBitmaps.length; i++) {
@@ -795,6 +803,7 @@ public class ShortsTransitionOverlay {
         mIn.setVisibility(View.VISIBLE);
         mIn.setAlpha(1f);
         mIn.setTranslationY(inStart);
+        mInIsTarget = mTargetVideo != null;
         mPreviewActive = false;
 
         // The page (background, frame shape, panel) changes now, with the first moving frame
@@ -816,14 +825,58 @@ public class ShortsTransitionOverlay {
         Log.d(TAG, "Slide starts: +%s ms after swipe(), RenderThread: %s, first frame already rendered: %s",
                 mSlideStartMs - mDiagCallMs, RenderThreadAnimation.isAvailable(), mFirstFrameRendered);
 
-        // No end listener (it would take the animation off the RenderThread): the clean-up comes by time
+        // No end listener (it would take the animation off the RenderThread): the clean-up comes by time, counted
+        // from the frame that hands the animation to the RenderThread (it may be drawn a little after this)
         mSlideEnd = () -> {
             mSlideEnd = null;
             if (swipeId == mSwipeId) {
                 onSwipeEnd();
             }
         };
-        mHandler.postDelayed(mSlideEnd, SWIPE_DURATION_MS + 16);
+        mHandler.postDelayed(mSlideEnd, SWIPE_DURATION_MS + 500); // only if no frame is drawn at all
+        final android.view.ViewTreeObserver observer = mContainer.getViewTreeObserver();
+        final android.view.ViewTreeObserver.OnDrawListener[] self = new android.view.ViewTreeObserver.OnDrawListener[1];
+        final boolean[] fired = {false};
+        self[0] = () -> {
+            if (fired[0]) {
+                return;
+            }
+            fired[0] = true;
+            final android.view.ViewTreeObserver.OnDrawListener listener = self[0];
+            if (mDrawListener == listener) {
+                mDrawListener = null;
+            }
+            mHandler.post(() -> { // not removable while the draw dispatches
+                if (observer.isAlive()) {
+                    observer.removeOnDrawListener(listener);
+                }
+            });
+            if (swipeId != mSwipeId || mSlideEnd == null) {
+                return;
+            }
+            mSlideStartMs = android.os.SystemClock.uptimeMillis();
+            Log.d(TAG, "Slide drawn: +%s ms after swipe()", mSlideStartMs - mDiagCallMs);
+            mHandler.removeCallbacks(mSlideEnd);
+            mHandler.postDelayed(mSlideEnd, SWIPE_DURATION_MS + 16);
+        };
+        removeDrawListener();
+        mDrawListener = self[0];
+        observer.addOnDrawListener(mDrawListener);
+    }
+
+    private android.view.ViewTreeObserver.OnDrawListener mDrawListener;
+
+    private void removeDrawListener() {
+        if (mDrawListener != null && mContainer != null && mContainer.getViewTreeObserver().isAlive()) {
+            final android.view.ViewTreeObserver.OnDrawListener listener = mDrawListener;
+            final android.view.ViewTreeObserver observer = mContainer.getViewTreeObserver();
+            mHandler.post(() -> {
+                if (observer.isAlive()) {
+                    observer.removeOnDrawListener(listener);
+                }
+            });
+        }
+        mDrawListener = null;
     }
 
     private void pageBack() {
@@ -847,6 +900,7 @@ public class ShortsTransitionOverlay {
         }
 
         mSlideActive = false;
+        flushAtSlideStart(); // a frame shape that came during the slide (not preloaded): now, before the reveal
         Log.d(TAG, "Slide ends: +%s ms after swipe(), first frame rendered: %s",
                 android.os.SystemClock.uptimeMillis() - mDiagCallMs, mFirstFrameRendered);
         mOut.animate().cancel();
@@ -1053,6 +1107,8 @@ public class ShortsTransitionOverlay {
         }
 
         pageBack(); // e.g. hidden without a reveal (error, another video)
+        mInIsTarget = false;
+        removeDrawListener();
 
         if (mPreviewActive && mPreview != null) {
             mPreview.consumed();
