@@ -862,7 +862,10 @@ public class ShortsSidePanel {
 
             button.setColorFilter(on ? highlight : Color.WHITE, PorterDuff.Mode.SRC_IN);
             float scale = focused ? 1.08f : 1f;
-            if (button.getScaleX() != scale) {
+            Object target = button.getTag(R.id.action_thumbs_up); // the scale it animates to (not the value right now)
+            if (!(target instanceof Float) || (Float) target != scale) {
+                button.setTag(R.id.action_thumbs_up, scale);
+                button.animate().cancel();
                 button.animate().scaleX(scale).scaleY(scale).setDuration(120).start();
             }
         }
