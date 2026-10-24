@@ -175,6 +175,10 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             if (mExoPlayerController != null) {
                 mExoPlayerController.onSwapPending();
             }
+        }
+
+        @Override
+        public void onLiveOldPlayerDone() {
             // JoTube role swap: the old Short has slid out (the spare frame covers the main surface): the old player stops
             // and leaves the main surface now, so the swap itself only moves the new player onto it (shorter, no still)
             if (mPlayer != null && mSparePlayer != null && mPlayerAdapter != null && mShortsPreview.isLive()) {
@@ -812,17 +816,29 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         long t3 = SystemClock.uptimeMillis();
 
         // The main surface last: the old player leaves it, the new one moves onto it (seamless output switch; it is still
-        // covered by the spare frame until the main surface shows its frame)
+        // covered by the spare frame until a frame of it is on the main surface: noticed on the playback thread, not
+        // with the first-frame callback, which comes 100-250 ms late on the busy main thread)
+        final java.util.concurrent.atomic.AtomicBoolean moved = new java.util.concurrent.atomic.AtomicBoolean();
+        final java.util.concurrent.atomic.AtomicBoolean frameShown = new java.util.concurrent.atomic.AtomicBoolean();
+        final androidx.media3.exoplayer.video.VideoFrameMetadataListener frameListener =
+                (presentationTimeUs, releaseTimeNs, format, mediaFormat) -> {
+                    if (moved.get()) {
+                        frameShown.set(true);
+                    }
+                };
+        incoming.setVideoFrameMetadataListener(frameListener);
         mPlayerAdapter.setPlayer(incoming);
+        moved.set(true); // setVideoSurface returns once the output is the main surface
         long t4 = SystemClock.uptimeMillis();
         Log.d(TAG, "Role swap timing: core %s ms, session/overlay %s ms, old stop %s ms, surface move %s ms",
                 t1 - t0, t2 - t1, t3 - t2, t4 - t3);
 
         mLiveSwitch.onAdopted(() -> {
+            incoming.clearVideoFrameMetadataListener(frameListener);
             if (mSparePlayer == old) {
                 mShortsPreview.setPlayer(old); // the next Short is prepared on it
             }
-        });
+        }, frameShown);
         return true;
     }
 

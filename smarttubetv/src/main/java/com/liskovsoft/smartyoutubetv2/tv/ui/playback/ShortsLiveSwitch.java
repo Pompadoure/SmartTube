@@ -41,7 +41,8 @@ final class ShortsLiveSwitch {
     // After the surface move the adopted player renders its next frame on the main surface within a frame or two; the
     // spare frame on top only shows its last picture by then (a still: device test 2026-10-24 22:43), so it goes away
     // this soon instead of waiting for the first-frame callback (100-250 ms late on a busy main thread)
-    private static final long UNCOVER_AFTER_MOVE_MS = 80;
+    private static final long UNCOVER_POLL_MS = 16;
+    private java.util.concurrent.atomic.AtomicBoolean mFrameShown; // a frame of the adopted player on the main surface
     private static final long DIAG_AFTER_MS = 5_000; // glitches of the adopted player right after the swap are logged
 
     interface Host {
@@ -61,6 +62,9 @@ final class ShortsLiveSwitch {
 
         /** The slide is over, the core opens the Short now (the old Short's end must not count any more). */
         void onLiveOpening();
+
+        /** The core is opening the Short (asynchronously): the old player can stop and leave the main surface now. */
+        void onLiveOldPlayerDone();
 
         /** No swap: the main player plays on as before (its end counts again). */
         void onLiveFallBack();
@@ -85,9 +89,17 @@ final class ShortsLiveSwitch {
         Log.w(TAG, "The core didn't open the Short in time: the switch is dropped");
         fallBack();
     };
-    private final Runnable mUncover = () -> {
-        Log.d(TAG, "Uncovered %s ms after the surface move", UNCOVER_AFTER_MOVE_MS);
-        finishHandOver();
+    private final Runnable mUncover = new Runnable() {
+        @Override
+        public void run() {
+            java.util.concurrent.atomic.AtomicBoolean shown = mFrameShown;
+            if (shown == null || shown.get()) {
+                Log.d(TAG, "Uncovered: a frame of the adopted player is on the main surface (+%s ms)", SystemClock.uptimeMillis() - mStartMs);
+                finishHandOver();
+            } else {
+                mHandler.postDelayed(this, UNCOVER_POLL_MS); // the hand-over timeout ends it at the latest
+            }
+        }
     };
     private final Runnable mHandOverTimeout = () -> {
         Log.w(TAG, "No first frame on the main surface after the swap: uncovered anyway");
@@ -320,7 +332,10 @@ final class ShortsLiveSwitch {
         }
         mHost.onLiveOpening();
         if (open != null) {
-            open.run(); // the core opens the Short now: it adopts the spare player (adopt)
+            open.run(); // the core opens the Short now: it adopts the spare player (adopt, always later: posted)
+        }
+        if (mState == State.WAITING) {
+            mHost.onLiveOldPlayerDone(); // after the core's "new video" work (it reads the old player's state)
         }
     }
 
@@ -390,7 +405,7 @@ final class ShortsLiveSwitch {
      * surface shows a frame of it ({@link #onMainFirstFrame}), then {@code onHandedOver} gives the old player to the
      * preview.
      */
-    void onAdopted(Runnable onHandedOver) {
+    void onAdopted(Runnable onHandedOver, java.util.concurrent.atomic.AtomicBoolean frameShown) {
         if (mState != State.ADOPTED) {
             if (onHandedOver != null) {
                 onHandedOver.run(); // uncovered already
@@ -403,8 +418,8 @@ final class ShortsLiveSwitch {
         }
         mOnHandedOver = onHandedOver;
         Log.d(TAG, "Swapped: +%s ms (no reload, no seek)", SystemClock.uptimeMillis() - mStartMs);
-        mHandler.removeCallbacks(mHandOverTimeout);
-        mHandler.postDelayed(mUncover, UNCOVER_AFTER_MOVE_MS);
+        mFrameShown = frameShown;
+        mHandler.post(mUncover);
         mHandler.removeCallbacks(mDetachDiag);
         mHandler.postDelayed(mDetachDiag, DIAG_AFTER_MS);
     }
@@ -420,6 +435,7 @@ final class ShortsLiveSwitch {
     private void finishHandOver() {
         mHandler.removeCallbacks(mHandOverTimeout);
         mHandler.removeCallbacks(mUncover);
+        mFrameShown = null;
         if (mState != State.ADOPTED) {
             return;
         }
