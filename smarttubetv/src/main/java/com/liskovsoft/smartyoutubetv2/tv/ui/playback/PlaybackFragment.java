@@ -770,7 +770,9 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         }
 
         // The core: same events as after an open of the Short (the Short keeps playing live on the spare frame meanwhile)
+        long t0 = SystemClock.uptimeMillis();
         mExoPlayerController.adoptPlayer(incoming, incomingSelector, formatInfo);
+        long t1 = SystemClock.uptimeMillis();
 
         if (mMediaSession != null) {
             try {
@@ -790,14 +792,19 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         }
 
         // The old main player: the previous Short ends here (stopped before it leaves the surface: no decoder work there)
+        long t2 = SystemClock.uptimeMillis();
         old.setPlayWhenReady(false);
         old.stop();
         old.clearMediaItems();
         old.setVolume(0f);
+        long t3 = SystemClock.uptimeMillis();
 
         // The main surface last: the old player leaves it, the new one moves onto it (seamless output switch; it is still
         // covered by the spare frame until the main surface shows its frame)
         mPlayerAdapter.setPlayer(incoming);
+        long t4 = SystemClock.uptimeMillis();
+        Log.d(TAG, "Role swap timing: core %s ms, session/overlay %s ms, old stop %s ms, surface move %s ms",
+                t1 - t0, t2 - t1, t3 - t2, t4 - t3);
 
         mLiveSwitch.onAdopted(() -> {
             if (mSparePlayer == old) {
