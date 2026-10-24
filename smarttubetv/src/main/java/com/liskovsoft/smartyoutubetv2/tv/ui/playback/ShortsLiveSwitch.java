@@ -528,7 +528,7 @@ final class ShortsLiveSwitch {
         // the start was exact: take over at once (two video decoders on a weak box make the main player lag
         // within half a second, and the speed trimming is heard as a jump in the sound)
         boolean exactStart = playing < 200 && mCommandDelta >= -40;
-        long tolerance = exactStart ? 100 : playing > 1200 ? 80 : playing > 500 ? 45 : SYNC_TOLERANCE_MS;
+        long tolerance = exactStart ? 70 : playing > 1200 ? 80 : playing > 500 ? 45 : SYNC_TOLERANCE_MS;
         if (distance <= tolerance) {
             factor = 1f; // the normal speed before the take-over (its sound must not be time-stretched then)
             if (exactStart || ++mSettledPolls >= 3) {
