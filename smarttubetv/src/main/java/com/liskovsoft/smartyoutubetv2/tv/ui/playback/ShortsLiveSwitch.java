@@ -37,16 +37,22 @@ final class ShortsLiveSwitch {
     static final int SLIDE_MS = 420;
     private static final int GAP_DP = 24;
     private static final long SYNC_POLL_MS = 32;
-    private static final long SYNC_TIMEOUT_MS = 5_000; // the main player doesn't catch up: take over anyway
+    private static final long SYNC_TIMEOUT_MS = 9_000; // the main player doesn't catch up: take over anyway
     private static final long LOAD_TIMEOUT_MS = 8_000; // no first frame of the main player at all
     private static final long SYNC_TOLERANCE_MS = 25; // under one frame at 30 fps
     private static final long SYNC_NEAR_MS = 80; // closer than this: only gentle speed changes
     private static final int SWAP_FADE_MS = 60; // the sound passes from one player to the other
-    // The main player seeks ahead of the second player by the time its seek takes (device log 2026-10-24: it buffers
-    // 0.8-1.3 s after the seek before it plays). The time is learned from every switch; this is the first guess.
-    private static final long SEEK_LATENCY_FIRST_MS = 1_100;
-    private static final long SEEK_MARGIN_MS = 250; // a bit too far ahead is easy to fix (slow down), too far behind is not
-    private static float sSeekLatencyMs = SEEK_LATENCY_FIRST_MS;
+    // The held main player seeks this far ahead of the second player (the seek takes 0.4-2 s on the device)
+    private static final long SEEK_AHEAD_MS = 2_500;
+    // The time from the start command of a paused, buffered main player until it moves: learned, first guess
+    private static float sPlayLatencyMs = 80f;
+    private enum SyncPhase {SEEKING, WAITING, PLAYING}
+    private SyncPhase mSyncPhase = SyncPhase.SEEKING;
+    private long mSyncTarget;
+    private int mRetries;
+    private long mPlayCommandMs;
+    private boolean mMainHeld;
+    private boolean mCorePlay = true;
 
     interface Host {
         ExoPlayer mainPlayer();
@@ -77,9 +83,7 @@ final class ShortsLiveSwitch {
     private float mBaseSpeed = 1f; // the speed the core wants (the main player's own speed is changed to catch up)
     private float mPitch = 1f;
     private long mLastDiagMs;
-    private long mSeekIssuedMs;
     private long mPlayingSinceMs = -1;
-    private boolean mSeekLatencyMeasured;
     private boolean mProblemInSlide; // the second player failed while sliding
     private int mSettledPolls; // polls in a row at the same moment (at the normal speed)
     private long mSyncStartMs;
@@ -138,6 +142,8 @@ final class ShortsLiveSwitch {
         mOpen = open;
         mProblemInSlide = false;
         mVolume = main.getVolume();
+        mCorePlay = main.getPlayWhenReady();
+        mMainHeld = false;
         mBaseSpeed = main.getPlaybackParameters().speed;
         mPitch = main.getPlaybackParameters().pitch;
         incomingPlayer.setVolume(0f);
@@ -246,6 +252,7 @@ final class ShortsLiveSwitch {
 
     /** Play / pause from the core (remote, button): the second player, which is the one on screen, follows. */
     void onCorePlayWhenReady(boolean play) {
+        mCorePlay = play;
         ShortsPreview preview = mHost.preview();
         if (mState != State.IDLE && preview != null && preview.getPlayer() != null) {
             preview.getPlayer().setPlayWhenReady(play);
@@ -341,7 +348,12 @@ final class ShortsLiveSwitch {
         return true;
     }
 
-    /** The main player shows the new Short's first frame (behind the second player). */
+    /**
+     * The main player shows the new Short's first frame (behind the second player). It is held paused, seeks to a
+     * point a bit ahead of the second player (the seek takes 0.4-2 s on the device, so it is done before the meeting)
+     * and then starts exactly when the second player gets there. The start of a paused, buffered player takes about
+     * the same time every time (learned), unlike a seek.
+     */
     void onMainFirstFrame() {
         if (mState != State.LOADING) {
             return;
@@ -358,19 +370,26 @@ final class ShortsLiveSwitch {
 
         mHandler.removeCallbacks(mLoadTimeout);
         main.setVolume(0f);
-        long target = second.getCurrentPosition() + Math.round(sSeekLatencyMs) + SEEK_MARGIN_MS;
+        mMainHeld = true;
+        main.setPlayWhenReady(false); // held: it plays when the second player gets to its position
+
         long duration = main.getDuration();
-        if (duration > 0 && target > duration - 400) {
-            target = Math.max(0, duration - 400); // not past the end of the Short
+        long position = second.getCurrentPosition();
+        if (duration > 0 && position + SEEK_AHEAD_MS + 600 > duration) {
+            Log.w(TAG, "The Short is too short to meet (%s ms, at %s ms): take over now", duration, position);
+            swap(true);
+            return;
         }
-        mSeekIssuedMs = SystemClock.uptimeMillis();
-        mSeekLatencyMeasured = false;
-        mPlayingSinceMs = -1;
-        Log.d(TAG, "Main player ready +%s ms: seeks to %s ms to meet the second player", SystemClock.uptimeMillis() - mStartMs, target);
-        main.seekTo(target);
+
+        mSyncTarget = position + SEEK_AHEAD_MS;
+        mRetries = 0;
+        mSyncPhase = SyncPhase.SEEKING;
+        Log.d(TAG, "Main player ready +%s ms: held, seeks to %s ms (second player at %s ms)", SystemClock.uptimeMillis() - mStartMs, mSyncTarget, position);
+        main.seekTo(mSyncTarget);
         mState = State.SYNCING;
         mSettledPolls = 0;
         mLastDiagMs = -1000;
+        mPlayingSinceMs = -1;
         mSyncStartMs = SystemClock.uptimeMillis();
         mHandler.postDelayed(mPoll, SYNC_POLL_MS);
     }
@@ -397,51 +416,104 @@ final class ShortsLiveSwitch {
             return;
         }
 
-        if (SystemClock.uptimeMillis() - mSyncStartMs > SYNC_TIMEOUT_MS) {
-            Log.w(TAG, "No meeting point in time: take over now");
+        long now = SystemClock.uptimeMillis();
+        long sinceSync = now - mSyncStartMs;
+
+        if (sinceSync > SYNC_TIMEOUT_MS) {
+            Log.w(TAG, "No meeting point in time (phase %s): take over now", mSyncPhase);
             swap(true);
             return;
         }
 
-        long sinceSync = SystemClock.uptimeMillis() - mSyncStartMs;
-        if (sinceSync - mLastDiagMs >= 400) {
+        if (sinceSync - mLastDiagMs >= 500) {
             mLastDiagMs = sinceSync;
-            Log.d(TAG, "Sync +%s ms: main %s/%s pos %s speed %s, second %s/%s pos %s, polls %s", sinceSync,
+            Log.d(TAG, "Sync +%s ms (%s): main %s/%s pos %s speed %s, second %s/%s pos %s", sinceSync, mSyncPhase,
                     main.isPlaying(), main.getPlaybackState(), main.getCurrentPosition(), main.getPlaybackParameters().speed,
-                    second.isPlaying(), second.getPlaybackState(), second.getCurrentPosition(), mSettledPolls);
+                    second.isPlaying(), second.getPlaybackState(), second.getCurrentPosition());
         }
 
-        // The seek latency: from the seek until the main player plays again (not counting a second player that is
-        // paused by the user or buffering)
-        if (!mSeekLatencyMeasured && main.isPlaying()) {
-            mSeekLatencyMeasured = true;
-            if (second.isPlaying()) {
-                float latency = SystemClock.uptimeMillis() - mSeekIssuedMs;
-                sSeekLatencyMs = Math.max(300f, Math.min(2_500f, 0.5f * sSeekLatencyMs + 0.5f * latency));
-                Log.d(TAG, "The main player plays again %s ms after its seek (next lead %s ms)", (long) latency, (long) sSeekLatencyMs);
+        if (!mCorePlay || !second.getPlayWhenReady()) {
+            // paused by the user: both stand still, nothing to meet until it plays again
+            mSyncStartMs = now - Math.min(sinceSync, 1_000);
+            mHandler.postDelayed(mPoll, SYNC_POLL_MS);
+            return;
+        }
+
+        if (mSyncPhase == SyncPhase.SEEKING) {
+            if (main.getPlaybackState() == Player.STATE_READY && Math.abs(main.getCurrentPosition() - mSyncTarget) < 500) {
+                Log.d(TAG, "Main player is in place at %s ms after %s ms; second player at %s ms",
+                        main.getCurrentPosition(), now - mSyncStartMs, second.getCurrentPosition());
+                mSyncPhase = SyncPhase.WAITING;
+            } else {
+                mHandler.postDelayed(mPoll, SYNC_POLL_MS);
+                return;
             }
         }
 
-        if (!main.isPlaying() || !second.isPlaying()) {
-            mSettledPolls = 0;
-            mHandler.postDelayed(mPoll, SYNC_POLL_MS); // buffering after the seek, or paused by the user
+        if (mSyncPhase == SyncPhase.WAITING) {
+            // how long until the second player gets to the position of the held one (minus the start time of a player)
+            long delta = main.getCurrentPosition() - second.getCurrentPosition() - Math.round(sPlayLatencyMs);
+
+            if (delta < -200) {
+                // The second player went past it while the seek took long: one more try, further ahead
+                if (++mRetries > 2) {
+                    Log.w(TAG, "The main player was too slow to meet three times: take over now");
+                    swap(true);
+                    return;
+                }
+                mSyncTarget = second.getCurrentPosition() + SEEK_AHEAD_MS + 1_000L * mRetries;
+                long duration = main.getDuration();
+                if (duration > 0 && mSyncTarget > duration - 400) {
+                    Log.w(TAG, "No room left in the Short to meet: take over now");
+                    swap(true);
+                    return;
+                }
+                Log.d(TAG, "Second player passed (%s ms): seeks again to %s ms", delta, mSyncTarget);
+                main.seekTo(mSyncTarget);
+                mSyncPhase = SyncPhase.SEEKING;
+                mHandler.postDelayed(mPoll, SYNC_POLL_MS);
+                return;
+            }
+
+            if (delta > 10) {
+                mHandler.postDelayed(mPoll, delta > 40 ? Math.min(delta - 20, 30) : 2);
+                return;
+            }
+
+            main.setPlayWhenReady(true);
+            mMainHeld = false;
+            mPlayCommandMs = now;
+            mSyncPhase = SyncPhase.PLAYING;
+            mHandler.postDelayed(mPoll, SYNC_POLL_MS);
             return;
+        }
+
+        // PLAYING: the main player was started to arrive at the same moment; a small rest is left to even out
+        if (!main.isPlaying()) {
+            mHandler.postDelayed(mPoll, SYNC_POLL_MS);
+            return;
+        }
+
+        if (mPlayingSinceMs < 0) {
+            mPlayingSinceMs = now;
+            // learn the start time: main ahead of the second player = it started faster than assumed
+            long ahead = main.getCurrentPosition() - second.getCurrentPosition();
+            float latency = sPlayLatencyMs - 0.5f * ahead;
+            sPlayLatencyMs = Math.max(0f, Math.min(400f, latency));
+            Log.d(TAG, "The main player plays %s ms after the start command, %s ms apart (next start time %s ms)",
+                    now - mPlayCommandMs, ahead, (long) sPlayLatencyMs);
         }
 
         long diff = main.getCurrentPosition() - second.getCurrentPosition();
         long distance = Math.abs(diff);
         float factor;
 
-        // The longer it takes, the less exact it must be (a few frames' difference is invisible, a long wait is not)
-        if (mPlayingSinceMs < 0) {
-            mPlayingSinceMs = SystemClock.uptimeMillis();
-        }
-        long playing = SystemClock.uptimeMillis() - mPlayingSinceMs; // the ramp counts from when both play
+        long playing = now - mPlayingSinceMs;
         long tolerance = playing > 1200 ? 80 : playing > 500 ? 45 : SYNC_TOLERANCE_MS;
         if (distance <= tolerance) {
             factor = 1f; // the normal speed before the take-over (its sound must not be time-stretched then)
             if (++mSettledPolls >= 3) {
-                Log.d(TAG, "Same moment (%s ms apart) +%s ms: the main player takes over", diff, SystemClock.uptimeMillis() - mStartMs);
+                Log.d(TAG, "Same moment (%s ms apart) +%s ms: the main player takes over", diff, now - mStartMs);
                 swap(false);
                 return;
             }
@@ -451,7 +523,6 @@ final class ShortsLiveSwitch {
             if (distance <= SYNC_NEAR_MS) {
                 factor = diff < 0 ? 1.03f : 0.97f;
             } else {
-                // behind: 1.25 at most (more is audible/visible), ahead: slow down hard (it is hidden anyway)
                 factor = diff < 0 ? (distance > 150 ? 1.25f : 1.08f) : (distance > 150 ? 0.5f : 0.8f);
             }
         }
@@ -489,6 +560,14 @@ final class ShortsLiveSwitch {
 
         if (main != null) {
             main.setPlaybackParameters(new PlaybackParameters(mBaseSpeed, mPitch));
+            if (mMainHeld) {
+                // Taken over before the meeting: the held main player goes to where the second player is and plays on
+                mMainHeld = false;
+                if (second != null && mState == State.SYNCING) {
+                    main.seekTo(second.getCurrentPosition());
+                }
+                main.setPlayWhenReady(mCorePlay);
+            }
         }
         if (mainSurface != null) {
             mainSurface.setTranslationY(0);
