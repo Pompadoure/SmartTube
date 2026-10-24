@@ -636,6 +636,24 @@ public class ShortsSidePanel {
         }
     }
 
+    /**
+     * JoTube: during the Shorts slide the frame (border and black card) steps aside, the pictures move without a
+     * window standing still around them; it comes back with the new video (the border fades in).
+     */
+    public void setSlideAside(boolean aside) {
+        if (mBorder != null) {
+            mBorder.animate().cancel();
+            if (aside) {
+                mBorder.setAlpha(0f);
+            } else {
+                mBorder.animate().alpha(1f).setDuration(180).start();
+            }
+        }
+        if (mCard != null) {
+            mCard.setAlpha(aside ? 0f : 1f);
+        }
+    }
+
     private void restartTimeout() {
         if (mFocus != ITEM_NONE) {
             mHandler.removeCallbacks(mFocusTimeout);

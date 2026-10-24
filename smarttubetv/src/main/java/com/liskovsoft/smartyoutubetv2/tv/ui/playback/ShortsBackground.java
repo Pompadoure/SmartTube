@@ -171,15 +171,17 @@ public class ShortsBackground {
         // Order by z (no relayout, unlike bringChildToFront)
         target.setZ(1f);
         old.setZ(0f);
-        target.animate()
+        // JoTube: on the RenderThread (with the slide; no end action, it would move it to the main thread)
+        long fade = old.getDrawable() != null ? mFadeMs : 0;
+        RenderThreadAnimation.animate(target)
                 .alpha(1f)
-                .setDuration(old.getDrawable() != null ? mFadeMs : 0)
-                .withEndAction(() -> {
-                    if (mBack == old && mContainer != null) {
-                        clear(old); // behind the shown one now
-                    }
-                })
+                .setDuration(fade)
                 .start();
+        target.postDelayed(() -> {
+            if (mBack == old && mContainer != null) {
+                clear(old); // behind the shown one now
+            }
+        }, fade + 32);
     }
 
     private static void clear(ImageView view) {

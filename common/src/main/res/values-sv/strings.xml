@@ -657,7 +657,7 @@
   <string name="auto_frame_rate_desc">Det här alternativet tar bort bildstörningar från scener där kameran rör sig snabbt som i t.ex. sportsändningar</string>
   <string name="channel_filter_hint">Filtrera kanaler</string>
   <string name="player_loop_shorts">Spela upp Shorts-videor i en slinga</string>
-  <string name="player_shorts_slide">Shorts: glidande övergång mellan Shorts</string>
+  <string name="player_shorts_slide">Shorts: animerad övergång mellan Shorts</string>
   <string name="player_quick_shorts_skip">Hoppa över Shorts-videor med vänster- och högerknapparna</string>
   <string name="player_quick_shorts_skip_alt">Hoppa över Shorts-videor med uppåt- och nedåtknapparna</string>
   <string name="player_quick_skip_videos">Hoppa över vanliga videor med vänster- och högerknapparna</string>

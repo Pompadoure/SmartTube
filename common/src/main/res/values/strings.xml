@@ -658,7 +658,7 @@
     <string name="channel_filter_hint">Filter channels</string>
     <string name="player_loop_shorts">Loop Shorts</string>
     <string name="player_shorts_preview">Shorts: preview player for the next Short (beta)</string>
-    <string name="player_shorts_slide">Shorts: slide animation between Shorts</string>
+    <string name="player_shorts_slide">Shorts: animated transition between Shorts</string>
     <string name="player_quick_shorts_skip">Skip Shorts with left/right buttons</string>
     <string name="player_quick_shorts_skip_alt">Skip Shorts with up/down buttons</string>
     <string name="player_quick_skip_videos">Skip regular videos with left/right buttons</string>

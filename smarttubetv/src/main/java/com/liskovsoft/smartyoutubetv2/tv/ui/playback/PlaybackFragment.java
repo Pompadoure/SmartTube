@@ -227,6 +227,17 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         // Above the video surface, below the controls
         mShortsTransition.setPreview(mShortsPreview, getPlayerTweaksData().isShortsPreviewPlayerEnabled());
         mShortsTransition.setSlideEnabled(getPlayerTweaksData().isShortsSlideEnabled());
+        mShortsTransition.setSlideListener(new ShortsTransitionOverlay.SlideListener() {
+            @Override
+            public void onSlideStart() {
+                mShortsPanel.setSlideAside(true);
+            }
+
+            @Override
+            public void onSlideEnd() {
+                mShortsPanel.setSlideAside(false);
+            }
+        });
         mShortsTransition.attach((ViewGroup) root);
         mShortsBackground.attach((ViewGroup) root);
         mShortsPanel.attach((ViewGroup) root, new ShortsSidePanel.Callback() {
