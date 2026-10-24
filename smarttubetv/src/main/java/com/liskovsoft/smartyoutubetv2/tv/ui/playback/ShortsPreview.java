@@ -26,6 +26,9 @@ import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.ExoMediaSourceFactory;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ExoPlayerController;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ShortsQueue;
+import com.liskovsoft.smartyoutubetv2.common.exoplayer.other.VolumeBooster;
+import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerData;
+import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerTweaksData;
 
 /**
  * JoTube media3: the second player of the Shorts feed. While a Short plays, this player prepares the NEXT one (video
@@ -41,6 +44,7 @@ public class ShortsPreview {
     private static final int START_DELAY_MS = 300;
     private static final float PARKED_Y = 10_000f; // visible (the surface must exist) but far off screen
 
+    private VolumeBooster mVolumeBooster;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private final Runnable mRefresh = this::refresh;
     private Context mContext;
@@ -265,6 +269,7 @@ public class ShortsPreview {
             mPlayer.setVolume(0f);
             mPlayer.setVideoSurfaceView(mSurface);
             mPlayer.addListener(mListener);
+            setupVolumeBoost();
         } catch (RuntimeException e) {
             Log.e(TAG, "Can't create the preview player: %s", e.getMessage());
             mPlayer = null;
@@ -381,7 +386,21 @@ public class ShortsPreview {
         }
     }
 
+    /** The same boost as the main player has (the second player is the one heard during a live switch). */
+    private void setupVolumeBoost() {
+        float volume = PlayerTweaksData.instance(mContext).isPlayerAutoVolumeEnabled() ?
+                PlayerData.instance(mContext).getPlayerVolume() * 2.0f : PlayerData.instance(mContext).getPlayerVolume();
+        if (volume > 1f && android.os.Build.VERSION.SDK_INT >= 19) {
+            mVolumeBooster = new VolumeBooster(true, volume, mPlayer);
+            mPlayer.addListener(mVolumeBooster);
+        }
+    }
+
     private void releasePlayer() {
+        if (mVolumeBooster != null) {
+            mVolumeBooster.release();
+            mVolumeBooster = null;
+        }
         if (mPlayer != null) {
             try {
                 mPlayer.removeListener(mListener);
