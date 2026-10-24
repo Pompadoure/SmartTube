@@ -37,7 +37,7 @@ final class ShortsLiveSwitch {
     static final int SLIDE_MS = 420;
     private static final int GAP_DP = 24;
     private static final long SYNC_POLL_MS = 32;
-    private static final long SYNC_TIMEOUT_MS = 6_000; // the main player doesn't catch up: take over anyway
+    private static final long SYNC_TIMEOUT_MS = 3_000; // the main player doesn't catch up: take over anyway
     private static final long LOAD_TIMEOUT_MS = 8_000; // no first frame of the main player at all
     private static final long SYNC_TOLERANCE_MS = 25; // under one frame at 30 fps
     private static final long SYNC_NEAR_MS = 80; // closer than this: only gentle speed changes
@@ -72,6 +72,7 @@ final class ShortsLiveSwitch {
     private float mVolume = 1f; // the volume the core wants (kept while the main player is silent)
     private float mBaseSpeed = 1f; // the speed the core wants (the main player's own speed is changed to catch up)
     private float mPitch = 1f;
+    private long mLastDiagMs;
     private boolean mProblemInSlide; // the second player failed while sliding
     private int mSettledPolls; // polls in a row at the same moment (at the normal speed)
     private long mSyncStartMs;
@@ -148,7 +149,7 @@ final class ShortsLiveSwitch {
         Log.d(TAG, "Live switch to %s: slide starts", next.videoId);
 
         mSlide = ValueAnimator.ofFloat(0f, 1f);
-        mSlide.setDuration(SLIDE_MS);
+        mSlide.setDuration(slideDuration(mainSurface));
         mSlide.setInterpolator(new PathInterpolator(0.2f, 0f, 0f, 1f));
         mSlide.addUpdateListener(animation -> {
             float position = (float) animation.getAnimatedValue();
@@ -176,6 +177,18 @@ final class ShortsLiveSwitch {
         });
         mSlide.start();
         return true;
+    }
+
+    /** The system's animation scale (developer option) shortens or lengthens every animator: the slide keeps its time. */
+    private static long slideDuration(View view) {
+        float scale = 1f;
+        try {
+            scale = android.provider.Settings.Global.getFloat(view.getContext().getContentResolver(),
+                    android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f);
+        } catch (Throwable e) {
+            // keep 1
+        }
+        return scale > 0.05f ? (long) (SLIDE_MS / scale) : SLIDE_MS;
     }
 
     /** Sliding, or the main player is still loading behind (its picture isn't the Short yet): swipes wait. */
@@ -343,6 +356,7 @@ final class ShortsLiveSwitch {
         main.seekTo(target);
         mState = State.SYNCING;
         mSettledPolls = 0;
+        mLastDiagMs = -1000;
         mSyncStartMs = SystemClock.uptimeMillis();
         mHandler.postDelayed(mPoll, SYNC_POLL_MS);
     }
@@ -375,6 +389,14 @@ final class ShortsLiveSwitch {
             return;
         }
 
+        long sinceSync = SystemClock.uptimeMillis() - mSyncStartMs;
+        if (sinceSync - mLastDiagMs >= 400) {
+            mLastDiagMs = sinceSync;
+            Log.d(TAG, "Sync +%s ms: main %s/%s pos %s speed %s, second %s/%s pos %s, polls %s", sinceSync,
+                    main.isPlaying(), main.getPlaybackState(), main.getCurrentPosition(), main.getPlaybackParameters().speed,
+                    second.isPlaying(), second.getPlaybackState(), second.getCurrentPosition(), mSettledPolls);
+        }
+
         if (!main.isPlaying() || !second.isPlaying()) {
             mSettledPolls = 0;
             mHandler.postDelayed(mPoll, SYNC_POLL_MS); // buffering after the seek, or paused by the user
@@ -385,7 +407,9 @@ final class ShortsLiveSwitch {
         long distance = Math.abs(diff);
         float factor;
 
-        if (distance <= SYNC_TOLERANCE_MS) {
+        // The longer it takes, the less exact it must be (a few frames' difference is invisible, a long wait is not)
+        long tolerance = sinceSync > 1500 ? 80 : sinceSync > 800 ? 45 : SYNC_TOLERANCE_MS;
+        if (distance <= tolerance) {
             factor = 1f; // the normal speed before the take-over (its sound must not be time-stretched then)
             if (++mSettledPolls >= 3) {
                 Log.d(TAG, "Same moment (%s ms apart) +%s ms: the main player takes over", diff, SystemClock.uptimeMillis() - mStartMs);
