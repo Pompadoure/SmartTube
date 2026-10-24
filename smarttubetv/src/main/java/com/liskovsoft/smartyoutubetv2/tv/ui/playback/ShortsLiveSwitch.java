@@ -38,6 +38,10 @@ final class ShortsLiveSwitch {
     private static final int GAP_DP = 24;
     private static final long OPEN_TIMEOUT_MS = 8_000; // the core didn't open the Short (format info): give up
     private static final long HAND_OVER_TIMEOUT_MS = 700; // no first frame on the main surface: uncover anyway
+    // After the surface move the adopted player renders its next frame on the main surface within a frame or two; the
+    // spare frame on top only shows its last picture by then (a still: device test 2026-10-24 22:43), so it goes away
+    // this soon instead of waiting for the first-frame callback (100-250 ms late on a busy main thread)
+    private static final long UNCOVER_AFTER_MOVE_MS = 80;
     private static final long DIAG_AFTER_MS = 5_000; // glitches of the adopted player right after the swap are logged
 
     interface Host {
@@ -80,6 +84,10 @@ final class ShortsLiveSwitch {
     private final Runnable mOpenTimeout = () -> {
         Log.w(TAG, "The core didn't open the Short in time: the switch is dropped");
         fallBack();
+    };
+    private final Runnable mUncover = () -> {
+        Log.d(TAG, "Uncovered %s ms after the surface move", UNCOVER_AFTER_MOVE_MS);
+        finishHandOver();
     };
     private final Runnable mHandOverTimeout = () -> {
         Log.w(TAG, "No first frame on the main surface after the swap: uncovered anyway");
@@ -395,6 +403,8 @@ final class ShortsLiveSwitch {
         }
         mOnHandedOver = onHandedOver;
         Log.d(TAG, "Swapped: +%s ms (no reload, no seek)", SystemClock.uptimeMillis() - mStartMs);
+        mHandler.removeCallbacks(mHandOverTimeout);
+        mHandler.postDelayed(mUncover, UNCOVER_AFTER_MOVE_MS);
         mHandler.removeCallbacks(mDetachDiag);
         mHandler.postDelayed(mDetachDiag, DIAG_AFTER_MS);
     }
@@ -409,6 +419,7 @@ final class ShortsLiveSwitch {
 
     private void finishHandOver() {
         mHandler.removeCallbacks(mHandOverTimeout);
+        mHandler.removeCallbacks(mUncover);
         if (mState != State.ADOPTED) {
             return;
         }

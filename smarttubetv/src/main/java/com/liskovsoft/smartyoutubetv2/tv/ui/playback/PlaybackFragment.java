@@ -175,10 +175,22 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             if (mExoPlayerController != null) {
                 mExoPlayerController.onSwapPending();
             }
+            // JoTube role swap: the old Short has slid out (the spare frame covers the main surface): the old player stops
+            // and leaves the main surface now, so the swap itself only moves the new player onto it (shorter, no still)
+            if (mPlayer != null && mSparePlayer != null && mPlayerAdapter != null && mShortsPreview.isLive()) {
+                long t0 = SystemClock.uptimeMillis();
+                mPlayer.setVolume(0f);
+                mPlayer.stop();
+                mPlayerAdapter.releaseSurfaceOfCurrentPlayer();
+                Log.d(TAG, "Role swap: the old player left the main surface in %s ms", SystemClock.uptimeMillis() - t0);
+            }
         }
 
         @Override
         public void onLiveFallBack() {
+            if (mPlayerAdapter != null) {
+                mPlayerAdapter.restoreSurfaceOfCurrentPlayer(); // it may have left it at the slide end
+            }
             if (mExoPlayerController != null) {
                 mExoPlayerController.onSwapCancelled();
             }
