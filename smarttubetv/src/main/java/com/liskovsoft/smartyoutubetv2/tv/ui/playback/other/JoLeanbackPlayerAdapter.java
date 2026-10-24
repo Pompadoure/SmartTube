@@ -115,6 +115,11 @@ public final class JoLeanbackPlayerAdapter extends PlayerAdapter implements Runn
    * JoTube role swap (Shorts): another player becomes the one shown and controlled. The old one leaves the surface
    * first (a surface has one producer at a time; ExoPlayer waits until it is detached), then the new one takes it.
    */
+  /** JoTube role swap: the main surface exists (a player can be moved onto it). */
+  public boolean hasVideoSurface() {
+    return surface != null;
+  }
+
   public void setPlayer(Player newPlayer) {
     if (newPlayer == null || newPlayer == player) {
       return;

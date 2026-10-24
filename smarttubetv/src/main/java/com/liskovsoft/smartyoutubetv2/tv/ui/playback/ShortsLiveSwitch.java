@@ -54,6 +54,9 @@ final class ShortsLiveSwitch {
 
         /** The slide was cut short before the new Short was opened: the page goes back to the one that stays. */
         void onLiveCancelled();
+
+        /** The slide is over, the core opens the Short now (the old Short's end must not count any more). */
+        void onLiveOpening();
     }
 
     private enum State {IDLE, SLIDING, WAITING, ADOPTED}
@@ -303,8 +306,17 @@ final class ShortsLiveSwitch {
             }
             return;
         }
+        mHost.onLiveOpening();
         if (open != null) {
             open.run(); // the core opens the Short now: it adopts the spare player (adopt)
+        }
+    }
+
+    /** The core opened something with a new source / a queued Short instead of adopting: no swap any more. */
+    void onOtherOpen() {
+        if (mState == State.WAITING) {
+            Log.w(TAG, "The core opened the Short without the spare player: the usual switch");
+            fallBack();
         }
     }
 

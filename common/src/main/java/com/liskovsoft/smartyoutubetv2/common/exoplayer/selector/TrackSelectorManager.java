@@ -659,7 +659,7 @@ public class TrackSelectorManager implements TrackSelectorCallback {
         }
     }
 
-    public void setTrackSelector(DefaultTrackSelector selector) {
+    public synchronized void setTrackSelector(DefaultTrackSelector selector) {
         Log.d(TAG, "Initializing TrackSelector...");
         mTrackSelector = selector;
 
@@ -926,6 +926,14 @@ public class TrackSelectorManager implements TrackSelectorCallback {
         if (preloadSelector != null && selector != null) {
             // No per-group overrides: they point at the playing item's track groups, not at the preloaded ones
             preloadSelector.setParameters(selector.getParameters().buildUpon().clearOverrides().build());
+        }
+        // JoTube role swap: the spare selector becomes the main one on a swipe: same parameters (disabled renderers)
+        if (selector != null) {
+            for (RestoreTrackSelector spare : mSpareTrackSelectors) {
+                if (spare != selector) {
+                    spare.setParameters(selector.getParameters().buildUpon().clearOverrides().build());
+                }
+            }
         }
     }
 

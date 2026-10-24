@@ -169,6 +169,13 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         public void onLiveCancelled() {
             updateShortsBackground(getVideo());
         }
+
+        @Override
+        public void onLiveOpening() {
+            if (mExoPlayerController != null) {
+                mExoPlayerController.onSwapPending();
+            }
+        }
     });
     private final ShortsSidePanel mShortsPanel = new ShortsSidePanel();
     private Video mLastVideo; // the video before the current one (for the Shorts swipe)
@@ -694,7 +701,17 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             mSparePlayer = mPlayerInitializer.createSparePlayer(getContext(), new CustomOverridesRenderersFactory(getContext()), spareSelector);
             mSpareSelector = spareSelector;
             mShortsPreview.setPlayer(mSparePlayer);
-            mExoPlayerController.setShortsAdopter(this::adoptLiveShort);
+            mExoPlayerController.setShortsAdopter(new ExoPlayerController.ShortsAdopter() {
+                @Override
+                public boolean adopt(MediaItemFormatInfo formatInfo) {
+                    return adoptLiveShort(formatInfo);
+                }
+
+                @Override
+                public void onOtherOpen() {
+                    mLiveSwitch.onOtherOpen();
+                }
+            });
         } catch (RuntimeException e) {
             Log.e(TAG, "Can't create the spare player: %s", e.getMessage());
             mSparePlayer = null;
@@ -709,18 +726,15 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
      * becomes the spare (it gets the preview's surface once the main surface shows the new one).
      */
     private boolean adoptLiveShort(MediaItemFormatInfo formatInfo) {
-        if (mPlayer == null || mSparePlayer == null || mPlayerAdapter == null || formatInfo == null) {
-            return false;
+        if (mPlayer == null || mSparePlayer == null || mPlayerAdapter == null || formatInfo == null
+                || !mPlayerAdapter.hasVideoSurface() || mShortsPreview.getPlayer() != mSparePlayer) {
+            return false; // the live switch (if any) ends the usual way (onOtherOpen)
         }
 
         ExoPlayer incoming = mLiveSwitch.takeForAdoption(formatInfo.getVideoId());
 
         if (incoming == null) {
             return false;
-        }
-
-        if (incoming != mSparePlayer) {
-            Log.e(TAG, "Role swap: the live player isn't the spare player");
         }
 
         final ExoPlayer old = mPlayer;
@@ -742,15 +756,13 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         mPlayerInitializer.setSpare(old, true);
         mPlayerInitializer.moveAudioFocus(old, incoming);
 
-        // The main surface: the old player leaves it, the new one moves onto it (it is still covered by the spare frame)
-        mPlayerAdapter.setPlayer(incoming);
         incoming.addListener(mFirstFrameListener);
         incoming.addListener(mTransitionStateListener);
         if (mSubtitleManager != null) {
             incoming.addListener(mSubtitleManager);
         }
 
-        // The core: same events as after an open of the Short
+        // The core: same events as after an open of the Short (the Short keeps playing live on the spare frame meanwhile)
         mExoPlayerController.adoptPlayer(incoming, incomingSelector, formatInfo);
 
         if (mMediaSession != null) {
@@ -770,11 +782,15 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             mDebugInfoManager = null;
         }
 
-        // The old main player: the previous Short ends here
+        // The old main player: the previous Short ends here (stopped before it leaves the surface: no decoder work there)
         old.setPlayWhenReady(false);
         old.stop();
         old.clearMediaItems();
         old.setVolume(0f);
+
+        // The main surface last: the old player leaves it, the new one moves onto it (seamless output switch; it is still
+        // covered by the spare frame until the main surface shows its frame)
+        mPlayerAdapter.setPlayer(incoming);
 
         mLiveSwitch.onAdopted(() -> {
             if (mSparePlayer == old) {
@@ -2111,7 +2127,10 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             setSeekPreviewTitle(null);
             return;
         }
-        if (video != null && ShortsQueue.getQueuedFormatInfo(video.videoId) != null) {
+        if (video != null && !video.isShorts && !mShortsPreview.isLive()) {
+            mShortsPreview.consumed(); // JoTube role swap: no prepared Short (decoder, buffer) next to a regular video
+        }
+        if (video != null && ShortsQueue.getQueuedFormatInfo(video.videoId) != null && mExoPlayerController.canPlayPreloadedNow()) {
             // Preloaded Short: it's already in the player, keep everything as is (no black screen, no reset).
             // The swipe covers the moment until the new video's first frame is rendered.
             final float directAspect = getQueuedAspect(video);

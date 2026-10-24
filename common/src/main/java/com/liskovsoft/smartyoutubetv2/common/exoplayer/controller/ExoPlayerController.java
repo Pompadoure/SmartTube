@@ -90,6 +90,29 @@ public class ExoPlayerController implements Player.Listener {
     public interface ShortsAdopter {
         /** @return true if the Short is taken over from the spare player (the caller does nothing more) */
         boolean adopt(MediaItemFormatInfo formatInfo);
+
+        /** Another open (a new source or a queued Short): a pending live switch can't end with a swap any more. */
+        void onOtherOpen();
+    }
+
+    private void notifyOtherOpen() {
+        if (mAdopter != null) {
+            mAdopter.onOtherOpen();
+        }
+    }
+
+    /** JoTube role swap: the main player can play the preloaded Shorts (it was built with the preload manager). */
+    public boolean canPlayPreloadedNow() {
+        return canPlayPreloaded();
+    }
+
+    // JoTube role swap: the old main player plays the old Short muted until the swap: its end must not count
+    private boolean mSwapPending;
+
+    /** JoTube role swap: the slide is over and the Short is being opened: the old Short's end is ignored. */
+    public void onSwapPending() {
+        mSwapPending = true;
+        cancelItemEnd();
     }
 
     public void setShortsAdopter(ShortsAdopter adopter) {
@@ -181,6 +204,10 @@ public class ExoPlayerController implements Player.Listener {
         player.addAnalyticsListener(mTimingListener);
         mTrackSelectorManager.setTrackSelector(trackSelector);
         mTrackSelectorManager.invalidate(); // the cache is built again from the new player's tracks
+        // The spare's selection didn't fill the cache (another period then): a delayed re-selection does (same result)
+        mTrackSelectorManager.onQueuedSourceSwitch();
+        mTrackSelectorManager.syncWithPlayingPeriod();
+        mSwapPending = false;
 
         sSourceGeneration++;
         setQualityInfo("");
@@ -216,6 +243,18 @@ public class ExoPlayerController implements Player.Listener {
      * Shorts are opened as the first item of a queue, so the next ones can be added and preloaded.
      */
     private void openShortsAware(MediaItemFormatInfo formatInfo, MediaSource mediaSource) {
+        ShortsQueue active = ShortsQueue.getActive();
+        int activeIndex = active != null && formatInfo != null ? active.indexOf(formatInfo.getVideoId()) : -1;
+
+        if (activeIndex != -1 && mPreloadManager != null && !canPlayPreloaded() && ShortsTransitionState.isShortsMode()) {
+            // JoTube role swap: a Short of the queue on the player that can't play the preloaded sources (swipe back after
+            // a swap): it plays its own source; the queue and what it preloaded stay (only the current index moves)
+            openMediaSource(mediaSource, true);
+            active.setCurrentIndex(activeIndex);
+            scheduleItemEnd();
+            return;
+        }
+
         ShortsQueue.setActive(null); // releases the previous queue (and what it preloaded) before the new one is built
         ShortsQueue queue = null;
 
@@ -233,7 +272,7 @@ public class ExoPlayerController implements Player.Listener {
             }
         }
 
-        openMediaSource(mediaSource);
+        openMediaSource(mediaSource, false);
         ShortsQueue.setActive(queue);
         scheduleItemEnd();
     }
@@ -268,6 +307,8 @@ public class ExoPlayerController implements Player.Listener {
         }
 
         Log.d(TAG, "Shorts: switching to queued item %s (index %s)", formatInfo.getVideoId(), index);
+        notifyOtherOpen();
+        mSwapPending = false;
 
         setQualityInfo("");
         // The track selection cache is synced with the new item in onTracksChanged (no invalidate here:
@@ -475,9 +516,23 @@ public class ExoPlayerController implements Player.Listener {
     }
 
     private void openMediaSource(MediaSource mediaSource) {
+        openMediaSource(mediaSource, false);
+    }
+
+    private void openMediaSource(MediaSource mediaSource, boolean keepQueue) {
+        notifyOtherOpen();
+        mSwapPending = false;
         sSourceGeneration++;
         applyTunneling(); // JoTube
-        resetPlayerState(); // fixes occasional video artifacts and problems with quality switching
+        if (keepQueue) {
+            cancelItemEnd();
+            if (containsMedia()) {
+                mPlayer.stop();
+                mPlayer.clearMediaItems();
+            }
+        } else {
+            resetPlayerState(); // fixes occasional video artifacts and problems with quality switching
+        }
         setQualityInfo("");
 
         mTrackSelectorManager.setMergedSource(mediaSource instanceof MergingMediaSource);
@@ -567,6 +622,8 @@ public class ExoPlayerController implements Player.Listener {
     }
     
     public void release() {
+        mPreloadPlayer = null;
+        mSwapPending = false;
         ShortsQueue.setActive(null);
         cancelItemEnd();
         mTrackSelectorManager.release();
@@ -946,6 +1003,10 @@ public class ExoPlayerController implements Player.Listener {
         // Fix chapters (seek and play) after playback ends
         if (isPlaybackEnded && mIsEnded) {
             return;
+        }
+
+        if (isPlaybackEnded && mSwapPending) {
+            return; // JoTube role swap: the old Short ended under the new one (it is being swapped in)
         }
 
         if (isPlayPressed) {
