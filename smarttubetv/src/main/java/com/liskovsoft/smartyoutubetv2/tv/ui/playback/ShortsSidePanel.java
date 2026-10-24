@@ -266,13 +266,36 @@ public class ShortsSidePanel {
             return;
         }
 
-        // JoTube: everything on the panel stays where it is and the content is swapped in place (no fade, no motion):
-        // the avatar comes from the memory cache (preloaded), the texts are set at once
+        // JoTube: the title and the channel fade over to the new Short (owner: avatars and texts popped in): a short
+        // fade out, the swap while they are invisible, a soft fade in. The buttons stay as they are.
+        if (direction == 0) {
+            mTitle.animate().cancel();
+            mChannelRow.animate().cancel();
+            mPendingBind = null;
+            resetTextMotion();
+            bind(video);
+            return;
+        }
+
+        boolean fadingOut = mPendingBind != null;
+        mPendingBind = video;
+        if (fadingOut) {
+            return; // the running fade out binds the newest one
+        }
+
         mTitle.animate().cancel();
         mChannelRow.animate().cancel();
-        mPendingBind = null;
-        resetTextMotion();
-        bind(video);
+        mChannelRow.animate().alpha(0f).setDuration(90).start();
+        mTitle.animate().alpha(0f).setDuration(90).withEndAction(() -> {
+            Video target = mPendingBind;
+            mPendingBind = null;
+            if (target == null || mPanel == null) {
+                return;
+            }
+            bind(target);
+            mTitle.animate().alpha(1f).setDuration(200).start();
+            mChannelRow.animate().alpha(1f).setDuration(200).start();
+        }).start();
     }
 
     private void resetTextMotion() {
@@ -643,11 +666,8 @@ public class ShortsSidePanel {
     public void setSlideAside(boolean aside) {
         if (mBorder != null) {
             mBorder.animate().cancel();
-            if (aside) {
-                mBorder.setAlpha(0f);
-            } else {
-                mBorder.animate().alpha(1f).setDuration(180).start();
-            }
+            // soft both ways (no pop)
+            mBorder.animate().alpha(aside ? 0f : 1f).setDuration(aside ? 120 : 220).start();
         }
         if (mCard != null) {
             mCard.setAlpha(aside ? 0f : 1f);
@@ -739,6 +759,22 @@ public class ShortsSidePanel {
 
     public float getVideoAspect() {
         return mVideoAspect;
+    }
+
+    /**
+     * JoTube: the frame a Short of this shape would get (width, height, x shift of its center), without applying it.
+     * Null if there is no frame (not laid out, frame off).
+     */
+    public int[] frameFor(float aspect) {
+        if (mRoot == null || mRoot.getHeight() <= 0 || !mFrameEnabled) {
+            return null;
+        }
+        float saved = mVideoAspect;
+        mVideoAspect = aspect > 0 ? aspect : DEFAULT_ASPECT;
+        int rootHeight = mRoot.getHeight();
+        int[] frame = {getFrameWidth(rootHeight), getFrameHeight(rootHeight), getFrameOffsetX(rootHeight)};
+        mVideoAspect = saved;
+        return frame;
     }
 
     private int getFrameWidth(int rootHeight) {
