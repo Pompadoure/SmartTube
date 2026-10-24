@@ -44,6 +44,10 @@ public class ShortsPreview {
     private static final int START_DELAY_MS = 300;
     private static final float PARKED_Y = 10_000f; // visible (the surface must exist) but far off screen
 
+    // after a take-over the main player's sound is young: no decoder start-up and network work on this weak box then
+    private static final int QUIET_AFTER_TAKEOVER_MS = 2_500;
+    private long mQuietUntilMs;
+
     private VolumeBooster mVolumeBooster;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private final Runnable mRefresh = this::refresh;
@@ -198,7 +202,8 @@ public class ShortsPreview {
         }
 
         mHandler.removeCallbacks(mRefresh);
-        mHandler.postDelayed(mRefresh, START_DELAY_MS);
+        long quiet = mQuietUntilMs - android.os.SystemClock.uptimeMillis();
+        mHandler.postDelayed(mRefresh, Math.max(START_DELAY_MS, quiet));
     }
 
     private void refresh() {
@@ -382,6 +387,7 @@ public class ShortsPreview {
             mPlayer.setVolume(0f);
         }
         if (wasLive) {
+            mQuietUntilMs = android.os.SystemClock.uptimeMillis() + QUIET_AFTER_TAKEOVER_MS;
             scheduleRefresh(); // prepare the next one
         }
     }

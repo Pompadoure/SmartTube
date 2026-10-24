@@ -88,6 +88,7 @@ final class ShortsLiveSwitch {
     private long mPlayingSinceMs = -1;
     private boolean mProblemInSlide; // the second player failed while sliding
     private boolean mOffsetLearned;
+    private boolean mTrimmed; // the speed was changed to meet: a longer rest at the normal speed before the take-over
     private int mSettledPolls; // polls in a row at the same moment (at the normal speed)
     private long mSyncStartMs;
     private long mStartMs;
@@ -406,6 +407,7 @@ final class ShortsLiveSwitch {
         mLastDiagMs = -1000;
         mPlayingSinceMs = -1;
         mOffsetLearned = false;
+        mTrimmed = false;
         mSyncStartMs = SystemClock.uptimeMillis();
         mHandler.postDelayed(mPoll, SYNC_POLL_MS);
     }
@@ -507,6 +509,11 @@ final class ShortsLiveSwitch {
 
         // PLAYING: the main player was started to arrive at the same moment; a small rest is left to even out
         if (!main.isPlaying()) {
+            if (mPlayingSinceMs >= 0) { // stopped again (buffering): the sound warms up anew
+                mPlayingSinceMs = -1;
+                mSettledPolls = 0;
+                mOffsetLearned = true; // what is measured after that says nothing about the start
+            }
             mHandler.postDelayed(mPoll, SYNC_POLL_MS);
             return;
         }
@@ -534,21 +541,22 @@ final class ShortsLiveSwitch {
             mOffsetLearned = true;
             if (mCommandDelta >= -40) { // a late start says nothing about the start time
                 // main ahead = it should have started later: the next start is moved by this offset
-                sPlayLatencyMs = Math.max(0f, Math.min(400f, sPlayLatencyMs - 0.7f * diff));
+                sPlayLatencyMs = Math.max(0f, Math.min(400f, sPlayLatencyMs - 0.7f * (diff - mCommandDelta)));
             }
             Log.d(TAG, "Steady %s ms after the start: %s ms apart (next start time %s ms)", playing, diff, (long) sPlayLatencyMs);
         }
 
-        long tolerance = playing > 1500 ? 80 : 60;
+        long tolerance = playing > 3000 ? 80 : 45;
         if (distance <= tolerance) {
             factor = 1f; // the normal speed before the take-over (its sound must not be time-stretched then)
-            if (++mSettledPolls >= 2) {
+            if (++mSettledPolls >= (mTrimmed ? 8 : 2)) {
                 Log.d(TAG, "Same moment (%s ms apart) +%s ms: the main player takes over", diff, now - mStartMs);
                 swap(false);
                 return;
             }
         } else {
             mSettledPolls = 0;
+            mTrimmed = true;
             // behind: a little faster, ahead: a little slower (silent and hidden, nobody hears or sees it)
             if (distance <= SYNC_NEAR_MS) {
                 factor = diff < 0 ? 1.03f : 0.97f;
