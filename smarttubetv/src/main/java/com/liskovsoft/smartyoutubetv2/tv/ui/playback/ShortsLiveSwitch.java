@@ -37,12 +37,16 @@ final class ShortsLiveSwitch {
     static final int SLIDE_MS = 420;
     private static final int GAP_DP = 24;
     private static final long SYNC_POLL_MS = 32;
-    private static final long SYNC_TIMEOUT_MS = 3_000; // the main player doesn't catch up: take over anyway
+    private static final long SYNC_TIMEOUT_MS = 4_000; // the main player doesn't catch up: take over anyway
     private static final long LOAD_TIMEOUT_MS = 8_000; // no first frame of the main player at all
     private static final long SYNC_TOLERANCE_MS = 25; // under one frame at 30 fps
     private static final long SYNC_NEAR_MS = 80; // closer than this: only gentle speed changes
     private static final int SWAP_FADE_MS = 60; // the sound passes from one player to the other
-    private static final long SEEK_LEAD_MS = 300; // the main player seeks a bit ahead (its seek takes about that long)
+    // The main player seeks ahead of the second player by the time its seek takes (device log 2026-10-24: it buffers
+    // 0.8-1.3 s after the seek before it plays). The time is learned from every switch; this is the first guess.
+    private static final long SEEK_LATENCY_FIRST_MS = 1_100;
+    private static final long SEEK_MARGIN_MS = 250; // a bit too far ahead is easy to fix (slow down), too far behind is not
+    private static float sSeekLatencyMs = SEEK_LATENCY_FIRST_MS;
 
     interface Host {
         ExoPlayer mainPlayer();
@@ -73,6 +77,8 @@ final class ShortsLiveSwitch {
     private float mBaseSpeed = 1f; // the speed the core wants (the main player's own speed is changed to catch up)
     private float mPitch = 1f;
     private long mLastDiagMs;
+    private long mSeekIssuedMs;
+    private boolean mSeekLatencyMeasured;
     private boolean mProblemInSlide; // the second player failed while sliding
     private int mSettledPolls; // polls in a row at the same moment (at the normal speed)
     private long mSyncStartMs;
@@ -351,7 +357,9 @@ final class ShortsLiveSwitch {
 
         mHandler.removeCallbacks(mLoadTimeout);
         main.setVolume(0f);
-        long target = second.getCurrentPosition() + SEEK_LEAD_MS;
+        long target = second.getCurrentPosition() + Math.round(sSeekLatencyMs) + SEEK_MARGIN_MS;
+        mSeekIssuedMs = SystemClock.uptimeMillis();
+        mSeekLatencyMeasured = false;
         Log.d(TAG, "Main player ready +%s ms: seeks to %s ms to meet the second player", SystemClock.uptimeMillis() - mStartMs, target);
         main.seekTo(target);
         mState = State.SYNCING;
@@ -403,6 +411,13 @@ final class ShortsLiveSwitch {
             return;
         }
 
+        if (!mSeekLatencyMeasured) {
+            mSeekLatencyMeasured = true;
+            float latency = SystemClock.uptimeMillis() - mSeekIssuedMs;
+            sSeekLatencyMs = Math.max(300f, Math.min(2_500f, 0.5f * sSeekLatencyMs + 0.5f * latency));
+            Log.d(TAG, "The main player plays again %s ms after its seek (next lead %s ms)", (long) latency, (long) sSeekLatencyMs);
+        }
+
         long diff = main.getCurrentPosition() - second.getCurrentPosition();
         long distance = Math.abs(diff);
         float factor;
@@ -422,7 +437,8 @@ final class ShortsLiveSwitch {
             if (distance <= SYNC_NEAR_MS) {
                 factor = diff < 0 ? 1.03f : 0.97f;
             } else {
-                factor = diff < 0 ? (distance > 150 ? 1.25f : 1.08f) : (distance > 150 ? 0.8f : 0.92f);
+                // behind: 1.25 at most (more is audible/visible), ahead: slow down hard (it is hidden anyway)
+                factor = diff < 0 ? (distance > 150 ? 1.25f : 1.08f) : (distance > 150 ? 0.5f : 0.8f);
             }
         }
 
