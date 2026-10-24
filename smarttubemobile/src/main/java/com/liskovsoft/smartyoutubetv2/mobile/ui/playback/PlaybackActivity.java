@@ -1918,6 +1918,11 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
             }
 
             @Override
+            public float speed() {
+                return mExoPlayerController != null ? mExoPlayerController.getSpeed() : 1f;
+            }
+
+            @Override
             public boolean hasLikes() {
                 return true;
             }

@@ -32,9 +32,13 @@ final class LrcLib {
         if (artist != null && !artist.isEmpty()) {
             String url = BASE + "get?track_name=" + enc(cleanTitle) + "&artist_name=" + enc(artist)
                     + (durationMs > 0 ? "&duration=" + (durationMs / 1000) : "");
-            String body = get(url);
-            if (body != null) {
-                match = new JSONObject(body);
+            try {
+                String body = get(url);
+                if (body != null) {
+                    match = new JSONObject(body);
+                }
+            } catch (Exception e) {
+                match = null; // e.g. 400 without a duration: the search below
             }
         }
 

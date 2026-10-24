@@ -203,10 +203,14 @@ public final class MusicApi {
                 page.tracks.add(item);
             }
         }
-        // Album tracks have no pictures of their own: the album cover
+        // Album tracks have no pictures (and often no artist) of their own: the album's
+        String albumArtist = !headers.isEmpty() ? firstRunText(headers.get(0).optJSONObject("straplineTextOne")) : null;
         for (Item track : page.tracks) {
             if (track.thumb == null) {
                 track.thumb = page.thumb;
+            }
+            if (track.author == null) {
+                track.author = albumArtist;
             }
         }
         return page;
@@ -342,8 +346,24 @@ public final class MusicApi {
         }
         JSONObject root = post("next", body, null);
 
+        // Each entry is a song, or a wrapper with the song and its video version: only the primary one
         List<JSONObject> renderers = new ArrayList<>();
-        collect(root, "playlistPanelVideoRenderer", renderers, 0);
+        JSONObject panel = first(root, "playlistPanelRenderer");
+        JSONArray entries = panel != null ? panel.optJSONArray("contents") : null;
+        for (int i = 0; entries != null && i < entries.length(); i++) {
+            JSONObject entry = entries.optJSONObject(i);
+            if (entry == null) {
+                continue;
+            }
+            JSONObject wrapper = entry.optJSONObject("playlistPanelVideoWrapperRenderer");
+            if (wrapper != null) {
+                entry = wrapper.optJSONObject("primaryRenderer");
+            }
+            JSONObject video = entry != null ? entry.optJSONObject("playlistPanelVideoRenderer") : null;
+            if (video != null) {
+                renderers.add(video);
+            }
+        }
         List<Item> items = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         for (JSONObject r : renderers) {
@@ -403,6 +423,9 @@ public final class MusicApi {
         List<JSONObject> tabs = new ArrayList<>();
         collect(root, "tabRenderer", tabs, 0);
         for (JSONObject tab : tabs) {
+            if (tab.has("unselectable")) {
+                continue; // this song has no lyrics
+            }
             JSONObject browse = path(tab, "endpoint", "browseEndpoint");
             if (browse != null && pageType(browse).contains("LYRICS")) {
                 lyricsId = browse.optString("browseId", null);
@@ -586,8 +609,12 @@ public final class MusicApi {
             return null;
         }
 
+        JSONObject firstRun = titleRuns.optJSONObject(0);
+        if (firstRun == null) {
+            return null;
+        }
         Item item = new Item();
-        item.title = titleRuns.optJSONObject(0).optString("text", null);
+        item.title = firstRun.optString("text", null);
         if (item.title == null) {
             return null;
         }
@@ -626,7 +653,7 @@ public final class MusicApi {
             item.videoId = data.optString("videoId", null);
         }
         if (item.videoId == null) {
-            JSONObject watch = titleRuns.optJSONObject(0).optJSONObject("navigationEndpoint");
+            JSONObject watch = firstRun.optJSONObject("navigationEndpoint");
             watch = watch != null ? watch.optJSONObject("watchEndpoint") : null;
             if (watch != null) {
                 item.videoId = watch.optString("videoId", null);

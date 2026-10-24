@@ -27,7 +27,8 @@ public final class MusicMenu {
 
     private static boolean sShuffle;
     private static List<Video> sUnshuffled; // the order before "Blanda", to go back to
-    private static Integer sModeBeforeRepeat;
+    private static final String PREFS = "music_player";
+    private static final String KEY_MODE_BEFORE_REPEAT = "mode_before_repeat";
 
     public static boolean isShuffle() {
         return sShuffle;
@@ -80,15 +81,17 @@ public final class MusicMenu {
     public static void setRepeatOne(android.content.Context context, boolean on) {
         com.liskovsoft.smartyoutubetv2.common.prefs.PlayerData data = com.liskovsoft.smartyoutubetv2.common.prefs.PlayerData.instance(context);
         int one = com.liskovsoft.smartyoutubetv2.common.app.models.playback.manager.PlayerConstants.PLAYBACK_MODE_ONE;
+        // the mode from before is stored (it is the player's global setting, also for videos)
+        android.content.SharedPreferences prefs = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE);
         if (on) {
             if (data.getPlaybackMode() != one) {
-                sModeBeforeRepeat = data.getPlaybackMode();
+                prefs.edit().putInt(KEY_MODE_BEFORE_REPEAT, data.getPlaybackMode()).apply();
             }
             data.setPlaybackMode(one);
         } else {
-            data.setPlaybackMode(sModeBeforeRepeat != null ? sModeBeforeRepeat
-                    : com.liskovsoft.smartyoutubetv2.common.app.models.playback.manager.PlayerConstants.PLAYBACK_MODE_ALL);
-            sModeBeforeRepeat = null;
+            data.setPlaybackMode(prefs.getInt(KEY_MODE_BEFORE_REPEAT,
+                    com.liskovsoft.smartyoutubetv2.common.app.models.playback.manager.PlayerConstants.PLAYBACK_MODE_ALL));
+            prefs.edit().remove(KEY_MODE_BEFORE_REPEAT).apply();
         }
     }
 
@@ -156,6 +159,8 @@ public final class MusicMenu {
             playQueue(activity, one, 0);
         }
         sQueueTitle = seed.getTitle() + " – mix";
+        sShuffle = false; // the radio's own order
+        sUnshuffled = null;
         PlaybackActivity.refreshQueue();
         final int request = ++sRadioRequest;
         final String seedId = seed.videoId;
@@ -174,6 +179,8 @@ public final class MusicMenu {
                 }
                 if (items == null || items.isEmpty()) {
                     Toast.makeText(app, "Kunde inte hämta radio", Toast.LENGTH_SHORT).show();
+                    sQueueTitle = null;
+                    PlaybackActivity.refreshQueue();
                     return;
                 }
                 Playlist playlist = Playlist.instance();

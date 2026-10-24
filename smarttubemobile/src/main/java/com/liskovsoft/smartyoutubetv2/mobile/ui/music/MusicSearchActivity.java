@@ -86,6 +86,7 @@ public class MusicSearchActivity extends MobileActivity {
     private final List<MusicApi.Item> mSongs = new ArrayList<>(); // the playable songs of what is shown
     private final List<TextView> mChips = new ArrayList<>();
     private EditText mField;
+    private View mRoot; // takes the focus from the field (on API < 28 clearFocus gives it straight back)
     private ImageView mClear;
     private View mChipScroll;
     private ProgressBar mProgress;
@@ -121,6 +122,7 @@ public class MusicSearchActivity extends MobileActivity {
         String browseId = getIntent().getStringExtra(EXTRA_BROWSE_ID);
         if (browseId != null) {
             mOpenedAsPage = true;
+            mRoot.requestFocus(); // not the search field: it would show the suggestions over the page
             MusicApi.Item item = new MusicApi.Item();
             item.type = browseId.startsWith("MPRE") ? MusicApi.ALBUM : MusicApi.PLAYLIST;
             item.browseId = browseId;
@@ -138,6 +140,8 @@ public class MusicSearchActivity extends MobileActivity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(getColor(R.color.yt_bg));
         root.setFitsSystemWindows(true);
+        root.setFocusableInTouchMode(true);
+        mRoot = root;
 
         LinearLayout bar = new LinearLayout(this);
         bar.setGravity(Gravity.CENTER_VERTICAL);
@@ -561,7 +565,9 @@ public class MusicSearchActivity extends MobileActivity {
         if (imm != null) {
             imm.hideSoftInputFromWindow(mField.getWindowToken(), 0);
         }
-        mField.clearFocus();
+        if (mField.hasFocus()) {
+            mRoot.requestFocus();
+        }
     }
 
     @Override

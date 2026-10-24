@@ -89,6 +89,11 @@ public class MusicPlayerView extends FrameLayout {
             return 0;
         }
 
+        /** The steps of the speed button. */
+        default float[] speeds() {
+            return new float[]{1f, 1.25f, 1.5f, 1.75f, 2f, 0.75f};
+        }
+
         /** The speed the player has now (the music player starts each song at 1x). */
         default float speed() {
             return 1f;
@@ -151,7 +156,6 @@ public class MusicPlayerView extends FrameLayout {
         }
     }
 
-    private static final float[] SPEEDS = {1f, 1.25f, 1.5f, 1.75f, 2f, 0.75f};
     private static final int CHIP_COLOR = 0x26FFFFFF;
     private static final int INACTIVE = 0x99FFFFFF;
 
@@ -179,6 +183,7 @@ public class MusicPlayerView extends FrameLayout {
     private LinearLayout mLyricsLines;
     private ScrollView mLyricsScroll;
     private int mLyricsCurrent = -1;
+    private boolean mReleased;
     private final Runnable mTick = new Runnable() {
         @Override
         public void run() {
@@ -593,11 +598,12 @@ public class MusicPlayerView extends FrameLayout {
     }
 
     private void cycleSpeed() {
+        float[] speeds = mHost.speeds();
         float current = mHost.speed();
-        float next = SPEEDS[0];
-        for (int i = 0; i < SPEEDS.length; i++) {
-            if (Math.abs(SPEEDS[i] - current) < 0.01f) {
-                next = SPEEDS[(i + 1) % SPEEDS.length];
+        float next = speeds[0];
+        for (int i = 0; i < speeds.length; i++) {
+            if (Math.abs(speeds[i] - current) < 0.01f) {
+                next = speeds[(i + 1) % speeds.length];
                 break;
             }
         }
@@ -655,7 +661,7 @@ public class MusicPlayerView extends FrameLayout {
         }
         mShownImage = image;
         Glide.with(mArt).load(image).into(mArt);
-        Glide.with(mArt).asBitmap().load(image).override(48, 48).into(new CustomTarget<Bitmap>() {
+        Glide.with(mArt).asBitmap().load(image).override(48, 48).disallowHardwareConfig().into(new CustomTarget<Bitmap>() {
             @Override
             public void onResourceReady(@NonNull Bitmap bitmap, @Nullable Transition<? super Bitmap> transition) {
                 if (image.equals(mShownImage)) {
@@ -772,6 +778,11 @@ public class MusicPlayerView extends FrameLayout {
         return mSheet != null;
     }
 
+    /** Only the "Nästa: ..." line at the bottom. */
+    public void refreshQueueBar() {
+        updateQueueBar();
+    }
+
     /** The queue changed (song added, moved or the next song started). */
     public void refreshQueue() {
         updateQueueBar();
@@ -816,9 +827,12 @@ public class MusicPlayerView extends FrameLayout {
         sExecutor.execute(() -> {
             MusicApi.Lyrics lyrics = MusicApi.lyrics(videoId, title, artist, duration);
             mHandler.post(() -> {
+                if (mReleased || mSheet != sheet || mSheet == null) {
+                    return; // closed, another song, or the screen is gone
+                }
                 mLyricsFor = videoId;
                 mLyrics = lyrics;
-                if (mSheet == sheet && mSheet != null) {
+                {
                     body.removeAllViews();
                     showLyricsBody(body, lyrics);
                 }
@@ -969,6 +983,7 @@ public class MusicPlayerView extends FrameLayout {
 
     /** The host is destroyed: no more callbacks. */
     public void release() {
+        mReleased = true;
         mHandler.removeCallbacksAndMessages(null);
     }
 

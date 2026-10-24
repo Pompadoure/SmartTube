@@ -140,6 +140,11 @@ public class PodcastPlayerActivity extends Activity {
         }
 
         @Override
+        public float[] speeds() {
+            return new float[]{0.8f, 1f, 1.2f, 1.5f, 1.8f, 2f}; // the podcast steps from before
+        }
+
+        @Override
         public float speed() {
             return PodcastPlayer.getSpeed();
         }
@@ -305,6 +310,8 @@ public class PodcastPlayerActivity extends Activity {
             // after a drag the list already shows the new order (no rebuild: no jump, no flicker)
             if (!mSkipQueueRefresh) {
                 mView.refreshQueue();
+            } else {
+                mView.refreshQueueBar(); // the list shows the order already; "Nästa:" may have changed
             }
             mSkipQueueRefresh = false;
         });
