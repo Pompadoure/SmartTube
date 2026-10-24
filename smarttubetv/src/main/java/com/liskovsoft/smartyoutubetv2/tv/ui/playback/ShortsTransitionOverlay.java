@@ -181,7 +181,6 @@ public class ShortsTransitionOverlay {
             }
         });
         image.setClipToOutline(true);
-        image.setHasOverlappingRendering(false); // the outgoing picture's alpha: no extra layer per frame
         image.setVisibility(View.GONE);
         container.addView(image, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
@@ -248,6 +247,13 @@ public class ShortsTransitionOverlay {
 
     public void detach() {
         mHandler.removeCallbacksAndMessages(null);
+        if (mDrawListener != null && mContainer != null) {
+            android.view.ViewTreeObserver observer = mContainer.getViewTreeObserver();
+            if (observer.isAlive()) {
+                observer.removeOnDrawListener(mDrawListener); // now: the posted removal is gone with the callbacks
+            }
+            mDrawListener = null;
+        }
         mSlideActive = false;
         mSlideEnd = null;
         mRevealEnd = null;
@@ -344,6 +350,9 @@ public class ShortsTransitionOverlay {
             action.run();
         }
 
+        if (mSlideActive) {
+            return; // a frame shape waits for the end of the slide (onSwipeEnd)
+        }
         Runnable reshape = mHeldReshape;
         mHeldReshape = null;
         if (reshape != null) {
@@ -1071,6 +1080,11 @@ public class ShortsTransitionOverlay {
                 .start();
     }
 
+    /** JoTube: the pictures are moving (the video is out of sight). */
+    public boolean isSliding() {
+        return mSlideActive;
+    }
+
     public boolean isShown() {
         return mIsShown;
     }
@@ -1081,7 +1095,15 @@ public class ShortsTransitionOverlay {
             mSwipe = null;
             swipe.cancel();
         }
-        mSlideActive = false;
+        if (mSlideActive) {
+            mSlideActive = false;
+            // a frame shape held for the slide's end (the slide is cut short here)
+            Runnable reshape = mHeldReshape;
+            mHeldReshape = null;
+            if (reshape != null) {
+                reshape.run();
+            }
+        }
         if (mSlideEnd != null) {
             mHandler.removeCallbacks(mSlideEnd);
             mSlideEnd = null;
