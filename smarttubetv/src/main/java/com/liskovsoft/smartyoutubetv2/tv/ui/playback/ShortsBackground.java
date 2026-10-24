@@ -97,6 +97,8 @@ public class ShortsBackground {
     /**
      * @param fadeMs how long the cross-fade to the new background takes (the Shorts swipe: the same as the slide)
      */
+    private Runnable mClearOld; // JoTube: clears the old layer after the fade (no end action: RenderThread)
+
     public void show(Video video, int fadeMs) {
         mFadeMs = fadeMs;
 
@@ -111,6 +113,12 @@ public class ShortsBackground {
         mVideoId = video.videoId;
         mContainer.setVisibility(View.VISIBLE);
 
+        // A clean-up still pending: it would clear the layer that loads now
+        if (mClearOld != null && mFront != null) {
+            mFront.removeCallbacks(mClearOld);
+            mBack.removeCallbacks(mClearOld);
+            mClearOld = null;
+        }
         // A fade still running: finish it (its end action would clear the layer that loads now)
         mFront.animate().cancel();
         mFront.setAlpha(1f);
@@ -171,15 +179,22 @@ public class ShortsBackground {
         // Order by z (no relayout, unlike bringChildToFront)
         target.setZ(1f);
         old.setZ(0f);
-        target.animate()
+        // JoTube: on the RenderThread (with the slide; no end action, it would move it to the main thread)
+        long fade = old.getDrawable() != null ? mFadeMs : 0;
+        RenderThreadAnimation.animate(target)
                 .alpha(1f)
-                .setDuration(old.getDrawable() != null ? mFadeMs : 0)
-                .withEndAction(() -> {
-                    if (mBack == old && mContainer != null) {
-                        clear(old); // behind the shown one now
-                    }
-                })
+                .setDuration(fade)
                 .start();
+        if (mClearOld != null) {
+            target.removeCallbacks(mClearOld);
+        }
+        mClearOld = () -> {
+            mClearOld = null;
+            if (mBack == old && mFront == target && mContainer != null) {
+                clear(old); // behind the shown one now
+            }
+        };
+        target.postDelayed(mClearOld, fade + 32);
     }
 
     private static void clear(ImageView view) {

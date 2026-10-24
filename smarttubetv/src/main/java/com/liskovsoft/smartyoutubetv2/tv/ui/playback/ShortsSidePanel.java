@@ -636,6 +636,24 @@ public class ShortsSidePanel {
         }
     }
 
+    /**
+     * JoTube: during the Shorts slide the frame (border and black card) steps aside, the pictures move without a
+     * window standing still around them; it comes back with the new video (the border fades in).
+     */
+    public void setSlideAside(boolean aside) {
+        if (mBorder != null) {
+            mBorder.animate().cancel();
+            if (aside) {
+                mBorder.setAlpha(0f);
+            } else {
+                mBorder.animate().alpha(1f).setDuration(180).start();
+            }
+        }
+        if (mCard != null) {
+            mCard.setAlpha(aside ? 0f : 1f);
+        }
+    }
+
     private void restartTimeout() {
         if (mFocus != ITEM_NONE) {
             mHandler.removeCallbacks(mFocusTimeout);
@@ -827,9 +845,10 @@ public class ShortsSidePanel {
         ImageView button = new ImageView(context);
         button.setImageResource(iconResId);
         button.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        int padding = dp(11);
+        int padding = dp(12);
         button.setPadding(padding, padding, padding, padding);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(46), dp(46));
+        // JoTube: the size of the player's secondary buttons (lb_control_button_secondary_diameter)
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(48), dp(48));
         params.rightMargin = dp(8);
 
         if (row.getChildCount() > 0 && !(row.getChildAt(row.getChildCount() - 1) instanceof ImageView)) {
@@ -852,15 +871,21 @@ public class ShortsSidePanel {
             boolean focused = mFocus == item;
             boolean on = isOn(item);
 
+            // JoTube: like the player's buttons (lb_control_button_primary): a soft translucent circle, brighter when
+            // focused; the icon stays white (the highlight color when on)
             GradientDrawable background = new GradientDrawable();
             background.setShape(GradientDrawable.OVAL);
-            background.setColor(focused ? Color.WHITE : Color.argb(70, 255, 255, 255));
+            background.setColor(focused ? 0x66FFFFFF : 0x26FFFFFF);
             button.setBackground(background);
 
-            int iconColor = focused ? (on ? highlight : Color.BLACK) : (on ? highlight : Color.WHITE);
-            button.setColorFilter(iconColor, PorterDuff.Mode.SRC_IN);
-            button.setScaleX(focused ? 1.1f : 1f);
-            button.setScaleY(focused ? 1.1f : 1f);
+            button.setColorFilter(on ? highlight : Color.WHITE, PorterDuff.Mode.SRC_IN);
+            float scale = focused ? 1.08f : 1f;
+            Object target = button.getTag(R.id.action_thumbs_up); // the scale it animates to (not the value right now)
+            if (!(target instanceof Float) || (Float) target != scale) {
+                button.setTag(R.id.action_thumbs_up, scale);
+                button.animate().cancel();
+                button.animate().scaleX(scale).scaleY(scale).setDuration(120).start();
+            }
         }
 
         boolean channelFocused = mFocus == ITEM_CHANNEL;

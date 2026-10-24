@@ -227,6 +227,17 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         // Above the video surface, below the controls
         mShortsTransition.setPreview(mShortsPreview, getPlayerTweaksData().isShortsPreviewPlayerEnabled());
         mShortsTransition.setSlideEnabled(getPlayerTweaksData().isShortsSlideEnabled());
+        mShortsTransition.setSlideListener(new ShortsTransitionOverlay.SlideListener() {
+            @Override
+            public void onSlideStart() {
+                mShortsPanel.setSlideAside(true);
+            }
+
+            @Override
+            public void onSlideEnd() {
+                mShortsPanel.setSlideAside(false);
+            }
+        });
         mShortsTransition.attach((ViewGroup) root);
         mShortsBackground.attach((ViewGroup) root);
         mShortsPanel.attach((ViewGroup) root, new ShortsSidePanel.Callback() {
@@ -1029,8 +1040,14 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         super.onVideoSizeChanged(width, height);
 
         if (height > 0) {
-            // Not via runReshape: this comes with the new video's own frame, which must get its shape at once
-            mShortsPanel.setVideoAspect((float) width / height);
+            // Not via runReshape: this comes with the new video's own frame, which must get its shape at once.
+            // Except during the slide: the video is out of sight, the picture moving in keeps its shape until the end.
+            final float aspect = (float) width / height;
+            if (mShortsTransition.isSliding()) {
+                mShortsTransition.runReshape(() -> mShortsPanel.setVideoAspect(aspect));
+            } else {
+                mShortsPanel.setVideoAspect(aspect);
+            }
         }
     }
 

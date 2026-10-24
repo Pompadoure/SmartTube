@@ -785,7 +785,8 @@ public class PlayerTweaksData implements ProfileChangeListener {
         mIsAudioTimeStretchingEnabled = Helpers.parseBoolean(split, 59, true);
         mIsQueueRespectsPlaybackMode = Helpers.parseBoolean(split, 60, false);
         mIsShortsPreviewPlayerEnabled = Helpers.parseBoolean(split, 61, false);
-        mIsShortsSlideEnabled = Helpers.parseBoolean(split, 62, false);
+        // JoTube 2026-10-24: the new slide is on by default (index 62 was the old opt-in slide)
+        mIsShortsSlideEnabled = Helpers.parseBoolean(split, 63, true);
 
         updateDefaultValues();
     }
@@ -814,7 +815,7 @@ public class PlayerTweaksData implements ProfileChangeListener {
                 mIsOculusQuestFixEnabled, null, mIsExtraLongSpeedListEnabled, mIsQuickSkipVideosEnabled, mIsNetworkErrorFixingDisabled, mIsCommentsPlacedLeft,
                 null, mIsAudioFocusEnabled, mIsDontResizeVideoToFitDialogEnabled, mIsSuggestionsHorizontallyScrolled,
                 mIsQuickSkipShortsAltEnabled, mIsQuickSkipVideosAltEnabled, mIsAudioTimeStretchingEnabled, mIsQueueRespectsPlaybackMode,
-                mIsShortsPreviewPlayerEnabled, mIsShortsSlideEnabled
+                mIsShortsPreviewPlayerEnabled, null, mIsShortsSlideEnabled
                 ));
     }
 
