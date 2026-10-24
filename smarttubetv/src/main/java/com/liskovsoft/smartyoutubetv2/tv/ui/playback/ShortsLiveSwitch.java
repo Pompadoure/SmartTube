@@ -12,6 +12,7 @@ import android.view.animation.PathInterpolator;
 import androidx.media3.common.PlaybackParameters;
 import androidx.media3.common.Player;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.analytics.AnalyticsListener;
 
 import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
@@ -164,6 +165,7 @@ final class ShortsLiveSwitch {
 
         mState = State.SLIDING;
         Log.d(TAG, "Live switch to %s: slide starts", next.videoId);
+        attachDiag(main, incomingPlayer);
 
         mSlide = ValueAnimator.ofFloat(0f, 1f);
         mSlide.setDuration(slideDuration(mainSurface));
@@ -576,6 +578,54 @@ final class ShortsLiveSwitch {
      *
      * @param now no sound fade, the second player goes at once (a swipe or an error: no time for niceties)
      */
+    // --- diagnostics: dropped frames and audio underruns of both players during and just after a live switch ---
+    private ExoPlayer mDiagMain;
+    private ExoPlayer mDiagSecond;
+    private final Runnable mDetachDiag = this::detachDiag;
+
+    private AnalyticsListener diagListener(final String who) {
+        return new AnalyticsListener() {
+            @Override
+            public void onDroppedVideoFrames(AnalyticsListener.EventTime eventTime, int droppedFrames, long elapsedMs) {
+                Log.d(TAG, "Glitch: %s dropped %s frames in %s ms (%s, +%s ms)", who, droppedFrames, elapsedMs, mState,
+                        SystemClock.uptimeMillis() - mStartMs);
+            }
+
+            @Override
+            public void onAudioUnderrun(AnalyticsListener.EventTime eventTime, int bufferSize, long bufferSizeMs, long elapsedSinceLastFeedMs) {
+                Log.d(TAG, "Glitch: %s audio underrun (%s ms since the last feed) (%s, +%s ms)", who, elapsedSinceLastFeedMs, mState,
+                        SystemClock.uptimeMillis() - mStartMs);
+            }
+        };
+    }
+
+    private final AnalyticsListener mDiagMainListener = diagListener("main");
+    private final AnalyticsListener mDiagSecondListener = diagListener("second");
+
+    private void attachDiag(ExoPlayer main, ExoPlayer second) {
+        mHandler.removeCallbacks(mDetachDiag);
+        detachDiag();
+        mDiagMain = main;
+        mDiagSecond = second;
+        main.addAnalyticsListener(mDiagMainListener);
+        second.addAnalyticsListener(mDiagSecondListener);
+    }
+
+    private void detachDiag() {
+        try {
+            if (mDiagMain != null) {
+                mDiagMain.removeAnalyticsListener(mDiagMainListener);
+            }
+            if (mDiagSecond != null) {
+                mDiagSecond.removeAnalyticsListener(mDiagSecondListener);
+            }
+        } catch (RuntimeException e) {
+            // the player is gone
+        }
+        mDiagMain = null;
+        mDiagSecond = null;
+    }
+
     void swap(boolean now) {
         if (mState == State.IDLE) {
             return;
@@ -616,6 +666,8 @@ final class ShortsLiveSwitch {
         mOpen = null;
         mState = State.IDLE;
         mTarget = null;
+        mHandler.removeCallbacks(mDetachDiag);
+        mHandler.postDelayed(mDetachDiag, 4_000); // glitches right after the take-over are of interest too
 
         if (wasSliding) {
             ShortsSidePanel panel = mHost.panel();
