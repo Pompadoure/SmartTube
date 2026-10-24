@@ -11,6 +11,7 @@ import com.liskovsoft.mediaserviceinterfaces.oauth.Account;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaGroup;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItem;
 import com.liskovsoft.sharedutils.helpers.Helpers;
+import com.liskovsoft.smartyoutubetv2.common.app.presenters.service.SidebarService;
 import com.liskovsoft.sharedutils.locale.LocaleUtility;
 import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.sharedutils.rx.RxHelper;
@@ -231,6 +232,7 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
         mSectionsMapping.put(MediaGroup.TYPE_CHANNEL_UPLOADS, new BrowseSection(MediaGroup.TYPE_CHANNEL_UPLOADS, getContext().getString(R.string.header_subscriptions), uploadsType, R.drawable.icon_subscriptions, false));
         // JoTube: TYPE_SUBSCRIPTIONS has no section of its own any more (merged into TYPE_CHANNEL_UPLOADS)
         mSectionsMapping.put(MediaGroup.TYPE_HISTORY, new BrowseSection(MediaGroup.TYPE_HISTORY, getContext().getString(R.string.header_history), BrowseSection.TYPE_GRID, R.drawable.icon_history, true));
+        mSectionsMapping.put(SidebarService.TYPE_SHORTS_HISTORY, new BrowseSection(SidebarService.TYPE_SHORTS_HISTORY, getContext().getString(R.string.header_shorts_history), BrowseSection.TYPE_GRID, R.drawable.icon_shorts, true));
         mSectionsMapping.put(MediaGroup.TYPE_BLOCKED_CHANNELS,
                 new BrowseSection(MediaGroup.TYPE_BLOCKED_CHANNELS, getContext().getString(R.string.header_blocked_channels), BrowseSection.TYPE_GRID, R.drawable.icon_blocked_channels, false));
         mSectionsMapping.put(MediaGroup.TYPE_USER_PLAYLISTS, new BrowseSection(MediaGroup.TYPE_USER_PLAYLISTS, getContext().getString(R.string.header_playlists), BrowseSection.TYPE_ROW, R.drawable.icon_playlist, false));
@@ -257,6 +259,7 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
         mGridMapping.put(MediaGroup.TYPE_SHORTS, ShortsHistory.newFeedObserve(getContext(), getContentService()));
         mGridMapping.put(MediaGroup.TYPE_SUBSCRIPTIONS, getContentService().getSubscriptionsObserve());
         mGridMapping.put(MediaGroup.TYPE_HISTORY, getContentService().getHistoryObserve());
+        mGridMapping.put(SidebarService.TYPE_SHORTS_HISTORY, getContentService().getHistoryObserve()); // filtered to the Shorts when loaded
         mGridMapping.put(MediaGroup.TYPE_CHANNEL_UPLOADS, getContentService().getSubscribedChannelsByNewContentObserve());
         mGridMapping.put(MediaGroup.TYPE_NOTIFICATIONS, getNotificationsService().getNotificationItemsObserve());
         mGridMapping.put(MediaGroup.TYPE_MY_VIDEOS, getContentService().getMyVideosObserve());
@@ -525,7 +528,7 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
     // Personal sections: no point to warm them (the load fails) when signed out
     private static final int[] WARM_AUTH_SECTIONS = {
             MediaGroup.TYPE_HOME, MediaGroup.TYPE_SUBSCRIPTIONS, MediaGroup.TYPE_NOTIFICATIONS, MediaGroup.TYPE_MY_VIDEOS,
-            MediaGroup.TYPE_CHANNEL_UPLOADS, MediaGroup.TYPE_USER_PLAYLISTS, MediaGroup.TYPE_HISTORY
+            MediaGroup.TYPE_CHANNEL_UPLOADS, MediaGroup.TYPE_USER_PLAYLISTS, MediaGroup.TYPE_HISTORY, SidebarService.TYPE_SHORTS_HISTORY
     };
 
     private static final class WarmEntry {
@@ -1362,6 +1365,7 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
 
     public void enableAllSections(boolean enable) {
         enableSection(MediaGroup.TYPE_HISTORY, enable);
+        enableSection(SidebarService.TYPE_SHORTS_HISTORY, enable);
         enableSection(MediaGroup.TYPE_USER_PLAYLISTS, enable);
         enableSection(MediaGroup.TYPE_SUBSCRIPTIONS, enable);
         enableSection(MediaGroup.TYPE_CHANNEL_UPLOADS, enable);
@@ -1631,6 +1635,7 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
                                 return;
                             }
 
+                            filterHistoryShorts(section.getId(), mediaGroup);
                             int sizeBefore = Math.max(0, baseGroup.getSize());
                             VideoGroup videoGroup = VideoGroup.from(baseGroup, mediaGroup);
                             if (isShortsGrid && ShortsHistory.instance(getContext()) != null) {
@@ -1728,6 +1733,9 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
                         continueGroup -> {
                             getView().showProgressBar(false);
 
+                            if (getCurrentSection() != null) {
+                                filterHistoryShorts(getCurrentSection().getId(), continueGroup);
+                            }
                             int sizeBefore = Math.max(0, group.getSize());
                             VideoGroup videoGroup = VideoGroup.from(group, continueGroup);
                             if (videoGroup == mShortsGroup && ShortsHistory.instance(getContext()) != null) {
@@ -1787,6 +1795,23 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
     /**
      * Most tiny ui has 8 cards in a row or 24 in grid.
      */
+    /**
+     * JoTube: the Shorts of the watch history are shown in their own tab: History hides them (as long as the tab is
+     * pinned), the Shorts history tab hides everything else. Filtering in place keeps the continuation, and a group
+     * that got too small is continued (shouldContinueTheGroup).
+     */
+    private void filterHistoryShorts(int sectionId, MediaGroup group) {
+        if (group == null || group.getMediaItems() == null) {
+            return;
+        }
+
+        if (sectionId == SidebarService.TYPE_SHORTS_HISTORY) {
+            Helpers.removeIf(group.getMediaItems(), item -> item != null && !item.isShorts());
+        } else if (sectionId == MediaGroup.TYPE_HISTORY && getSidebarService().isSectionPinned(SidebarService.TYPE_SHORTS_HISTORY)) {
+            Helpers.removeIf(group.getMediaItems(), item -> item != null && item.isShorts());
+        }
+    }
+
     private void continueGroupIfNeeded(VideoGroup group, boolean showLoading) {
         if (MediaServiceManager.instance().shouldContinueTheGroup(getContext(), group, isGridSection())) {
             continueGroup(group, showLoading);
@@ -1985,7 +2010,7 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
     }
 
     public boolean isHistorySection() {
-        return isSection(MediaGroup.TYPE_HISTORY);
+        return isSection(MediaGroup.TYPE_HISTORY) || isSection(SidebarService.TYPE_SHORTS_HISTORY);
     }
 
     public boolean isSubscriptionsSection() {
