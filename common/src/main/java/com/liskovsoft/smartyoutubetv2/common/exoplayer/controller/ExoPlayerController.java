@@ -108,6 +108,9 @@ public class ExoPlayerController implements Player.Listener {
 
     // JoTube role swap: the old main player plays the old Short muted until the swap: its end must not count
     private boolean mSwapPending;
+    // JoTube role swap: the core's "video loaded" work runs for a Short that plays already: its format restore must not
+    // re-select the tracks (device log 2026-10-24 22:23: renderers reset + rebuffer right after the swap = a freeze)
+    private boolean mAdopting;
 
     /** JoTube role swap: the slide is over and the Short is being opened: the old Short's end is ignored. */
     public void onSwapPending() {
@@ -220,7 +223,12 @@ public class ExoPlayerController implements Player.Listener {
         mIsEnded = false;
         mOnSourceChanged = true;
         mStartPositionMs = C.TIME_UNSET;
-        mEventListener.onSourceChanged(getVideo());
+        mAdopting = true;
+        try {
+            mEventListener.onSourceChanged(getVideo());
+        } finally {
+            mAdopting = false;
+        }
         mStartPositionMs = C.TIME_UNSET; // the Short plays already: a saved position isn't applied
 
         ShortsQueue queue = ShortsQueue.getActive();
@@ -235,9 +243,14 @@ public class ExoPlayerController implements Player.Listener {
         JoTubeTiming.mark("role swap: player adopted");
 
         // The events of a normal open, from the player's current state
-        onTimelineChanged(player.getCurrentTimeline(), Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED);
-        onTracksChanged(player.getCurrentTracks());
-        onPlayerStateChanged(player.getPlayWhenReady(), player.getPlaybackState());
+        mAdopting = true;
+        try {
+            onTimelineChanged(player.getCurrentTimeline(), Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED);
+            onTracksChanged(player.getCurrentTracks());
+            onPlayerStateChanged(player.getPlayWhenReady(), player.getPlaybackState());
+        } finally {
+            mAdopting = false;
+        }
         // The spare's selection didn't fill the track cache (another period then): a delayed re-selection does (same result)
         mTrackSelectorManager.onQueuedSourceSwitch();
         mTrackSelectorManager.syncWithPlayingPeriod();
@@ -578,7 +591,16 @@ public class ExoPlayerController implements Player.Listener {
      * NOTE: Pos gathered from content block data may slightly exceed video duration
      * (e.g. 302200 when duration is 302000).
      */
+    /** JoTube role swap: true while the core handles the "loaded" events of an adopted (already playing) Short. */
+    public boolean isAdopting() {
+        return mAdopting;
+    }
+
     public void setPositionMs(long positionMs) {
+        if (mAdopting) {
+            Log.d(TAG, "Shorts: position restore %s skipped for the adopted player (it plays from the start)", positionMs);
+            return;
+        }
         // Url list videos at load stage has undefined (-1) length. So, we need to remove length check.
         // JoTube M3: Media3 keeps a seek made before the timeline is known (pending initial seek position).
         long duration = getDurationMs();
@@ -794,6 +816,11 @@ public class ExoPlayerController implements Player.Listener {
     }
     
     public void selectFormat(FormatItem formatItem) {
+        if (mAdopting) {
+            // JoTube role swap: the adopted Short was selected with the same saved formats already (spare selector)
+            Log.d(TAG, "Shorts: format restore skipped for the adopted player: %s", formatItem);
+            return;
+        }
         if (formatItem != null && formatItem.getTrack() != null) {
             FormatItem selectedFormatItem = getSelectedFormat(formatItem.getTrack().rendererIndex);
             if (!formatItem.equals(selectedFormatItem)) {

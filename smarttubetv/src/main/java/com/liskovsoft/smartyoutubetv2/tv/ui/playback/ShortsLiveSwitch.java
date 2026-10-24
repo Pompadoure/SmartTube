@@ -151,7 +151,8 @@ final class ShortsLiveSwitch {
         panel.setSlideAside(true);
 
         mState = State.SLIDING;
-        Log.d(TAG, "Live switch to %s: slide starts", next.videoId);
+        Log.d(TAG, "Live switch to %s: slide starts (incoming at %s ms, buffered to %s ms, state %s)", next.videoId,
+                incomingPlayer.getCurrentPosition(), incomingPlayer.getBufferedPosition(), incomingPlayer.getPlaybackState());
         attachDiag(main, incomingPlayer);
 
         mSlide = ValueAnimator.ofFloat(0f, 1f);
