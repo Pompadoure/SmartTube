@@ -131,6 +131,39 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     private final ShortsTransitionOverlay mShortsTransition = new ShortsTransitionOverlay();
     private final ShortsBackground mShortsBackground = new ShortsBackground();
     private final ShortsPreview mShortsPreview = new ShortsPreview();
+    private View mSurfaceRoot; // JoTube: the main player's surface (the live switch moves it)
+    // JoTube: the Shorts switch with two players (live video in and out, no stills)
+    private final ShortsLiveSwitch mLiveSwitch = new ShortsLiveSwitch(new ShortsLiveSwitch.Host() {
+        @Override
+        public ExoPlayer mainPlayer() {
+            return mPlayer;
+        }
+
+        @Override
+        public View mainSurface() {
+            return mSurfaceRoot;
+        }
+
+        @Override
+        public ShortsPreview preview() {
+            return mShortsPreview;
+        }
+
+        @Override
+        public ShortsSidePanel panel() {
+            return mShortsPanel;
+        }
+
+        @Override
+        public void onLivePage(Video next) {
+            updateShortsBackground(next, ShortsTransitionState.DIRECTION_NEXT);
+        }
+
+        @Override
+        public void onLiveCancelled() {
+            updateShortsBackground(getVideo());
+        }
+    });
     private final ShortsSidePanel mShortsPanel = new ShortsSidePanel();
     private Video mLastVideo; // the video before the current one (for the Shorts swipe)
     private int mCoverGeneration = -1; // the player's source when the transition cover was shown
@@ -151,6 +184,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             }
             Log.d(TAG, "First frame rendered: %s", video != null ? video.videoId : null);
             JoTubeTiming.markFirstFrame();
+            mLiveSwitch.onMainFirstFrame();
             mShortsTransition.hide(true);
             mShortsPreview.onMainFirstFrame();
             if (video != null && video.isShorts) {
@@ -163,6 +197,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     private final Player.Listener mTransitionStateListener = new Player.Listener() {
         @Override
         public void onPlayerError(androidx.media3.common.PlaybackException error) {
+            mLiveSwitch.onMainError();
             mShortsTransition.hide(false);
         }
 
@@ -225,7 +260,11 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         getProgressBarManager().disableProgressBar();
 
         // Above the video surface, below the controls
-        mShortsTransition.setPreview(mShortsPreview, getPlayerTweaksData().isShortsPreviewPlayerEnabled());
+        // JoTube: the second player is needed for the live switch (on with the animated transition)
+        mShortsTransition.setPreview(mShortsPreview, getPlayerTweaksData().isShortsPreviewPlayerEnabled() ||
+                getPlayerTweaksData().isShortsSlideEnabled());
+        mSurfaceRoot = root.findViewById(R.id.surface_root);
+        mShortsPreview.setLiveProblemListener(mLiveSwitch::onSecondPlayerProblem);
         mShortsTransition.setSlideEnabled(getPlayerTweaksData().isShortsSlideEnabled());
         mShortsTransition.setSlideListener(new ShortsTransitionOverlay.SlideListener() {
             @Override
@@ -352,6 +391,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     @Override
     public void onPause() {
         super.onPause();
+        mLiveSwitch.abort(); // JoTube: the second player must not go on (sound) when the screen is left
 
         // NOTE: don't move this into another place! Multiple components rely on it.
         mPlaybackPresenter.onViewPaused();
@@ -1274,6 +1314,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
     @Override
     public void setPlayWhenReady(boolean play) {
+        mLiveSwitch.onCorePlayWhenReady(play); // JoTube: the second player (on screen during the switch) follows
         mExoPlayerController.setPlayWhenReady(play);
     }
 
@@ -1362,11 +1403,13 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
     @Override
     public float getSpeed() {
-        return mExoPlayerController.getSpeed();
+        // JoTube: during the live switch the main player's speed is changed to catch up: the core's speed
+        return mLiveSwitch.isActive() ? mLiveSwitch.getBaseSpeed() : mExoPlayerController.getSpeed();
     }
 
     @Override
     public void setSpeed(float speed) {
+        mLiveSwitch.onCoreSpeed(speed);
         mExoPlayerController.setSpeed(speed);
         // NOTE: Real speed isn't changed immediately, so use supplied speed data
         setButtonState(R.id.action_video_speed, speed != 1.0f ? PlayerUI.BUTTON_ON : PlayerUI.BUTTON_OFF);
@@ -1384,11 +1427,14 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
     @Override
     public float getVolume() {
-        return mExoPlayerController.getVolume();
+        return mLiveSwitch.isActive() ? mLiveSwitch.getVolume() : mExoPlayerController.getVolume();
     }
 
     @Override
     public void setVolume(float volume) {
+        if (mLiveSwitch.onCoreVolume(volume)) {
+            return; // JoTube: the main player stays silent until it takes over (with this volume)
+        }
         mExoPlayerController.setVolume(volume);
     }
 
@@ -1443,6 +1489,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     @Override
     public void onDestroyView() {
         mLastVideo = null; // JoTube: no swipe from a video of a closed player
+        mLiveSwitch.release();
         mShortsTransition.detach();
         mShortsBackground.detach();
         mShortsPanel.detach();
@@ -1891,6 +1938,19 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
      * Without this also you'll have problems with track quality switching(??).
      */
     @Override
+    public boolean startShortsLiveSwitch(Video next, Runnable open) {
+        if (isInPIPMode() || !mShortsTransition.isSlideEnabled() || !mShortsPreview.isEnabled() || mPlayer == null) {
+            return false;
+        }
+        return mLiveSwitch.start(next, open);
+    }
+
+    @Override
+    public boolean isShortsLiveSwitchSliding() {
+        return mLiveSwitch.isBusy();
+    }
+
+    @Override
     public void resetPlayerState() {
         int direction = ShortsTransitionState.consumeDirection();
         Video video = getVideo();
@@ -1904,6 +1964,18 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                 !Helpers.equals(previous.videoId, video.videoId);
 
         mShortsPreview.onMainStarting();
+        if (mLiveSwitch.onMainStarting(video)) {
+            // JoTube live switch: the second player shows this Short already; the main player loads it behind, silent
+            if (ShortsQueue.getQueuedFormatInfo(video.videoId) == null && mExoPlayerController != null) {
+                mExoPlayerController.resetPlayerState(); // not preloaded: the usual reset (hidden)
+            }
+            mShortsTransition.hide(false);
+            updateShortsBackground(video);
+            setChatReceiver(null);
+            setSeekBarSegments(null);
+            setSeekPreviewTitle(null);
+            return;
+        }
         if (video != null && ShortsQueue.getQueuedFormatInfo(video.videoId) != null) {
             // Preloaded Short: it's already in the player, keep everything as is (no black screen, no reset).
             // The swipe covers the moment until the new video's first frame is rendered.

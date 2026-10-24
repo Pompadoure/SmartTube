@@ -37,7 +37,8 @@ import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ShortsQueue;
  */
 public class ShortsPreview {
     private static final String TAG = "ShortsPreview";
-    private static final int START_DELAY_MS = 800; // after the playing Short's first frame
+    // after the playing Short's first frame (JoTube live switch: soon, so a swipe after ~1 s finds it ready)
+    private static final int START_DELAY_MS = 300;
     private static final float PARKED_Y = 10_000f; // visible (the surface must exist) but far off screen
 
     private final Handler mHandler = new Handler(Looper.getMainLooper());
@@ -51,6 +52,9 @@ public class ShortsPreview {
     private boolean mFrameRendered;
     private boolean mMainStarted; // the playing Short has shown its first frame
     private boolean mEnabled;
+    private boolean mLive; // JoTube: it plays the Short on screen (live switch) until the main player takes over
+    private float mAspectRatio; // the prepared Short's picture (width / height), 0 = not known yet
+    private Runnable mLiveProblem; // JoTube: the live Short failed or ended (the main player must take over)
 
     private final Player.Listener mListener = new Player.Listener() {
         @Override
@@ -61,8 +65,18 @@ public class ShortsPreview {
 
         @Override
         public void onVideoSizeChanged(VideoSize size) {
-            if (size.height > 0 && mAspect != null) {
-                mAspect.setAspectRatio((float) size.width * size.pixelWidthHeightRatio / size.height);
+            if (size.height > 0) {
+                mAspectRatio = (float) size.width * size.pixelWidthHeightRatio / size.height;
+                if (mAspect != null) {
+                    mAspect.setAspectRatio(mAspectRatio);
+                }
+            }
+        }
+
+        @Override
+        public void onPlaybackStateChanged(int state) {
+            if (mLive && state == Player.STATE_ENDED && mLiveProblem != null) {
+                mLiveProblem.run();
             }
         }
 
@@ -70,6 +84,9 @@ public class ShortsPreview {
         public void onPlayerError(PlaybackException error) {
             Log.e(TAG, "Preview failed for %s: %s", mVideoId, error.getMessage());
             mFrameRendered = false;
+            if (mLive && mLiveProblem != null) {
+                mLiveProblem.run();
+            }
             // A failed one is not retried until the next Short comes
         }
     };
@@ -128,7 +145,15 @@ public class ShortsPreview {
      * Same size as the incoming picture (the Shorts frame): 0 = whole container.
      */
     public void setFrame(int width, int height, int offsetX) {
-        if (mHolder == null || !(mHolder.getLayoutParams() instanceof FrameLayout.LayoutParams)) {
+        setFrame(width, height, offsetX, false);
+    }
+
+    /**
+     * @param force also while live (the live switch sets the frame of the incoming Short itself; the frame updates of
+     *              the playing one must not change it meanwhile)
+     */
+    public void setFrame(int width, int height, int offsetX, boolean force) {
+        if (mHolder == null || !(mHolder.getLayoutParams() instanceof FrameLayout.LayoutParams) || (mLive && !force)) {
             return;
         }
 
@@ -173,8 +198,8 @@ public class ShortsPreview {
     }
 
     private void refresh() {
-        if (!mEnabled || !mMainStarted || mHolder == null) {
-            return;
+        if (!mEnabled || !mMainStarted || mHolder == null || mLive) {
+            return; // live: it is the Short on screen right now
         }
 
         MediaItemFormatInfo next = ShortsQueue.getNextFormatInfo();
@@ -201,6 +226,9 @@ public class ShortsPreview {
 
         mVideoId = next.getVideoId();
         mFrameRendered = false;
+        mAspectRatio = 0;
+        mHolder.setTranslationY(PARKED_Y);
+        mHolder.setAlpha(1f);
         Log.d(TAG, "Preparing the preview of %s", mVideoId);
         player.setPlayWhenReady(false);
         player.setMediaSource(source);
@@ -219,13 +247,15 @@ public class ShortsPreview {
 
         try {
             DefaultTrackSelector trackSelector = new DefaultTrackSelector(mContext);
+            // JoTube live switch: with its sound (silent until it is shown) and the main player's picture size (the
+            // main player takes over a few seconds later: no change of sharpness at that moment)
             trackSelector.setParameters(trackSelector.buildUponParameters()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                    .setMaxVideoSize(1280, 1280)
+                    .setMaxVideoSize(1920, 1920)
+                    .setPreferredAudioLanguage(java.util.Locale.getDefault().getLanguage())
                     .setAllowVideoMixedMimeTypeAdaptiveness(false));
             DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(1_000, 2_000, 250, 250)
+                    .setBufferDurationsMs(2_500, 8_000, 250, 250)
                     .build();
             mPlayer = new ExoPlayer.Builder(mContext, new DefaultRenderersFactory(mContext).setEnableDecoderFallback(true))
                     .setTrackSelector(trackSelector)
@@ -248,6 +278,43 @@ public class ShortsPreview {
      */
     public boolean isReadyFor(String videoId) {
         return mEnabled && mHolder != null && mPlayer != null && videoId != null && videoId.equals(mVideoId) && mFrameRendered;
+    }
+
+    /** JoTube: the prepared Short's picture shape (width / height), 0 if not known. */
+    public float getAspectRatio() {
+        return mAspectRatio;
+    }
+
+    @Nullable
+    public ExoPlayer getPlayer() {
+        return mPlayer;
+    }
+
+    /** The view that moves (the frame with the surface). */
+    @Nullable
+    public View getView() {
+        return mHolder;
+    }
+
+    /**
+     * JoTube live switch: the prepared Short starts playing on screen (silent: the switch fades the sound in).
+     */
+    public boolean startLive() {
+        if (mPlayer == null || !mFrameRendered) {
+            return false;
+        }
+        mLive = true;
+        mHandler.removeCallbacks(mRefresh);
+        mPlayer.setPlayWhenReady(true);
+        return true;
+    }
+
+    public boolean isLive() {
+        return mLive;
+    }
+
+    public void setLiveProblemListener(Runnable listener) {
+        mLiveProblem = listener;
     }
 
     /**
@@ -293,8 +360,11 @@ public class ShortsPreview {
      * The Short was taken by the main player: this one is free for the next.
      */
     public void consumed() {
+        boolean wasLive = mLive;
+        mLive = false;
         mVideoId = null;
         mFrameRendered = false;
+        mAspectRatio = 0;
 
         if (mPlayer != null) {
             mPlayer.stop();
@@ -302,6 +372,13 @@ public class ShortsPreview {
         }
 
         park();
+
+        if (mPlayer != null) {
+            mPlayer.setVolume(0f);
+        }
+        if (wasLive) {
+            scheduleRefresh(); // prepare the next one
+        }
     }
 
     private void releasePlayer() {
