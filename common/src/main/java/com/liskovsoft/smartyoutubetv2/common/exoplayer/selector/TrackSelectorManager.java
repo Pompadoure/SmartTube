@@ -665,6 +665,9 @@ public class TrackSelectorManager implements TrackSelectorCallback {
 
         if (selector instanceof RestoreTrackSelector) {
             ((RestoreTrackSelector) selector).setOnTrackSelectCallback(this);
+            if (!mSpareTrackSelectors.contains(selector)) {
+                mSpareTrackSelectors.add((RestoreTrackSelector) selector); // JoTube role swap: released with the others
+            }
         }
     }
 
@@ -677,7 +680,25 @@ public class TrackSelectorManager implements TrackSelectorCallback {
         selector.setOnTrackSelectCallback(this);
     }
 
+    /**
+     * JoTube role swap: the spare player's track selector selects through this manager too (like the preload one: another
+     * period, same rules). When the players swap, {@link #setTrackSelector} makes it the main one; the old main one stays
+     * registered and becomes the spare.
+     */
+    public void addSpareTrackSelector(RestoreTrackSelector selector) {
+        if (selector != null && !mSpareTrackSelectors.contains(selector)) {
+            mSpareTrackSelectors.add(selector);
+            selector.setOnTrackSelectCallback(this);
+        }
+    }
+
+    private final java.util.List<RestoreTrackSelector> mSpareTrackSelectors = new java.util.concurrent.CopyOnWriteArrayList<>();
+
     public synchronized void release() {
+        for (RestoreTrackSelector selector : mSpareTrackSelectors) {
+            selector.setOnTrackSelectCallback(null);
+        }
+        mSpareTrackSelectors.clear();
         if (mTrackSelector != null) {
             Log.d(TAG, "Destroying TrackSelector...");
             if (mTrackSelector instanceof RestoreTrackSelector) {

@@ -79,7 +79,27 @@ public class ExoPlayerController implements Player.Listener {
     private int mItemEndIndex = -1;
     private DefaultPreloadManager mPreloadManager; // JoTube M3: preloads the queued Shorts
     private ShortsPreloadControl mPreloadControl;
+    private ExoPlayer mPreloadPlayer; // JoTube role swap: the player built with the preload manager (shares its thread)
+    private ShortsAdopter mAdopter;
     // END SmartTube J
+
+    /**
+     * JoTube role swap (Shorts): the spare player already plays the Short that is being opened: it becomes the player
+     * instead of loading the Short again ({@link #adoptPlayer}).
+     */
+    public interface ShortsAdopter {
+        /** @return true if the Short is taken over from the spare player (the caller does nothing more) */
+        boolean adopt(MediaItemFormatInfo formatInfo);
+    }
+
+    public void setShortsAdopter(ShortsAdopter adopter) {
+        mAdopter = adopter;
+    }
+
+    private boolean adoptShort(MediaItemFormatInfo formatInfo) {
+        return mAdopter != null && formatInfo != null && formatInfo.getVideoId() != null && ShortsTransitionState.isShortsMode()
+                && mAdopter.adopt(formatInfo);
+    }
 
     public ExoPlayerController(Context context, PlayerEventListener eventListener) {
         PlayerTweaksData playerTweaksData = PlayerTweaksData.instance(context);
@@ -106,7 +126,7 @@ public class ExoPlayerController implements Player.Listener {
     }
 
     public void openSabr(MediaItemFormatInfo formatInfo) {
-        if (openQueued(formatInfo)) {
+        if (adoptShort(formatInfo) || openQueued(formatInfo)) {
             return;
         }
 
@@ -115,7 +135,7 @@ public class ExoPlayerController implements Player.Listener {
     }
 
     public void openDash(MediaItemFormatInfo formatInfo) {
-        if (openQueued(formatInfo)) {
+        if (adoptShort(formatInfo) || openQueued(formatInfo)) {
             return;
         }
 
@@ -131,6 +151,65 @@ public class ExoPlayerController implements Player.Listener {
     public void setPreloadManager(DefaultPreloadManager preloadManager, ShortsPreloadControl preloadControl) {
         mPreloadManager = preloadManager;
         mPreloadControl = preloadControl;
+        mPreloadPlayer = preloadManager != null ? mPlayer : null;
+    }
+
+    /**
+     * JoTube role swap: the preloaded sources belong to the preload manager's playback thread: only the player built
+     * with it can play them. After a swap the other player may be the main one: then a Short is opened from a new source.
+     */
+    private boolean canPlayPreloaded() {
+        return mPreloadManager != null && mPlayer != null && mPlayer == mPreloadPlayer;
+    }
+
+    /**
+     * JoTube role swap: the spare player (it plays {@code formatInfo}'s Short already, on its way to the main surface) becomes
+     * the player. The core gets the same events as after a normal open of the Short (source changed, tracks, state),
+     * without a new source, seek or restart.
+     */
+    public void adoptPlayer(ExoPlayer player, DefaultTrackSelector trackSelector, MediaItemFormatInfo formatInfo) {
+        ExoPlayer old = mPlayer;
+        cancelItemEnd();
+
+        if (old != null) {
+            old.removeListener(this);
+            old.removeAnalyticsListener(mTimingListener);
+        }
+
+        mPlayer = player;
+        player.addListener(this);
+        player.addAnalyticsListener(mTimingListener);
+        mTrackSelectorManager.setTrackSelector(trackSelector);
+        mTrackSelectorManager.invalidate(); // the cache is built again from the new player's tracks
+
+        sSourceGeneration++;
+        setQualityInfo("");
+        mIsEnded = false;
+        mOnSourceChanged = true;
+        mStartPositionMs = C.TIME_UNSET;
+        mEventListener.onSourceChanged(getVideo());
+        mStartPositionMs = C.TIME_UNSET; // the Short plays already: a saved position isn't applied
+
+        ShortsQueue queue = ShortsQueue.getActive();
+        if (queue != null && formatInfo != null) {
+            int index = queue.indexOf(formatInfo.getVideoId());
+            if (index != -1 && index != queue.getCurrentIndex()) {
+                queue.setCurrentIndex(index); // the preload manager ranks the others around it
+            }
+        }
+
+        Log.d(TAG, "Shorts: adopted the player that plays %s", formatInfo != null ? formatInfo.getVideoId() : null);
+        JoTubeTiming.mark("role swap: player adopted");
+
+        // The events of a normal open, from the player's current state
+        onTimelineChanged(player.getCurrentTimeline(), Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED);
+        onTracksChanged(player.getCurrentTracks());
+        onPlayerStateChanged(player.getPlayWhenReady(), player.getPlaybackState());
+    }
+
+    /** JoTube role swap: the spare player selects its tracks with the same rules (quality, Shorts cap, audio). */
+    public void addSpareTrackSelector(RestoreTrackSelector selector) {
+        mTrackSelectorManager.addSpareTrackSelector(selector);
     }
 
     /**
@@ -141,8 +220,17 @@ public class ExoPlayerController implements Player.Listener {
         ShortsQueue queue = null;
 
         if (ShortsTransitionState.isShortsMode() && formatInfo != null && formatInfo.getVideoId() != null && mPreloadManager != null) {
-            queue = new ShortsQueue(mPreloadManager, mPreloadControl, formatInfo, mediaSource);
-            mediaSource = queue.getMediaSource(0);
+            if (canPlayPreloaded()) {
+                queue = new ShortsQueue(mPreloadManager, mPreloadControl, formatInfo, mediaSource);
+                mediaSource = queue.getMediaSource(0);
+            } else {
+                // JoTube role swap: this player can't play the preload manager's sources: it plays its own source, the
+                // queue (next Shorts, preloading) gets a source of its own for the first item
+                MediaSource queueSource = createSource(formatInfo);
+                if (queueSource != null) {
+                    queue = new ShortsQueue(mPreloadManager, mPreloadControl, formatInfo, queueSource);
+                }
+            }
         }
 
         openMediaSource(mediaSource);
@@ -163,7 +251,7 @@ public class ExoPlayerController implements Player.Listener {
     private int switchToQueued(MediaItemFormatInfo formatInfo) {
         ShortsQueue queue = ShortsQueue.getActive();
 
-        if (queue == null || mPlayer == null || formatInfo == null || !ShortsTransitionState.isShortsMode()) {
+        if (queue == null || mPlayer == null || formatInfo == null || !ShortsTransitionState.isShortsMode() || !canPlayPreloaded()) {
             return SWITCH_NOT_QUEUED;
         }
 
@@ -209,10 +297,14 @@ public class ExoPlayerController implements Player.Listener {
             return null;
         }
 
+        return controller.createSource(formatInfo);
+    }
+
+    private MediaSource createSource(MediaItemFormatInfo formatInfo) {
         if (formatInfo.containsDashFormats()) {
-            return controller.mMediaSourceFactory.fromDashFormatInfo(formatInfo);
+            return mMediaSourceFactory.fromDashFormatInfo(formatInfo);
         } else if (formatInfo.containsSabrFormats()) {
-            return controller.mMediaSourceFactory.fromSabrFormatInfo(formatInfo);
+            return mMediaSourceFactory.fromSabrFormatInfo(formatInfo);
         }
 
         return null;
@@ -488,7 +580,11 @@ public class ExoPlayerController implements Player.Listener {
     public void setPlayer(ExoPlayer player) {
         mPlayer = player;
         player.addListener(this);
-        player.addAnalyticsListener(new androidx.media3.exoplayer.analytics.AnalyticsListener() {
+        player.addAnalyticsListener(mTimingListener);
+        sCurrent = new WeakReference<>(this);
+    }
+
+    private final androidx.media3.exoplayer.analytics.AnalyticsListener mTimingListener = new androidx.media3.exoplayer.analytics.AnalyticsListener() {
             @Override
             public void onVideoDecoderInitialized(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime, String decoderName,
                                                   long initializedTimestampMs, long initializationDurationMs) {
@@ -562,9 +658,7 @@ public class ExoPlayerController implements Player.Listener {
             public void onDroppedVideoFrames(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime, int droppedFrames, long elapsedMs) {
                 JoTubeTiming.mark("dropped video frames " + droppedFrames + " in " + elapsedMs + " ms");
             }
-        });
-        sCurrent = new WeakReference<>(this);
-    }
+    };
 
     //@Override
     //public void setEventListener(PlayerEventListener eventListener) {
