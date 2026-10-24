@@ -23,6 +23,20 @@ public final class Ui {
         view.setClipToOutline(true);
     }
 
+    /** A fully rounded background (pills, chips over a tinted page). */
+    public static android.graphics.drawable.Drawable pill(Context context, int color) {
+        android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
+        shape.setColor(color);
+        shape.setCornerRadius(dp(context, 100));
+        android.content.res.ColorStateList ripple = android.content.res.ColorStateList.valueOf(0x33FFFFFF);
+        return new android.graphics.drawable.RippleDrawable(ripple, shape, null);
+    }
+
+    /** A round touch feedback for icon buttons. */
+    public static android.graphics.drawable.Drawable roundRipple() {
+        return new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x33FFFFFF), null, null);
+    }
+
     public static void makeRounded(View view, int radiusPx) {
         view.setOutlineProvider(new ViewOutlineProvider() {
             @Override

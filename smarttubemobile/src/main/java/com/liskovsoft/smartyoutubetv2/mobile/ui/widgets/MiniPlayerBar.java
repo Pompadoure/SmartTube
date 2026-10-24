@@ -37,6 +37,9 @@ public class MiniPlayerBar extends LinearLayout {
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private Object mShown;
     private boolean mPodcast;
+    private float mProgress; // how far the song / episode is, drawn as a thin line at the bottom
+    private final android.graphics.Paint mTrackPaint = new android.graphics.Paint();
+    private final android.graphics.Paint mProgressPaint = new android.graphics.Paint();
     private final Runnable mTick = new Runnable() {
         @Override
         public void run() {
@@ -55,6 +58,8 @@ public class MiniPlayerBar extends LinearLayout {
         setBackgroundColor(activity.getColor(R.color.yt_surface));
         setPadding(Ui.dp(activity, 8), Ui.dp(activity, 6), Ui.dp(activity, 4), Ui.dp(activity, 6));
         setVisibility(GONE);
+        mTrackPaint.setColor(0x33FFFFFF);
+        mProgressPaint.setColor(0xFFFFFFFF);
 
         mCover = new ImageView(activity);
         mCover.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -149,6 +154,23 @@ public class MiniPlayerBar extends LinearLayout {
         }
         Player active = showPodcast ? podcastPlayer : player;
         mPlay.setImageResource(active.getPlayWhenReady() ? R.drawable.ic_pause : R.drawable.ic_play);
+        long duration = active.getDuration();
+        float progress = duration > 0 ? Math.min(1f, Math.max(0f, active.getCurrentPosition() / (float) duration)) : 0f;
+        if (Math.abs(progress - mProgress) > 0.0005f) {
+            mProgress = progress;
+            invalidate();
+        }
+    }
+
+    @Override
+    protected void dispatchDraw(android.graphics.Canvas canvas) {
+        super.dispatchDraw(canvas);
+        float height = Ui.dp(getContext(), 2);
+        float bottom = getHeight();
+        canvas.drawRect(0, bottom - height, getWidth(), bottom, mTrackPaint);
+        if (mProgress > 0) {
+            canvas.drawRect(0, bottom - height, getWidth() * mProgress, bottom, mProgressPaint);
+        }
     }
 
     @Override
