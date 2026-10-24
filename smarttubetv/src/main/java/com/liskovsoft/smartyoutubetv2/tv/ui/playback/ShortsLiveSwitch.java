@@ -525,10 +525,13 @@ final class ShortsLiveSwitch {
         float factor;
 
         long playing = now - mPlayingSinceMs;
-        long tolerance = playing > 1200 ? 80 : playing > 500 ? 45 : SYNC_TOLERANCE_MS;
+        // the start was exact: take over at once (two video decoders on a weak box make the main player lag
+        // within half a second, and the speed trimming is heard as a jump in the sound)
+        boolean exactStart = playing < 200 && mCommandDelta >= -40;
+        long tolerance = exactStart ? 70 : playing > 1200 ? 80 : playing > 500 ? 45 : SYNC_TOLERANCE_MS;
         if (distance <= tolerance) {
             factor = 1f; // the normal speed before the take-over (its sound must not be time-stretched then)
-            if (++mSettledPolls >= 3) {
+            if (exactStart || ++mSettledPolls >= 3) {
                 Log.d(TAG, "Same moment (%s ms apart) +%s ms: the main player takes over", diff, now - mStartMs);
                 swap(false);
                 return;
