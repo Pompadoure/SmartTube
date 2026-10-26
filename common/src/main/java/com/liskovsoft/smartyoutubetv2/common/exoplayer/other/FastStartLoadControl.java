@@ -29,7 +29,7 @@ public class FastStartLoadControl implements LoadControl {
     private static final long VOD_START_BUFFER_US = 1_000_000; // 1 s
     // JoTube role swap: the spare player prepares the next Short while the other one plays: only a few seconds of it
     // (network and CPU belong to the playing Short)
-    private static final long SPARE_MAX_BUFFER_US = 6_000_000;
+    private static final long SPARE_MAX_BUFFER_US = 3_000_000;
     private volatile boolean mSpare;
     private final LoadControl mDelegate;
     private final int mShortsMaxBufferBytes;
