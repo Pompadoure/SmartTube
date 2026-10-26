@@ -120,6 +120,23 @@ public final class JoLeanbackPlayerAdapter extends PlayerAdapter implements Runn
     return surface != null;
   }
 
+  /**
+   * JoTube role swap: the current player leaves the surface ahead of {@link #setPlayer} (it is stopped and covered); the
+   * surface stays known to this adapter for the next player.
+   */
+  public void releaseSurfaceOfCurrentPlayer() {
+    if (surface != null) {
+      player.clearVideoSurface(surface);
+    }
+  }
+
+  /** JoTube role swap: no swap after all: the current player gets the surface back. */
+  public void restoreSurfaceOfCurrentPlayer() {
+    if (surface != null) {
+      player.setVideoSurface(surface);
+    }
+  }
+
   public void setPlayer(Player newPlayer) {
     if (newPlayer == null || newPlayer == player) {
       return;

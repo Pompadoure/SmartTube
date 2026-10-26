@@ -15,6 +15,3 @@ daily JoTube. Read `docs/media3/PLAN.md` and `docs/media3/PROGRESS.md` before wo
   before a build is called done.
 - API credits are scarce: claude-task runs need `.claude-task/BUDGET_USD` (max 1.50) and are logged in PROGRESS.md.
 - Reports to Johan: short, in Swedish.
-
-- Other agents (Google Jules) work in this repo too: read `AGENTS.md` and the board (`BOARD.md` on branch `agent-board`)
-  before starting, claim your task there, release it when done.

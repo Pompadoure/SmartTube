@@ -138,6 +138,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     private final ShortsBackground mShortsBackground = new ShortsBackground();
     private final ShortsPreview mShortsPreview = new ShortsPreview();
     private View mSurfaceRoot; // JoTube: the main player's surface (the live switch moves it)
+    private androidx.media3.exoplayer.video.VideoFrameMetadataListener mAdoptFrameListener;
     // JoTube: the Shorts switch with two players (live video in and out, no stills)
     private final ShortsLiveSwitch mLiveSwitch = new ShortsLiveSwitch(new ShortsLiveSwitch.Host() {
         @Override
@@ -178,7 +179,26 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         }
 
         @Override
+        public void onLiveOldPlayerDone() {
+            // JoTube role swap: the old Short has slid out (the spare frame covers the main surface): the old player stops
+            // and leaves the main surface now, so the swap itself only moves the new player onto it (shorter, no still)
+            if (mPlayer != null && mSparePlayer != null && mPlayerAdapter != null && mShortsPreview.isLive()) {
+                long t0 = SystemClock.uptimeMillis();
+                mPlayer.setVolume(0f);
+                mPlayer.stop();
+                mPlayerAdapter.releaseSurfaceOfCurrentPlayer();
+                Log.d(TAG, "Role swap: the old player left the main surface in %s ms", SystemClock.uptimeMillis() - t0);
+            }
+        }
+
+        @Override
         public void onLiveFallBack() {
+            if (mPlayerAdapter != null) {
+                mPlayerAdapter.restoreSurfaceOfCurrentPlayer(); // it may have left it at the slide end
+            }
+            if (mSparePlayer != null && mAdoptFrameListener != null) {
+                mSparePlayer.clearVideoFrameMetadataListener(mAdoptFrameListener);
+            }
             if (mExoPlayerController != null) {
                 mExoPlayerController.onSwapCancelled();
             }
@@ -591,6 +611,9 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             mMediaSession.release();
             mMediaSession = null;
         }
+        if (mSessionPlayer != null) {
+            mSessionPlayer.release();
+        }
         mSessionPlayer = null;
         if (mPlayerGlue != null) {
             ((PlaybackTransportRowPresenter) mPlayerGlue.getPlaybackRowPresenter()).setOnActionLongClickedListener(null);
@@ -609,6 +632,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         }
         mShortsTransition.hide(false);
         mLiveSwitch.release();
+        mPlayer = null;
         // JoTube role swap: the spare player belongs to this screen like the main one
         mShortsPreview.setPlayer(null);
         mExoPlayerController.setShortsAdopter(null);
@@ -630,7 +654,6 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         }
         // Fix access calls when player isn't initialized
         mExoPlayerController.release();
-        mPlayer = null;
         mSubtitleManager = null;
         if (mYouTubeOverlay != null) {
             mYouTubeOverlay
@@ -776,6 +799,10 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
         if (mMediaSession != null) {
             try {
+                if (mSessionPlayer != null) {
+                    mMediaSession.setPlayer(null); // release old listeners?
+                    mSessionPlayer.release();
+                }
                 SessionPlayer sessionPlayer = newSessionPlayer(incoming);
                 mMediaSession.setPlayer(sessionPlayer);
                 mSessionPlayer = sessionPlayer;
@@ -800,17 +827,31 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         long t3 = SystemClock.uptimeMillis();
 
         // The main surface last: the old player leaves it, the new one moves onto it (seamless output switch; it is still
-        // covered by the spare frame until the main surface shows its frame)
+        // covered by the spare frame until a frame of it is on the main surface: noticed on the playback thread, not
+        // with the first-frame callback, which comes 100-250 ms late on the busy main thread)
+        final java.util.concurrent.atomic.AtomicBoolean moved = new java.util.concurrent.atomic.AtomicBoolean();
+        final java.util.concurrent.atomic.AtomicBoolean frameShown = new java.util.concurrent.atomic.AtomicBoolean();
+        final androidx.media3.exoplayer.video.VideoFrameMetadataListener frameListener =
+                (presentationTimeUs, releaseTimeNs, format, mediaFormat) -> {
+                    if (moved.get()) {
+                        frameShown.set(true);
+                    }
+                };
+        mAdoptFrameListener = frameListener;
+        incoming.setVideoFrameMetadataListener(frameListener);
         mPlayerAdapter.setPlayer(incoming);
+        moved.set(true); // setVideoSurface returns once the output is the main surface
         long t4 = SystemClock.uptimeMillis();
         Log.d(TAG, "Role swap timing: core %s ms, session/overlay %s ms, old stop %s ms, surface move %s ms",
                 t1 - t0, t2 - t1, t3 - t2, t4 - t3);
 
         mLiveSwitch.onAdopted(() -> {
+            incoming.clearVideoFrameMetadataListener(frameListener);
+            mAdoptFrameListener = null;
             if (mSparePlayer == old) {
                 mShortsPreview.setPlayer(old); // the next Short is prepared on it
             }
-        });
+        }, frameShown);
         return true;
     }
 
@@ -957,6 +998,11 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             for (Player.Listener listener : mSessionListeners) {
                 listener.onMediaMetadataChanged(metadata);
             }
+        }
+
+        public void release() {
+            mSessionListeners.clear();
+            // ForwardingPlayer doesn't have a release(), but we clear listeners
         }
     }
 
