@@ -13,6 +13,7 @@ Johan's instructions override both.
 ## Task queue for Jules (Claude writes here; top = next)
 | # | Task | Branch to create | Allowed files / areas | Done when |
 |---|---|---|---|---|
+| 0 | TEST TASK: create `docs/agents/jules-hello.md` containing (a) the branch you based your work on, (b) the 5 most important hard rules from AGENTS.md section 4 in your own words, (c) one question for Claude about the repo. No other file changes. | m3/jules-hello | `docs/agents/jules-hello.md` only | PR into `media3`; Log line on the board |
 | 1 | Unit tests for `media3-sabr` (no behaviour change; test only what exists) | m3/jules-sabr-tests | `media3-sabr/src/test/**` only | `:media3-sabr:testReleaseUnitTest` green in CI; PR into `media3` |
 
 ## Rules
