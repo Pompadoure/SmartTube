@@ -3,10 +3,16 @@ package com.liskovsoft.smartyoutubetv2.tv.presenter;
 import android.app.Activity;
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.Typeface;
+import androidx.core.content.res.ResourcesCompat;
 import android.os.Build.VERSION;
 import android.util.Pair;
 import android.view.View;
+import android.graphics.Outline;
+import android.view.ViewOutlineProvider;
 import android.widget.ImageView;
 import android.view.ViewGroup;
 import android.widget.TextView;
@@ -87,7 +93,8 @@ public class VideoCardPresenter extends LongClickPresenter {
         cardView.enableBadge(isBadgeEnabled());
         cardView.enableTitle(isTitleEnabled());
         cardView.enableContent(isContentEnabled());
-        cardView.setBackgroundColor(mDefaultBackgroundColor); // background is temporarily visible during animations
+        cardView.setBackgroundColor(Color.TRANSPARENT);
+        styleYouTubeCard(cardView, context);
         //if (VERSION.SDK_INT >= 23 && MainUIData.instance(context).isUiTweakEnabled(MainUIData.UI_TWEAK_ROUNDED_CORNERS)) {
         //    cardView.setForeground(ContextCompat.getDrawable(context, R.drawable.lb_card_outline));
         //}
@@ -95,27 +102,72 @@ public class VideoCardPresenter extends LongClickPresenter {
         return new ViewHolder(cardView);
     }
 
+    // JoTube (media3): YouTube TV look - rounded thumbnail, bold title below, dim meta, no frame around the whole card
+    private void styleYouTubeCard(ComplexImageCardView cardView, Context context) {
+        final float radius = 12 * context.getResources().getDisplayMetrics().density;
+
+        View wrapper = cardView.findViewById(R.id.main_image_wrapper);
+        if (wrapper != null) {
+            wrapper.setOutlineProvider(new ViewOutlineProvider() {
+                @Override
+                public void getOutline(View view, Outline outline) {
+                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), radius);
+                }
+            });
+            wrapper.setClipToOutline(true);
+        }
+
+        TextView titleText = cardView.findViewById(R.id.title_text);
+        if (titleText != null) {
+            Typeface tf = ResourcesCompat.getFont(context, R.font.roboto_medium);
+            if (tf != null) {
+                titleText.setTypeface(tf);
+            }
+            titleText.setTextSize(16);
+        }
+        TextView contentText = cardView.findViewById(R.id.content_text);
+        if (contentText != null) {
+            Typeface tf = ResourcesCompat.getFont(context, R.font.roboto_regular);
+            if (tf != null) {
+                contentText.setTypeface(tf);
+            }
+            contentText.setTextSize(13);
+        }
+    }
+
     private void updateCardBackgroundColor(ComplexImageCardView view, boolean selected) {
-        int backgroundColor = selected ? mSelectedBackgroundColor : mDefaultBackgroundColor;
-        int textColor = selected ? mSelectedTextColor : mDefaultTextColor;
-
-        // Both background colors should be set because the view's
-        // background is temporarily visible during animations.
-        // NOTE: has visual bug with rounded corners
-        //view.setBackgroundColor(backgroundColor);
-
         View infoField = view.findViewById(R.id.info_field);
         if (infoField != null) {
-            infoField.setBackgroundColor(backgroundColor);
+            infoField.setBackgroundColor(Color.TRANSPARENT);
         }
 
         TextView titleText = view.findViewById(R.id.title_text);
         if (titleText != null) {
-            titleText.setTextColor(textColor);
+            titleText.setTextColor(Color.WHITE);
         }
         TextView contentText = view.findViewById(R.id.content_text);
         if (contentText != null) {
-            contentText.setTextColor(textColor);
+            contentText.setTextColor(0xFFAAAAAA);
+        }
+
+        // Focus outline only around the thumbnail
+        View wrapper = view.findViewById(R.id.main_image_wrapper);
+        if (wrapper != null && VERSION.SDK_INT >= 23) {
+            if (selected) {
+                float d = wrapper.getResources().getDisplayMetrics().density;
+                GradientDrawable outline = new GradientDrawable();
+                outline.setColor(Color.TRANSPARENT);
+                outline.setStroke(Math.round(6 * d), Color.WHITE); // half of it is clipped by the rounded outline
+                boolean round = view.getMainImageView().getClipToOutline();
+                if (round) {
+                    outline.setShape(GradientDrawable.OVAL);
+                } else {
+                    outline.setCornerRadius(12 * d);
+                }
+                wrapper.setForeground(outline);
+            } else {
+                wrapper.setForeground(null);
+            }
         }
     }
 
@@ -154,11 +206,14 @@ public class VideoCardPresenter extends LongClickPresenter {
         }
 
         // JoTube: channel cards ("Top channels you watch" etc.): a small round sharp avatar instead of a stretched blurry one
-        if (video.isChannel() && video.cardImageUrl != null) {
+        if (isAvatarCard(video)) {
             bindChannelAvatar(cardView, context, video);
             return;
         }
 
+        // Cards are recycled: undo the round avatar look
+        cardView.getMainImageView().setClipToOutline(false);
+        cardView.getMainImageView().setOutlineProvider(ViewOutlineProvider.BACKGROUND);
         cardView.getMainImageView().setScaleType(ImageView.ScaleType.CENTER_CROP);
 
         // JoTube: options are shared with ThumbnailPreloader (same Glide cache key)
@@ -203,9 +258,18 @@ public class VideoCardPresenter extends LongClickPresenter {
      * The source is requested in a bigger size (the default one is tiny) and scaled down: sharp result.
      */
     private void bindChannelAvatar(ComplexImageCardView cardView, Context context, Video video) {
-        int size = Math.max(Math.round(mHeight * 0.6f), 1);
+        // A round button: the whole picture is a circle (the card is as wide as it is high)
+        int size = Math.max(mHeight, 1);
+        cardView.setMainImageDimensions(size, size);
         ImageView imageView = cardView.getMainImageView();
-        imageView.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        imageView.setOutlineProvider(new ViewOutlineProvider() {
+            @Override
+            public void getOutline(View view, Outline outline) {
+                outline.setOval(0, 0, view.getWidth(), view.getHeight());
+            }
+        });
+        imageView.setClipToOutline(true);
 
         Glide.with(context)
                 .load(upscaleAvatarUrl(video.cardImageUrl))
@@ -220,6 +284,15 @@ public class VideoCardPresenter extends LongClickPresenter {
     }
 
     /**
+     * Channel cards with a real avatar (round button). Channel-like items with a wide picture
+     * (e.g. recommended shows) get an ordinary thumbnail.
+     */
+    private static boolean isAvatarCard(Video video) {
+        String url = video.cardImageUrl;
+        return video.isChannel() && url != null && (url.contains("ggpht.com") || url.contains("googleusercontent.com"));
+    }
+
+    /**
      * Avatar urls end with a size parameter, e.g. "...=s88-c-k-c0x00ffffff-no-rj". Ask for a bigger one.
      */
     private static String upscaleAvatarUrl(String url) {
@@ -230,7 +303,7 @@ public class VideoCardPresenter extends LongClickPresenter {
      * JoTube: warm Glide cache with the thumbnail this presenter would load on bind.
      */
     public void preload(Context context, Video video) {
-        if (context == null || video == null || video.isChannel()) {
+        if (context == null || video == null || isAvatarCard(video)) {
             return; // channel avatars use their own request
         }
 

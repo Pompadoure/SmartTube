@@ -150,6 +150,8 @@ android {
 
     lintOptions {
         abortOnError true
+        // JoTube M3: most Media3 APIs are @UnstableApi; opting in everywhere instead of per class
+        disable 'UnsafeOptInUsageError'
         //checkReleaseBuilds false // fix for ClassNotFoundException: com.android.tools.lint.client.api.Vendor
     }
 
@@ -170,8 +172,9 @@ android {
         // Personal build (Pompadoure/SmartTube): installs side by side with the official app.
         // Library modules don't know this flavor, so they use their stable variant.
         stjohan {
-            applicationId "org.smarttube.johan"
-            targetSdkVersion project.properties.compileSdkVersion
+            applicationId "org.smarttube.johan.media3" // media3 branch: installs next to JoTube
+            minSdkVersion 23 // Media3 1.9+ (PLAN.md Decisions 2)
+            targetSdkVersion 34 // pinned: compileSdk 36 must not switch on API 35/36 runtime behaviour
             matchingFallbacks = ['ststable']
         }
         stfdroid {
@@ -206,10 +209,13 @@ dependencies {
 
     //////// BEGIN EXOPLAYER /////////
 
-    implementation project(':exoplayer-library-core')
-    implementation project(':exoplayer-library-ui')
-    implementation project(':exoplayer-extension-leanback')
-    implementation project(':exoplayer-extension-mediasession')
+    // JoTube M3: AndroidX Media3 (PLAN.md, Decisions 4)
+    implementation project(':media3-sabr')
+    implementation "androidx.media3:media3-exoplayer:$m3Media3Version"
+    implementation "androidx.media3:media3-exoplayer-dash:$m3Media3Version"
+    implementation "androidx.media3:media3-ui:$m3Media3Version"
+    implementation "androidx.media3:media3-ui-leanback:$m3Media3Version"
+    implementation "androidx.media3:media3-session:$m3Media3Version"
 
     // implementation 'com.amazon.android:exoplayer:' + amazonExoplayerVersion
     // implementation 'com.amazon.android:extension-leanback:' + amazonExoplayerVersion

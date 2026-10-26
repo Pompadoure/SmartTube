@@ -31,10 +31,11 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitio
  */
 public class ShortsTransitionOverlay {
     // The slide starts when the new video is already playing (its first frame came during the hold)
-    private static final int SWIPE_DURATION_MS = 260;
+    static final int SWIPE_DURATION_MS = 200;
     private static final int REVEAL_DURATION_MS = 120; // the black cover over the moving video fades out
     private static final int FADE_OUT_DURATION_MS = 120;
     private static final int FAILSAFE_HIDE_MS = 10_000;
+    private static final int AT_SLIDE_START_TIMEOUT_MS = 400;
     private static final int SNAPSHOT_TIMEOUT_MS = 150; // the main thread can be busy ~70 ms at the switch
     // JoTube: no hold: the slide starts at the key press (holding the old picture looked like a freeze). The new
     // Short (preloaded: first frame in 150-300 ms) moves in under a black cover that fades out when its frame comes,
@@ -66,6 +67,27 @@ public class ShortsTransitionOverlay {
     private int mSwipeId; // a newer swipe makes the callbacks of an older one void
     private boolean mIsShown;
     private boolean mFirstFrameRendered;
+    private boolean mFrameKnown;
+    private int mFrameWidth;
+    private int mFrameHeight;
+    private int mFrameOffsetX;
+    private ShortsPreview mPreview; // JoTube: the real first frame of the next Short (second player), optional
+    private boolean mPreviewEnabled;
+    private boolean mPreviewActive; // the preview slides in with this swipe
+    private Runnable mAtSlideStart; // the page (background, frame shape, panel) changes together with the slide
+    private final Runnable mAtSlideStartTimeout = this::flushAtSlideStart;
+    private boolean mOutFrozen; // a swipe is on: the outgoing picture keeps its shape
+    private boolean mOutFramePending; // the new frame shape waits until the outgoing picture is gone
+    // JoTube: diagnostics of the swipe (tag ShortsTransition): where the time goes, and how smooth the slide is
+    private long mDiagCallMs;
+    private long mDiagLastFrameMs;
+    private long mDiagMaxGapMs;
+    private int mDiagFrames;
+
+    public void setPreview(ShortsPreview preview, boolean enabled) {
+        mPreview = preview;
+        mPreviewEnabled = enabled;
+    }
 
     /**
      * Place the overlay right above the video surface and below the player controls.
@@ -87,6 +109,10 @@ public class ShortsTransitionOverlay {
         int index = mSurfaceRoot != null ? root.indexOfChild(mSurfaceRoot) + 1 : Math.min(1, root.getChildCount());
         root.addView(mContainer, index, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        if (mPreview != null) {
+            mPreview.attach(root, index + 1, mPreviewEnabled);
+        }
     }
 
     private static ImageView createImage(FrameLayout container) {
@@ -103,14 +129,40 @@ public class ShortsTransitionOverlay {
      * JoTube: in the Shorts frame the images cover only the frame (0 = the whole screen).
      */
     public void setFrame(int width, int height, int offsetX) {
+        if (mPreview != null) {
+            mPreview.setFrame(width, height, offsetX);
+        }
         setImageSize(mIn, width, height);
-        setImageSize(mOut, width, height);
         // JoTube: the frame is not in the middle (the right edge is fixed)
         if (mIn != null) {
             mIn.setTranslationX(offsetX);
         }
+
+        // The outgoing picture keeps the shape of the old Short while it slides out (the new frame size arrives
+        // ~30-100 ms after the key press, i.e. in the middle of the slide)
+        mFrameKnown = true;
+        mFrameWidth = width;
+        mFrameHeight = height;
+        mFrameOffsetX = offsetX;
+
+        if (mOutFrozen) {
+            mOutFramePending = true;
+        } else {
+            applyOutFrame();
+        }
+    }
+
+    private void applyOutFrame() {
+        mOutFramePending = false;
+        mOutFrozen = false;
+
+        if (!mFrameKnown) {
+            return;
+        }
+
+        setImageSize(mOut, mFrameWidth, mFrameHeight);
         if (mOut != null) {
-            mOut.setTranslationX(offsetX);
+            mOut.setTranslationX(mFrameOffsetX);
         }
     }
 
@@ -136,9 +188,16 @@ public class ShortsTransitionOverlay {
         mPendingVideo = null;
         mHoldStart = null;
         mSnapshotTimeout = null;
+        mAtSlideStart = null;
+        mPreviewActive = false;
+        if (mPreview != null) {
+            mPreview.detach();
+        }
         flushAfterSnapshot();
         mFirstFrameRendered = false;
         mSwipeId++;
+        mOutFrozen = false;
+        mOutFramePending = false;
 
         if (mContainer != null) {
             cancelAnimations();
@@ -171,6 +230,34 @@ public class ShortsTransitionOverlay {
         mHandler.postDelayed(mPendingShow, delayMs);
     }
 
+    /**
+     * Runs when the slide starts (or at once if there is no slide: hide, a newer swipe, a timeout), so the background,
+     * the frame and the panel change at the same moment as the picture moves instead of at the key press.
+     */
+    public void runAtSlideStart(Runnable action) {
+        flushAtSlideStart(); // an older one first
+        if (action == null) {
+            return;
+        }
+        if (mContainer == null) {
+            action.run();
+            return;
+        }
+        mAtSlideStart = action;
+        mHandler.removeCallbacks(mAtSlideStartTimeout);
+        mHandler.postDelayed(mAtSlideStartTimeout, AT_SLIDE_START_TIMEOUT_MS);
+    }
+
+    private void flushAtSlideStart() {
+        mHandler.removeCallbacks(mAtSlideStartTimeout);
+        Runnable action = mAtSlideStart;
+        mAtSlideStart = null;
+
+        if (action != null) {
+            action.run();
+        }
+    }
+
     private void cancelPendingShow() {
         mHandler.removeCallbacks(mPendingShow);
         mPendingVideo = null;
@@ -180,6 +267,8 @@ public class ShortsTransitionOverlay {
      * A new video is about to load: its thumbnail covers the old picture (no animation).
      */
     public void show(Video video, int direction) {
+        flushAtSlideStart();
+
         if (mContainer == null || video == null) {
             return;
         }
@@ -201,6 +290,40 @@ public class ShortsTransitionOverlay {
      * @param videoView the view the current video is rendered on: its last frame is the outgoing picture.
      *                  Null if it's not on the surface anymore (the player was reset): the thumbnail is used.
      */
+    // Diagnostics: main thread messages that take long while a swipe runs (what makes the slide stutter)
+    private static final int WATCH_MS = 900;
+    private static final int WATCH_MIN_MS = 10;
+    private final android.os.Handler mWatchHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final android.util.Printer mWatchPrinter = new android.util.Printer() {
+        private long mStartMs;
+        private String mWhat;
+
+        @Override
+        public void println(String x) {
+            if (x == null) {
+                return;
+            }
+            if (x.startsWith(">>>>> Dispatching")) {
+                mStartMs = android.os.SystemClock.uptimeMillis();
+                mWhat = x;
+            } else if (x.startsWith("<<<<< Finished") && mWhat != null) {
+                long duration = android.os.SystemClock.uptimeMillis() - mStartMs;
+                if (duration >= WATCH_MIN_MS) {
+                    Log.d(TAG, "Slow main thread message %s ms (+%s ms after swipe): %s", duration,
+                            mStartMs - mDiagCallMs, mWhat.length() > 150 ? mWhat.substring(0, 150) : mWhat);
+                }
+                mWhat = null;
+            }
+        }
+    };
+    private final Runnable mStopWatch = () -> android.os.Looper.getMainLooper().setMessageLogging(null);
+
+    private void watchMainThread() {
+        mWatchHandler.removeCallbacks(mStopWatch);
+        android.os.Looper.getMainLooper().setMessageLogging(mWatchPrinter);
+        mWatchHandler.postDelayed(mStopWatch, WATCH_MS);
+    }
+
     public void swipe(Video from, Video to, int direction, View videoView) {
         if (mContainer == null || to == null) {
             return;
@@ -208,6 +331,8 @@ public class ShortsTransitionOverlay {
 
         Video previousTarget = mTargetVideo;
         mTargetVideo = to.isShorts ? to : null;
+        mDiagCallMs = android.os.SystemClock.uptimeMillis();
+        watchMainThread();
 
         int frameHeight = mIn.getLayoutParams() != null ? mIn.getLayoutParams().height : 0;
         int height = frameHeight > 0 ? frameHeight : mContainer.getHeight() > 0 ? mContainer.getHeight() :
@@ -218,6 +343,7 @@ public class ShortsTransitionOverlay {
             return;
         }
 
+        mOutFrozen = true;
         final float distance = height + GAP_DP * mContainer.getResources().getDisplayMetrics().density;
 
         if (mHoldStart != null) {
@@ -294,6 +420,7 @@ public class ShortsTransitionOverlay {
                     mHandler.removeCallbacks(mSnapshotTimeout);
                     mSnapshotTimeout = null;
                     flushAfterSnapshot();
+                    Log.d(TAG, "Snapshot done (result %s): +%s ms", result, android.os.SystemClock.uptimeMillis() - mDiagCallMs);
                     setOutImage(result == PixelCopy.SUCCESS ? bitmap : null, from);
                     hold(swipeId, direction, distance);
                 }, mHandler);
@@ -415,6 +542,21 @@ public class ShortsTransitionOverlay {
         mIn.setTranslationY(inStart);
         setSurfaceOffset(inStart);
 
+        // The real first frame of the new Short (second player) slides in instead of the blurred cover
+        mPreviewActive = mPreview != null && !mFirstFrameRendered && mTargetVideo != null &&
+                mPreview.isReadyFor(mTargetVideo.videoId);
+        if (mPreviewActive) {
+            mPreview.setAlpha(1f);
+            mPreview.setOffsetY(inStart);
+        }
+        Log.d(TAG, "Preview frame used for this slide: %s", mPreviewActive);
+
+        flushAtSlideStart();
+        mDiagLastFrameMs = 0;
+        mDiagMaxGapMs = 0;
+        mDiagFrames = 0;
+        Log.d(TAG, "Slide starts: +%s ms after swipe(), first frame already rendered: %s",
+                android.os.SystemClock.uptimeMillis() - mDiagCallMs, mFirstFrameRendered);
         mSwipe = ValueAnimator.ofFloat(0f, 1f);
         mSwipe.setDuration(SWIPE_DURATION_MS);
         mSwipe.setInterpolator(SWIPE_INTERPOLATOR);
@@ -422,11 +564,20 @@ public class ShortsTransitionOverlay {
             if (mContainer == null) {
                 return;
             }
+            long now = android.os.SystemClock.uptimeMillis();
+            if (mDiagLastFrameMs != 0) {
+                mDiagMaxGapMs = Math.max(mDiagMaxGapMs, now - mDiagLastFrameMs);
+            }
+            mDiagLastFrameMs = now;
+            mDiagFrames++;
             float fraction = (float) animation.getAnimatedValue();
             float inOffset = inStart * (1f - fraction);
             mOut.setTranslationY(outStart + (outEnd - outStart) * fraction);
             mIn.setTranslationY(inOffset);
             setSurfaceOffset(inOffset);
+            if (mPreviewActive) {
+                mPreview.setOffsetY(inOffset);
+            }
         });
         mSwipe.addListener(new AnimatorListenerAdapter() {
             private boolean mCancelled;
@@ -442,6 +593,8 @@ public class ShortsTransitionOverlay {
                     return;
                 }
                 mSwipe = null;
+                Log.d(TAG, "Slide ends: %s frames in %s ms, longest gap between frames %s ms, first frame rendered: %s",
+                        mDiagFrames, SWIPE_DURATION_MS, mDiagMaxGapMs, mFirstFrameRendered);
                 onSwipeEnd();
             }
         });
@@ -458,11 +611,19 @@ public class ShortsTransitionOverlay {
         clearImage(mOut);
         mOut.setTranslationY(0);
         mIn.setTranslationY(0);
+        if (mOutFramePending || mOutFrozen) {
+            applyOutFrame();
+        }
 
         if (mFirstFrameRendered) {
             // The new video is in place and playing
             mIsShown = false;
             mHandler.removeCallbacks(mFailsafeHide);
+
+            if (mPreviewActive) {
+                mPreviewActive = false;
+                mPreview.fadeOutAndConsume(REVEAL_DURATION_MS);
+            }
 
             if (mIn.getVisibility() == View.VISIBLE && mIn.getAlpha() > 0.01f) {
                 // The black cover is still fading out: let it finish (no black step)
@@ -527,8 +688,13 @@ public class ShortsTransitionOverlay {
      * The first frame of the new video is on screen (animate = true), or the overlay isn't needed (false).
      */
     public void hide(boolean animate) {
+        flushAtSlideStart();
+
         if (animate) {
             mFirstFrameRendered = true;
+            if (mDiagCallMs != 0) {
+                Log.d(TAG, "First frame: +%s ms after swipe()", android.os.SystemClock.uptimeMillis() - mDiagCallMs);
+            }
         }
 
         cancelPendingShow();
@@ -554,6 +720,10 @@ public class ShortsTransitionOverlay {
             // In the middle of the swipe: uncover the new video, it keeps moving into place
             mIn.animate().cancel();
             mIn.animate().alpha(0f).setDuration(REVEAL_DURATION_MS).start();
+            if (mPreviewActive) {
+                mPreviewActive = false;
+                mPreview.fadeOutAndConsume(REVEAL_DURATION_MS);
+            }
             return;
         }
 
@@ -649,6 +819,10 @@ public class ShortsTransitionOverlay {
             return;
         }
 
+        if (mPreviewActive && mPreview != null) {
+            mPreview.consumed();
+            mPreviewActive = false;
+        }
         setSurfaceOffset(0);
         mContainer.setVisibility(View.GONE);
         mContainer.setAlpha(1f);
@@ -659,6 +833,9 @@ public class ShortsTransitionOverlay {
         mOut.setVisibility(View.GONE);
         clearImage(mIn);
         clearImage(mOut);
+        if (mOutFramePending || mOutFrozen) {
+            applyOutFrame();
+        }
     }
 
     private static void clearImage(ImageView image) {

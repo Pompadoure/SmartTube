@@ -75,6 +75,8 @@ public abstract class SearchTagsFragmentBase extends SearchSupportFragment
         View root = super.onCreateView(inflater, container, savedInstanceState);
 
         mProgressBarManager.setRootView((ViewGroup) root);
+        // JoTube: the suggestions sit above the keyboard, not in the first row of the results
+        setSuggestions(mSearchTagsAdapter);
 
         return root;
     }
@@ -124,6 +126,11 @@ public abstract class SearchTagsFragmentBase extends SearchSupportFragment
     protected abstract void onItemViewSelected(Object item);
     
     protected abstract void onItemViewClicked(Object item);
+
+    @Override
+    protected void onSuggestionClicked(Object item) {
+        onItemViewClicked(item);
+    }
 
     protected void setSearchTagsProvider(SearchTagsProvider provider) {
         mSearchTagsProvider = provider;
@@ -207,7 +214,6 @@ public abstract class SearchTagsFragmentBase extends SearchSupportFragment
         String query = adapter.getAdapterOptions().get(PaginationAdapter.KEY_TAG);
         mSearchTagsProvider.search(query, results -> {
             adapter.addAllItems(results);
-            attachAdapter(0, adapter);
             // Same suggestions in the keyboard
             //displayCompletions(toCompletions(results));
         });
@@ -266,18 +272,11 @@ public abstract class SearchTagsFragmentBase extends SearchSupportFragment
     }
 
     protected void clearTags() {
-        if (containsAdapter(mSearchTagsAdapter)) {
-            detachAdapter(0);
-        }
+        mSearchTagsAdapter.clear();
     }
 
     protected void removeTag(Tag tag) {
-        if (containsAdapter(mSearchTagsAdapter)) {
-            mSearchTagsAdapter.remove(tag);
-            if (mSearchTagsAdapter.size() == 0) {
-                detachAdapter(0);
-            }
-        }
+        mSearchTagsAdapter.remove(tag);
     }
 
     protected boolean containsAdapter(ObjectAdapter adapter) {

@@ -17,8 +17,8 @@ import com.github.vkay94.dtpv.R
 import com.github.vkay94.dtpv.SeekListener
 import com.github.vkay94.dtpv.youtube.views.CircleClipTapView
 import com.github.vkay94.dtpv.youtube.views.SecondsView
-import com.google.android.exoplayer2.Player
-import com.google.android.exoplayer2.ui.PlayerView
+import androidx.media3.common.Player
+import androidx.media3.ui.PlayerView
 import androidx.core.content.withStyledAttributes
 
 

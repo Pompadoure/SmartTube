@@ -52,15 +52,23 @@ jobs:
             echo 'Write a short report of what you found and changed to .claude-task/REPORT.md (overwrite it).'
             echo 'Do not commit or push: the workflow commits your changes. Never touch secrets, signing keys or .github/.'
           } > /tmp/prompt.md
+          # API credits are limited: every task has a hard budget (.claude-task/BUDGET_USD, default 1.00 USD),
+          # and what it really cost is written to .claude-task/COST_USD (read by the media3 progress log)
+          BUDGET=$(cat .claude-task/BUDGET_USD 2>/dev/null || echo 1.00)
           claude -p "$(cat /tmp/prompt.md)" \
             --model claude-sonnet-5-5 \
             --max-turns 120 \
+            --max-budget-usd "$BUDGET" \
+            --output-format json \
             --permission-mode acceptEdits \
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git status:*),Bash(ls:*),Bash(find:*),Bash(grep:*),Bash(cat:*),Bash(wc:*)" \
-            > /tmp/claude-output.md 2>&1 || echo "Claude Code exited with $?" >> /tmp/claude-output.md
+            > /tmp/claude-output.json 2>/tmp/claude-stderr.txt || echo "Claude Code exited with $?" >> /tmp/claude-stderr.txt
           mkdir -p .claude-task
-          cp /tmp/claude-output.md .claude-task/OUTPUT.md
-          tail -c 3000 /tmp/claude-output.md
+          jq -r '.result // empty' /tmp/claude-output.json > .claude-task/OUTPUT.md 2>/dev/null || cp /tmp/claude-output.json .claude-task/OUTPUT.md
+          cat /tmp/claude-stderr.txt >> .claude-task/OUTPUT.md
+          jq -r '.total_cost_usd // empty' /tmp/claude-output.json > .claude-task/COST_USD 2>/dev/null || true
+          echo "Budget: $BUDGET USD, cost: $(cat .claude-task/COST_USD 2>/dev/null) USD"
+          tail -c 3000 .claude-task/OUTPUT.md
 
       - name: Commit the result
         if: always()

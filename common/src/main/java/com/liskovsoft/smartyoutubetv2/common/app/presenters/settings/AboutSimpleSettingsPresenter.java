@@ -39,7 +39,25 @@ public class AboutSimpleSettingsPresenter extends BasePresenter<Void> {
 
         appendInstallBridge(settingsPresenter);
 
+        appendShareLogButton(settingsPresenter);
+
         settingsPresenter.showDialog(mainTitle);
+    }
+
+    private void appendShareLogButton(AppDialogPresenter settingsPresenter) {
+        OptionItem shareLogOption = UiOptionItem.from(
+                "Share log",
+                option -> {
+                    try {
+                        Class<?> clazz = Class.forName("com.liskovsoft.smartyoutubetv2.mobile.ui.utils.LogShare");
+                        java.lang.reflect.Method method = clazz.getMethod("share", Context.class);
+                        method.invoke(null, getContext());
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                });
+
+        settingsPresenter.appendSingleButton(shareLogOption);
     }
 
     private void appendAutoUpdateSwitch(AppDialogPresenter settingsPresenter) {

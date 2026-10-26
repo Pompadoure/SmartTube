@@ -1,0 +1,138 @@
+name: Build JoTube Mobile (media3-mobile branch)
+
+# Phone app (branch media3-mobile, module :smarttubemobile, package org.smarttube.johan.mobile).
+# Every push to media3-mobile builds a signed APK and publishes it as the pre-release "latest-mobile".
+# Never touches the releases of the TV apps.
+
+on:
+  push:
+    branches: [ "media3-mobile" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          submodules: recursive
+
+      - name: Apply JoTube patches to the submodules
+        run: |
+          # Small fixes on top of the upstream submodules (kept as patches, the submodules stay upstream)
+          for p in patches/MediaServiceCore/*.patch; do
+            echo "Applying $p"
+            git -C MediaServiceCore apply --verbose "../$p"
+          done
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Version name
+        id: version
+        run: |
+          sed -i "s/versionName \"\(.*\)\"/versionName \"\1.${{ github.run_number }}\"/" smarttubemobile/build.gradle
+          sed -i "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/" smarttubemobile/build.gradle
+          echo "name=$(grep -m1 'versionName' smarttubemobile/build.gradle | awk -F'"' '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Configure signing
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          ALIAS: ${{ secrets.ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "$SIGNING_KEY" ]; then
+            echo "::error::Signing secrets are missing (SIGNING_KEY, KEY_STORE_PASSWORD, ALIAS, KEY_PASSWORD)"
+            exit 1
+          fi
+          echo "$SIGNING_KEY" | base64 --decode > "$RUNNER_TEMP/key.jks"
+          {
+            echo "storeFile=$RUNNER_TEMP/key.jks"
+            echo "storePassword=$KEY_STORE_PASSWORD"
+            echo "keyAlias=$ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > keystore.properties
+
+      - name: Build
+        run: |
+          chmod +x gradlew
+          set -o pipefail
+          if ! ./gradlew :smarttubemobile:assembleStjohanRelease 2>&1 | tee build.log; then
+            # One compact line per error: short path, message and javac's "symbol:" detail. Split over up to
+            # 7 annotations of ~3.5k chars (GitHub truncates long annotation messages, keeps 10 per step).
+            awk '
+              /^\/.*\.(java|kt):[0-9]+: error: / { if (cur != "") print cur; cur = $0; next }
+              /^e: / { if (cur != "") print cur; cur = $0; next }
+              cur != "" && /^ +symbol: / { sub(/^ +symbol: +/, ""); cur = cur " [" $0 "]"; next }
+              cur != "" && /^ +location: / { next }
+              # javac prints the source line and a caret between the error and its symbol: keep waiting
+              /^> Task |^FAILURE|^[0-9]+ errors?$|^[0-9]+ warnings?$|^BUILD / { if (cur != "") { print cur; cur = "" } }
+              END { if (cur != "") print cur }
+            ' build.log | sed -E 's#^.*/(media3-sabr|common|smarttubemobile)/src/(main|test)/java/##; s#^com/liskovsoft/smartyoutubetv2/##; s#: error: #: #' | sort -u > errs.txt
+            if [ -s errs.txt ]; then
+              total=$(wc -l < errs.txt)
+              split -C 3500 -d errs.txt errpart.
+              n=0
+              for f in errpart.*; do
+                n=$((n+1)); [ $n -gt 7 ] && break
+                echo "::error::COMPILER ERRORS part $n (total $total)%0A$(sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g' "$f")"
+              done
+            fi
+            # Failed unit tests (test name + first line of the failure), one annotation
+            fails=$(grep -E "Test > .* FAILED$" -A1 build.log | grep -v "^--$" | head -60)
+            if [ -n "$fails" ]; then
+              echo "::error::UNIT TEST FAILURES%0A$(echo "$fails" | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
+            fi
+            wrong=$(grep -E "What went wrong" -A3 build.log | head -8)
+            echo "::error::WHAT WENT WRONG%0A$(echo "$wrong" | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
+            exit 1
+          fi
+
+      - name: Collect APKs
+        run: |
+          mkdir -p out
+          dir=smarttubemobile/build/outputs/apk/stjohan/release
+          ls -l "$dir"
+          cp "$dir"/*_armeabi-v7a.apk out/JoTubeMobile_armeabi-v7a.apk
+          cp "$dir"/*_arm64-v8a.apk out/JoTubeMobile_arm64-v8a.apk
+          sha256sum out/*.apk | tee out/SHA256SUMS.txt
+          # Evidence in the run summary: package, versions and SDK levels of the built APK
+          aapt2="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)aapt2"
+          "$aapt2" dump badging out/JoTubeM3_arm64-v8a.apk | grep -E "^(package|minSdkVersion|sdkVersion|targetSdkVersion|application-label):" | while IFS= read -r line; do
+            echo "::notice::APK ${line}"
+          done
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: JoTubeMobile_${{ steps.version.outputs.name }}
+          path: out/*
+          if-no-files-found: error
+
+      - name: Publish pre-release "latest-mobile"
+        if: github.ref == 'refs/heads/media3-mobile'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest-mobile --cleanup-tag --yes || true
+          sleep 10
+          # A pre-release, not marked latest: the daily JoTube release stays the latest one
+          gh release create latest-mobile out/* --prerelease --latest=false \
+            --target "${{ github.sha }}" \
+            --title "JoTube Mobile ${{ steps.version.outputs.name }}" \
+            --notes "Phone app test build from ${{ github.sha }} (package org.smarttube.johan.mobile)."
+          gh release edit latest-mobile --draft=false

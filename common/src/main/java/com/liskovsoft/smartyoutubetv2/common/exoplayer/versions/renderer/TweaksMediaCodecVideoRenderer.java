@@ -1,16 +1,13 @@
 package com.liskovsoft.smartyoutubetv2.common.exoplayer.versions.renderer;
 
-import android.annotation.TargetApi;
 import android.content.Context;
-import android.media.MediaCodec;
 import android.os.Handler;
 import androidx.annotation.Nullable;
-import com.google.android.exoplayer2.Format;
-import com.google.android.exoplayer2.drm.DrmSessionManager;
-import com.google.android.exoplayer2.drm.FrameworkMediaCrypto;
-import com.google.android.exoplayer2.mediacodec.MediaCodecInfo;
-import com.google.android.exoplayer2.mediacodec.MediaCodecSelector;
-import com.google.android.exoplayer2.video.VideoRendererEventListener;
+import androidx.media3.common.Format;
+import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter;
+import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
+import androidx.media3.exoplayer.video.VideoRendererEventListener;
 import com.liskovsoft.sharedutils.mylogger.Log;
 
 public class TweaksMediaCodecVideoRenderer extends DebugInfoMediaCodecVideoRenderer {
@@ -19,47 +16,21 @@ public class TweaksMediaCodecVideoRenderer extends DebugInfoMediaCodecVideoRende
     private boolean mIsFrameDropSonyFixEnabled;
     private boolean mIsAmlogicFixEnabled;
 
-    // Exo 2.9
-    //public CustomMediaCodecVideoRenderer(Context context, MediaCodecSelector mediaCodecSelector, long allowedJoiningTimeMs,
-    //                                     @Nullable DrmSessionManager<FrameworkMediaCrypto> drmSessionManager, boolean playClearSamplesWithoutKeys,
-    //                                     @Nullable Handler eventHandler, @Nullable VideoRendererEventListener eventListener,
-    //                                     int maxDroppedFramesToNotify) {
-    //    super(context, mediaCodecSelector, allowedJoiningTimeMs, drmSessionManager, playClearSamplesWithoutKeys, eventHandler, eventListener,
-    //            maxDroppedFramesToNotify);
-    //}
-
-    // Exo 2.10, 2.11
-    public TweaksMediaCodecVideoRenderer(Context context, MediaCodecSelector mediaCodecSelector, long allowedJoiningTimeMs,
-                                         @Nullable DrmSessionManager<FrameworkMediaCrypto> drmSessionManager, boolean playClearSamplesWithoutKeys, boolean enableDecoderFallback, @Nullable Handler eventHandler, @Nullable VideoRendererEventListener eventListener, int maxDroppedFramesToNotify) {
-        super(context, mediaCodecSelector, allowedJoiningTimeMs, drmSessionManager, playClearSamplesWithoutKeys, enableDecoderFallback, eventHandler, eventListener, maxDroppedFramesToNotify);
+    public TweaksMediaCodecVideoRenderer(Context context, MediaCodecAdapter.Factory codecAdapterFactory, MediaCodecSelector mediaCodecSelector,
+                                         long allowedJoiningTimeMs, boolean enableDecoderFallback, @Nullable Handler eventHandler,
+                                         @Nullable VideoRendererEventListener eventListener, int maxDroppedFramesToNotify) {
+        super(context, codecAdapterFactory, mediaCodecSelector, allowedJoiningTimeMs, enableDecoderFallback, eventHandler, eventListener,
+                maxDroppedFramesToNotify);
     }
 
-    // Exo 2.12, 2.13
-    //public TweaksMediaCodecVideoRenderer(Context context, MediaCodecSelector mediaCodecSelector, long allowedJoiningTimeMs,
-    //                                     boolean enableDecoderFallback, @Nullable Handler eventHandler,
-    //                                     @Nullable VideoRendererEventListener eventListener, int maxDroppedFramesToNotify) {
-    //    super(context, mediaCodecSelector, allowedJoiningTimeMs, enableDecoderFallback, eventHandler, eventListener, maxDroppedFramesToNotify);
-    //}
-
-    // EXO: 2.10, 2.11, 2.12
-    @TargetApi(21)
+    @Override
     protected void renderOutputBufferV21(
-            MediaCodec codec, int index, long presentationTimeUs, long releaseTimeNs) {
+            MediaCodecAdapter codec, int index, long presentationTimeUs, long releaseTimeNs) {
         // Fix frame drops on SurfaceView
         // https://github.com/google/ExoPlayer/issues/6348
         // https://developer.android.com/reference/android/media/MediaCodec#releaseOutputBuffer(int,%20long)
         super.renderOutputBufferV21(codec, index, presentationTimeUs, mIsFrameDropFixEnabled ? 0 : releaseTimeNs);
     }
-
-    // EXO: 2.13
-    //@TargetApi(21)
-    //protected void renderOutputBufferV21(
-    //        MediaCodecAdapter codec, int index, long presentationTimeUs, long releaseTimeNs) {
-    //    // Fix frame drops on SurfaceView
-    //    // https://github.com/google/ExoPlayer/issues/6348
-    //    // https://developer.android.com/reference/android/media/MediaCodec#releaseOutputBuffer(int,%20long)
-    //    super.renderOutputBufferV21(codec, index, presentationTimeUs, 0);
-    //}
 
     @Override
     protected CodecMaxValues getCodecMaxValues(
@@ -82,28 +53,30 @@ public class TweaksMediaCodecVideoRenderer extends DebugInfoMediaCodecVideoRende
 
     /**
      * Frame drop fixes on Sony Bravia<br/>
-     * https://github.com/google/ExoPlayer/issues/6348#issuecomment-718986083
+     * https://github.com/google/ExoPlayer/issues/6348#issuecomment-718986083<br/>
+     * M3: isBufferLate(earlyUs) became shouldDropOutputBuffer(earlyUs, elapsedRealtimeUs, isLastBuffer)
      */
     @Override
-    protected boolean isBufferLate(long earlyUs) {
+    protected boolean shouldDropOutputBuffer(long earlyUs, long elapsedRealtimeUs, boolean isLastBuffer) {
         if (mIsFrameDropSonyFixEnabled) {
-            return earlyUs < -1000000;
+            return earlyUs < -1000000 && !isLastBuffer;
         }
 
-        return super.isBufferLate(earlyUs);
+        return super.shouldDropOutputBuffer(earlyUs, elapsedRealtimeUs, isLastBuffer);
     }
 
     /**
      * Frame drop fixes on Sony Bravia<br/>
-     * https://github.com/google/ExoPlayer/issues/6348#issuecomment-718986083
+     * https://github.com/google/ExoPlayer/issues/6348#issuecomment-718986083<br/>
+     * M3: isBufferVeryLate(earlyUs) became shouldDropBuffersToKeyframe(earlyUs, elapsedRealtimeUs, isLastBuffer)
      */
     @Override
-    protected boolean isBufferVeryLate(long earlyUs) {
+    protected boolean shouldDropBuffersToKeyframe(long earlyUs, long elapsedRealtimeUs, boolean isLastBuffer) {
         if (mIsFrameDropSonyFixEnabled) {
-            return earlyUs < -1500000;
+            return earlyUs < -1500000 && !isLastBuffer;
         }
 
-        return super.isBufferVeryLate(earlyUs);
+        return super.shouldDropBuffersToKeyframe(earlyUs, elapsedRealtimeUs, isLastBuffer);
     }
 
     public void enableFrameDropFix(boolean enabled) {

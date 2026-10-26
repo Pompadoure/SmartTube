@@ -2,6 +2,8 @@ package com.liskovsoft.smartyoutubetv2.tv.ui.browse.video;
 
 import android.os.Bundle;
 import android.view.View;
+import android.view.ViewParent;
+import android.view.ViewTreeObserver;
 import android.widget.Toast;
 
 import androidx.annotation.Nullable;
@@ -54,6 +56,14 @@ public class MultiVideoGridFragment extends MultiGridFragment implements VideoSe
     private Video mSelectedItem1;
     private float mVideoGridScale;
     private final Runnable mRestore1Task = this::restorePosition1;
+    private int mMaxColsNum = 3;
+    private boolean mChannelsHidden;
+    // JoTube: the channel list is hidden while the videos have the focus (3 cards per row instead of 2)
+    private final ViewTreeObserver.OnGlobalFocusChangeListener mFocusListener = (oldFocus, newFocus) -> {
+        if (newFocus != null) {
+            setChannelsHidden(isInside(newFocus, getBrowseGrid2()));
+        }
+    };
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -61,7 +71,17 @@ public class MultiVideoGridFragment extends MultiGridFragment implements VideoSe
 
         mMainPresenter = getMainPresenter();
         mCardPresenter1 = new ChannelCardPresenter();
-        mCardPresenter2 = new VideoCardPresenter();
+        mCardPresenter2 = new VideoCardPresenter() {
+            @Override
+            protected android.util.Pair<Integer, Integer> getCardDimensPx(android.content.Context context) {
+                // Exactly three cards per row when the channel list is hidden
+                android.util.DisplayMetrics dm = context.getResources().getDisplayMetrics();
+                int screenW = Math.max(dm.widthPixels, dm.heightPixels);
+                int spacing = context.getResources().getDimensionPixelSize(R.dimen.grid_item_horizontal_spacing);
+                int w = (int) ((screenW * 0.86f - spacing * 3) / 3f);
+                return new android.util.Pair<>(w, (int) (w * 9f / 16f));
+            }
+        };
         mBackgroundManager = ((LeanbackActivity) getActivity()).getBackgroundManager();
         mVideoGridScale = MainUIData.instance(getActivity()).getVideoGridScale();
 
@@ -79,6 +99,69 @@ public class MultiVideoGridFragment extends MultiGridFragment implements VideoSe
         super.onViewCreated(view, savedInstanceState);
 
         removePadding();
+
+        view.getViewTreeObserver().addOnGlobalFocusChangeListener(mFocusListener);
+    }
+
+    @Override
+    public void onDestroyView() {
+        View root = getView();
+
+        if (root != null) {
+            root.getViewTreeObserver().removeOnGlobalFocusChangeListener(mFocusListener);
+        }
+
+        mChannelsHidden = false;
+        if (getBrowseGrid1() != null) {
+            getBrowseGrid1().animate().cancel();
+            getBrowseGrid1().setAlpha(1f);
+        }
+        super.onDestroyView();
+    }
+
+    private static boolean isInside(View view, View container) {
+        if (view == null || container == null) {
+            return false;
+        }
+
+        ViewParent parent = view.getParent();
+
+        if (view == container) {
+            return true;
+        }
+
+        while (parent != null) {
+            if (parent == container) {
+                return true;
+            }
+
+            parent = parent.getParent();
+        }
+
+        return false;
+    }
+
+    /**
+     * The channel list fades out while the videos have the focus. Nothing is laid out again and the column count never
+     * changes at runtime (that crashed leanback): grid2 always has {@link #mMaxColsNum} columns, the dock simply scrolls
+     * so that grid2 is fully visible while it has the focus and grid1 is fully visible while it has the focus.
+     * The faded grid keeps its (invisible) focusability, so DPAD_LEFT from the first column still reaches the channels.
+     */
+    private void setChannelsHidden(boolean hidden) {
+        if (hidden == mChannelsHidden) {
+            return;
+        }
+
+        VerticalGridView grid1 = getBrowseGrid1();
+
+        if (grid1 == null) {
+            return;
+        }
+
+        mChannelsHidden = hidden;
+
+        grid1.animate().cancel();
+        grid1.animate().alpha(hidden ? 0f : 1f).setDuration(hidden ? 120 : 180).start();
     }
 
     @Override
@@ -222,7 +305,8 @@ public class MultiVideoGridFragment extends MultiGridFragment implements VideoSe
         VerticalGridPresenter presenter2 = new CustomVerticalGridPresenter(R.layout.lb_vertical_grid2, R.id.browse_grid2);
         presenter2.enableChildRoundedCorners(getMainUIData().isUiTweakEnabled(MainUIData.UI_TWEAK_ROUNDED_CORNERS));
         int maxColsNum = GridFragmentHelper.getMaxColsNum(getContext(), R.dimen.card_width, mVideoGridScale);
-        presenter2.setNumberOfColumns(Math.max(maxColsNum, 1) - 1);
+        mMaxColsNum = 3;
+        presenter2.setNumberOfColumns(mMaxColsNum); // never changed at runtime
 
         setGridPresenter1(presenter1);
         setGridPresenter2(presenter2);

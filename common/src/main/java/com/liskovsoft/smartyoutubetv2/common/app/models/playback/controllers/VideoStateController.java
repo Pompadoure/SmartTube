@@ -298,6 +298,28 @@ public class VideoStateController extends BasePlayerController {
     public void onSourceChanged(Video item) {
         // At this stage video isn't loaded yet. So format switch isn't take any resources.
         restoreFormats();
+        applyStartPosition(item);
+    }
+
+    /**
+     * JoTube M3: hand the saved position to the player before it prepares the source (no seek after the tracks are known,
+     * so SABR doesn't restart). Only the plain case: a stored, up to date, partially viewed state of a non-live video.
+     * Everything else still goes through {@link #restorePosition()}.
+     */
+    private void applyStartPosition(Video item) {
+        if (getPlayer() == null || item == null || item.isLive || ShortsTransitionState.isShortsMode() || isMutedEmbed()) {
+            return;
+        }
+
+        State state = getStateService().getByVideoId(item.videoId);
+
+        if (state == null || isStateOutdated(state, item) || state.durationMs <= 0 || state.positionMs <= 0
+                || state.positionMs >= state.durationMs * 0.98f
+                || (item.getDurationMs() > 0 && state.positionMs >= item.getDurationMs() * 0.98f)) { // near the end: the normal restore decides with the real duration
+            return;
+        }
+
+        getPlayer().setStartPositionMs(state.positionMs);
     }
 
     @Override
@@ -574,7 +596,8 @@ public class VideoStateController extends BasePlayerController {
         }
 
         // Do I need to check that item isn't live? (state != null && !item.isLive)
-        if (state != null) {
+        // JoTube M3: the player may already have started at this position (applyStartPosition)
+        if (state != null && Math.abs(getPlayer().getPositionMs() - state.positionMs) > 1_000) {
             getPlayer().setPositionMs(state.positionMs);
         }
 

@@ -878,6 +878,16 @@ public class PlayerUIController extends BasePlayerController {
             return false;
         }
 
+        if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN || keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+            // JoTube: a held key must not outrun the preloading (a miss tears the Shorts queue down): one Short per
+            // ~250 ms at most, like one press per Short in the official player
+            long now = android.os.SystemClock.uptimeMillis();
+            if (getVideo().belongsToShortsGroup() && now - mLastShortsSkipMs < SHORTS_SKIP_MIN_INTERVAL_MS) {
+                return true;
+            }
+            mLastShortsSkipMs = now;
+        }
+
         if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
             getMainController().onNextClicked();
             return true; // hide ui
@@ -890,6 +900,9 @@ public class PlayerUIController extends BasePlayerController {
 
         return false;
     }
+
+    private long mLastShortsSkipMs;
+    private static final long SHORTS_SKIP_MIN_INTERVAL_MS = 250;
 
     private interface MediaItemObservable {
         Observable<Void> call(MediaItem item);

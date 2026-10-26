@@ -42,7 +42,7 @@
 
         <!-- Tweaks from video info dialog: leanback_list_preference_fragment.xml:26 -->
         <!-- More info: com.liskovsoft.smartyoutubetv2.tv.ui.mod.leanback.misc.LeanbackListPreferenceDialogFragment -->
-        <!-- Text: add android:fontFamily="sans-serif-condensed" -->
+        <!-- Text: add android:fontFamily="@font/roboto" -->
         <!-- Text: add android:lineSpacingMultiplier="0.9" -->
         <!-- Messages exceeding certain length cause crashes. RecycleView bug? -->
         <!-- add android:maxLines="130" (max 130, optimal for reading 50) -->
@@ -50,7 +50,7 @@
             android:id="@id/messageText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:fontFamily="sans-serif-condensed"
+            android:fontFamily="@font/roboto"
             android:lineSpacingMultiplier="0.9"
             android:maxLines="50" />
 

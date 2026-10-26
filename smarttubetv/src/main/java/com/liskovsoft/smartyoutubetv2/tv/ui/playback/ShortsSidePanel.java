@@ -60,6 +60,7 @@ public class ShortsSidePanel {
     private static final int RIGHT_MARGIN_DP = 20;
     // The frame around the video: white when the video gets the focus, then it fades to grey (like the official app)
     private static final int FRAME_MARGIN_DP = 16; // above and below the 9:16 frame (room for the border)
+    private static final int FRAME_VERTICAL_MARGIN_DP = 6; // JoTube: the border (5 dp outside the frame) stays on the screen, the video nearly fills it
     private static final int BORDER_DP = 3;
     private static final int BORDER_OUTSET_DP = 5;
     private static final int BORDER_RADIUS_DP = 14;
@@ -79,6 +80,9 @@ public class ShortsSidePanel {
     private ValueAnimator mBorderAnimator;
     private int mBorderColor = BORDER_GREY;
     private String mBoundVideoId;
+    private Video mPendingBind; // waits for the old content to fade out
+    private static final int PANEL_OUT_MS = 70;
+    private static final int PANEL_IN_MS = 130;
     private final Set<Integer> mConsumedKeys = new HashSet<>();
     private ViewGroup mRoot;
     private View mSurface;
@@ -117,7 +121,7 @@ public class ShortsSidePanel {
         mTitle = new TextView(context);
         mTitle.setTextColor(Color.WHITE);
         mTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
-        mTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        mTitle.setTypeface(androidx.core.content.res.ResourcesCompat.getFont(context, R.font.roboto_bold));
         mTitle.setMaxLines(3);
         mTitle.setEllipsize(TextUtils.TruncateAt.END);
         mTitle.setShadowLayer(dp(4), 0, dp(1), Color.argb(160, 0, 0, 0));
@@ -250,6 +254,36 @@ public class ShortsSidePanel {
     /**
      * Show the info of the current Short.
      */
+    /**
+     * JoTube: the text and buttons of the new Short replace the old ones in step with the slide: the old content moves
+     * a little with it and fades out, the new content comes from the other side (instead of everything popping in
+     * at the key press while the picture is still sliding).
+     *
+     * @param direction 1: next Short (content moves up), -1: previous, 0: no motion
+     */
+    public void bindAnimated(final Video video, int direction) {
+        if (mPanel == null || video == null) {
+            return;
+        }
+
+        // JoTube: everything on the panel stays where it is and the content is swapped in place (no fade, no motion):
+        // the avatar comes from the memory cache (preloaded), the texts are set at once
+        mTitle.animate().cancel();
+        mChannelRow.animate().cancel();
+        mPendingBind = null;
+        resetTextMotion();
+        bind(video);
+    }
+
+    private void resetTextMotion() {
+        mPanel.setAlpha(1f);
+        mPanel.setTranslationY(0);
+        mTitle.setAlpha(1f);
+        mTitle.setTranslationY(0);
+        mChannelRow.setAlpha(1f);
+        mChannelRow.setTranslationY(0);
+    }
+
     public void bind(Video video) {
         if (mPanel == null || video == null) {
             return;
@@ -660,7 +694,7 @@ public class ShortsSidePanel {
     }
 
     private int getFrameHeight(int rootHeight) {
-        return Math.max(1, rootHeight - dp(FRAME_MARGIN_DP) * 2);
+        return Math.max(1, rootHeight - dp(FRAME_VERTICAL_MARGIN_DP) * 2);
     }
 
     /**
@@ -675,7 +709,14 @@ public class ShortsSidePanel {
         }
 
         mVideoAspect = newAspect;
-        mHandler.post(mUpdatePosition);
+
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            // Reshape the frame right away: with a post it lagged one frame behind the first frame of a wider/narrower Short
+            mHandler.removeCallbacks(mUpdatePosition);
+            updatePosition();
+        } else {
+            mHandler.post(mUpdatePosition);
+        }
     }
 
     private int getFrameWidth(int rootHeight) {
@@ -771,6 +812,7 @@ public class ShortsSidePanel {
                     .load(url)
                     .circleCrop()
                     .placeholder(R.drawable.action_channel)
+                    .transition(com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions.withCrossFade(120)) // late ones only: a cache hit has no transition
                     .into(mAvatar);
         } catch (IllegalArgumentException e) {
             // Activity destroyed

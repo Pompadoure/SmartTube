@@ -16,6 +16,17 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:clipChildren="false"/>
+    <!-- JoTube: the suggestions sit between the search field and the keyboard -->
+    <androidx.leanback.widget.HorizontalGridView
+            android:id="@+id/search_suggestions"
+            android:layout_width="416dp"
+            android:layout_height="48dp"
+            android:layout_gravity="top|start"
+            android:layout_marginTop="@dimen/search_suggestions_margin_top"
+            android:layout_marginStart="@dimen/search_keyboard_margin_start"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:visibility="invisible"/>
     <com.liskovsoft.smartyoutubetv2.tv.ui.widgets.search.SearchKeyboardView
             android:id="@+id/search_keyboard"
             android:layout_width="wrap_content"

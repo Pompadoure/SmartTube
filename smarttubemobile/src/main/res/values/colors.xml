@@ -1,0 +1,12 @@
+<resources>
+    <color name="yt_bg">#0F0F0F</color>
+    <color name="yt_surface">#212121</color>
+    <color name="yt_chip">#272727</color>
+    <color name="yt_chip_selected">#F1F1F1</color>
+    <color name="yt_text">#F1F1F1</color>
+    <color name="yt_text_secondary">#AAAAAA</color>
+    <color name="yt_red">#FF0000</color>
+    <color name="yt_divider">#303030</color>
+    <color name="yt_badge">#CC000000</color>
+    <color name="jotube_icon_bg">#000000</color>
+</resources>

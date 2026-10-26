@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools"
+          package="com.liskovsoft.smartyoutubetv2.mobile">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <uses-feature android:name="android.hardware.touchscreen" android:required="true" />
+
+    <application
+        android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.main.MobileApplication"
+        android:usesCleartextTraffic="true"
+        android:allowBackup="true"
+        android:hardwareAccelerated="true"
+        android:largeHeap="true"
+        android:icon="@mipmap/app_icon"
+        android:roundIcon="@mipmap/app_icon"
+        android:label="@string/app_name"
+        android:theme="@style/Mobile.Theme"
+        tools:node="merge"
+        tools:replace="android:allowBackup,android:theme"
+        tools:ignore="GoogleAppIndexingWarning,UnusedAttribute">
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <activity
+            android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.main.SplashActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:theme="@style/Mobile.Theme.Splash">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="http"/>
+                <data android:scheme="https"/>
+                <data android:host="www.youtube.com"/>
+                <data android:host="m.youtube.com"/>
+                <data android:host="youtu.be"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="text/plain"/>
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.browse.BrowseActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
+
+        <activity android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.music.MusicPlaylistsActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
+
+        <activity android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.music.MusicSearchActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" android:windowSoftInputMode="adjustResize" />
+
+        <activity android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.channel.ChannelActivity" android:exported="false" android:launchMode="singleTop" android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
+
+        <activity android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.channel.ChannelUploadsActivity" android:exported="false" android:launchMode="singleTop" android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
+
+        <activity
+            android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.search.SearchActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
+
+        <activity
+            android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastsActivity"
+            android:exported="false" />
+
+        <activity
+            android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastPlayerActivity"
+            android:exported="false"
+            android:launchMode="singleTop" />
+
+        <service
+            android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.playback.MediaPlaybackService"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
+
+        <activity
+            android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.dialogs.AppDialogActivity"
+            android:exported="false"
+            android:theme="@style/Mobile.Theme.Dialog" />
+
+        <activity
+            android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.signin.SignInActivity"
+            android:exported="false" />
+    </application>
+</manifest>

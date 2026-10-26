@@ -5,15 +5,15 @@ import android.os.Build;
 import android.text.TextUtils;
 import android.util.Pair;
 
-import com.google.android.exoplayer2.Format;
-import com.google.android.exoplayer2.source.TrackGroup;
-import com.google.android.exoplayer2.source.TrackGroupArray;
-import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
-import com.google.android.exoplayer2.trackselection.DefaultTrackSelector.Parameters;
-import com.google.android.exoplayer2.trackselection.DefaultTrackSelector.SelectionOverride;
-import com.google.android.exoplayer2.trackselection.MappingTrackSelector.MappedTrackInfo;
-import com.google.android.exoplayer2.trackselection.TrackSelection;
-import com.google.android.exoplayer2.trackselection.TrackSelection.Definition;
+import androidx.media3.common.Format;
+import androidx.media3.common.TrackGroup;
+import androidx.media3.exoplayer.source.TrackGroupArray;
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector.Parameters;
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector.SelectionOverride;
+import androidx.media3.exoplayer.trackselection.MappingTrackSelector.MappedTrackInfo;
+import androidx.media3.exoplayer.trackselection.ExoTrackSelection;
+import androidx.media3.exoplayer.trackselection.ExoTrackSelection.Definition;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.track.AudioTrack;
@@ -46,11 +46,16 @@ public class TrackSelectorManager implements TrackSelectorCallback {
     private final Map<String, Integer> mBlacklist = new HashMap<>();
 
     private DefaultTrackSelector mTrackSelector;
+    private RestoreTrackSelector mPreloadTrackSelector; // Shorts preloading: selects like mTrackSelector
 
     private final Renderer[] mRenderers = new Renderer[3];
     private final MediaTrack[] mSelectedTracks = new MediaTrack[3];
     private boolean mIsMergedSource;
     private boolean mIsQueuedSourceSwitch;
+    private final android.os.Handler mReselectHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private int mReselectGeneration;
+    // JoTube: after a queued Shorts switch the (invalidating) re-selection waits until the new Short is on screen
+    private static final long QUEUED_RESELECT_DELAY_MS = 1500;
 
     public TrackSelectorManager(Context context) {
         mContext = context.getApplicationContext();
@@ -495,7 +500,18 @@ public class TrackSelectorManager implements TrackSelectorCallback {
             mIsQueuedSourceSwitch = false;
         }
 
-        if (isSwitch || isCacheOutdated()) {
+        if (isSwitch) {
+            // The re-selection invalidates the track selector: that is work on the playback thread exactly while the
+            // new Short starts (the selection itself was already made when it was preloaded). The track lists only
+            // feed the quality menu, they can wait a moment.
+            final int generation = ++mReselectGeneration;
+            mReselectHandler.postDelayed(() -> {
+                if (generation == mReselectGeneration) {
+                    reselectTracks();
+                }
+            }, QUEUED_RESELECT_DELAY_MS);
+        } else if (isCacheOutdated()) {
+            mReselectGeneration++; // supersedes a pending delayed one
             reselectTracks();
         }
     }
@@ -520,6 +536,7 @@ public class TrackSelectorManager implements TrackSelectorCallback {
         DefaultTrackSelector trackSelector = mTrackSelector;
 
         if (trackSelector instanceof RestoreTrackSelector) {
+            com.liskovsoft.smartyoutubetv2.common.utils.JoTubeTiming.mark("reselect tracks");
             ((RestoreTrackSelector) trackSelector).reselect();
         }
     }
@@ -549,11 +566,11 @@ public class TrackSelectorManager implements TrackSelectorCallback {
             SelectionOverride override = params.getSelectionOverride(rendererIndex, rendererTrackGroups);
 
             if (override != null) {
-                definition = new TrackSelection.Definition(
+                // M3: SelectionOverride has no reason/data any more, only the track type
+                definition = new ExoTrackSelection.Definition(
                                 rendererTrackGroups.get(override.groupIndex),
                                 override.tracks,
-                                override.reason,
-                                override.data);
+                                override.type);
             }
         }
 
@@ -650,6 +667,15 @@ public class TrackSelectorManager implements TrackSelectorCallback {
         }
     }
 
+    /**
+     * JoTube M3: the track selector of the preload manager (Shorts) selects the preloaded Shorts through this manager too,
+     * like the playlist periods did in 2.10 (see {@link #syncWithPlayingPeriod()}).
+     */
+    public void setPreloadTrackSelector(RestoreTrackSelector selector) {
+        mPreloadTrackSelector = selector;
+        selector.setOnTrackSelectCallback(this);
+    }
+
     public synchronized void release() {
         if (mTrackSelector != null) {
             Log.d(TAG, "Destroying TrackSelector...");
@@ -658,6 +684,7 @@ public class TrackSelectorManager implements TrackSelectorCallback {
             }
             mTrackSelector = null;
         }
+        mPreloadTrackSelector = null;
 
         invalidate();
     }
@@ -764,6 +791,19 @@ public class TrackSelectorManager implements TrackSelectorCallback {
     }
 
     private void applyOverride(int rendererIndex) {
+        applyOverrideInt(rendererIndex);
+
+        // Review (stage 4): the preload selector keeps the same parameters (disabled renderers etc.), else a preloaded
+        // Short is selected differently from how the player selects it and the preload is lost
+        RestoreTrackSelector preloadSelector = mPreloadTrackSelector;
+        DefaultTrackSelector selector = mTrackSelector;
+        if (preloadSelector != null && selector != null) {
+            // No per-group overrides: they point at the playing item's track groups, not at the preloaded ones
+            preloadSelector.setParameters(selector.getParameters().buildUpon().clearOverrides().build());
+        }
+    }
+
+    private void applyOverrideInt(int rendererIndex) {
         Renderer renderer = mRenderers[rendererIndex];
 
         if (renderer == null) {

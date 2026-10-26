@@ -5,5 +5,5 @@
     <!-- Overrides leanbackassistant (stable fallback) -->
     <string translatable="false" name="search_label">JoTube</string>
     <string translatable="false" name="settings_description">JoTube Videos</string>
-    <string translatable="false" name="search_authority">org.smarttube.johan</string>
+    <string translatable="false" name="search_authority">org.smarttube.johan.media3</string>
 </resources>

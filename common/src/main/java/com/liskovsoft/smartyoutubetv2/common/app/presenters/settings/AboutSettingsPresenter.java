@@ -54,6 +54,8 @@ public class AboutSettingsPresenter extends BasePresenter<Void> {
 
         appendInstallBridge(settingsPresenter);
 
+        appendShareLogButton(settingsPresenter);
+
         if (!Helpers.equalsAny(country, "RU", "UA")) {
             appendDonation(settingsPresenter);
             appendFeedback(settingsPresenter);
@@ -61,6 +63,22 @@ public class AboutSettingsPresenter extends BasePresenter<Void> {
         }
 
         settingsPresenter.showDialog(mainTitle);
+    }
+
+    private void appendShareLogButton(AppDialogPresenter settingsPresenter) {
+        OptionItem shareLogOption = UiOptionItem.from(
+                "Share log",
+                option -> {
+                    try {
+                        Class<?> clazz = Class.forName("com.liskovsoft.smartyoutubetv2.mobile.ui.utils.LogShare");
+                        java.lang.reflect.Method method = clazz.getMethod("share", Context.class);
+                        method.invoke(null, getContext());
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                });
+
+        settingsPresenter.appendSingleButton(shareLogOption);
     }
 
     private void appendAutoUpdateSwitch(AppDialogPresenter settingsPresenter) {
@@ -75,7 +93,7 @@ public class AboutSettingsPresenter extends BasePresenter<Void> {
             mUpdateChecker.setUpdateCheckEnabled(true);
             generalData.setOldUpdateNotificationsEnabled(false);
         }, mUpdateChecker.isUpdateCheckEnabled() && !generalData.isOldUpdateNotificationsEnabled()));
-        
+
         items.add(UiOptionItem.from(getContext().getString(R.string.dialog_notification), optionItem -> {
             mUpdateChecker.setUpdateCheckEnabled(true);
             generalData.setOldUpdateNotificationsEnabled(true);

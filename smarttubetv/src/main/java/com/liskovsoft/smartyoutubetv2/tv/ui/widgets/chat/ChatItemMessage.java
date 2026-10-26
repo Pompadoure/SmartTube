@@ -1,5 +1,12 @@
 package com.liskovsoft.smartyoutubetv2.tv.ui.widgets.chat;
 
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.RelativeSizeSpan;
+import android.text.style.StyleSpan;
 import android.content.Context;
 import android.text.TextUtils;
 
@@ -42,20 +49,54 @@ public class ChatItemMessage implements IMessage {
         ChatItemMessage message = new ChatItemMessage();
         message.mId = commentItem.getId();
         if (commentItem.getMessage() != null && !commentItem.getMessage().trim().isEmpty()) {
-            CharSequence header = ServiceHelper.combineItems(
-                    " " + Video.TERTIARY_TEXT_DELIM + " ",
-                    commentItem.getAuthorName(),
-                    commentItem.getLikeCount() != null ? String.format("%s %s", commentItem.getLikeCount(), Helpers.THUMB_UP) : null,
-                    commentItem.getPublishedDate(),
-                    commentItem.getReplyCount(),
-                    commentItem.isLiked() ? String.format("(%s)", context.getString(R.string.you_liked)) : null);
-            message.mText = TextUtils.concat(Utils.bold(header), "\n", Utils.createSmallNewLine(), commentItem.getMessage());
+            message.mText = createCommentText(context, commentItem);
         }
         message.mAuthor = ChatItemAuthor.from(commentItem);
         message.mCreatedAt = new Date();
         message.mCommentItem = commentItem;
 
         return message;
+    }
+
+    /**
+     * JoTube M3: a modern, airy comment. Author (bold) and date (dim) on top, the text below with room to breathe,
+     * likes and replies (dim) at the bottom. Regular font (the layout's condensed one is hard to read).
+     */
+    private static CharSequence createCommentText(Context context, CommentItem item) {
+        SpannableStringBuilder text = new SpannableStringBuilder();
+        int dim = Color.parseColor("#AAAAAA");
+
+        String author = item.getAuthorName();
+        if (author != null) {
+            int start = text.length();
+            text.append(author);
+            text.setSpan(new StyleSpan(Typeface.BOLD), start, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+
+        if (item.getPublishedDate() != null) {
+            int start = text.length();
+            text.append("   ").append(item.getPublishedDate());
+            text.setSpan(new ForegroundColorSpan(dim), start, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            text.setSpan(new RelativeSizeSpan(0.85f), start, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+
+        text.append("\n").append(Utils.createSmallNewLine()).append(item.getMessage());
+
+        CharSequence footer = ServiceHelper.combineItems(
+                "   ",
+                item.getLikeCount() != null ? String.format("%s %s", Helpers.THUMB_UP, item.getLikeCount()) : null,
+                item.getReplyCount(),
+                item.isLiked() ? String.format("(%s)", context.getString(R.string.you_liked)) : null);
+
+        if (footer != null && footer.length() > 0) {
+            text.append("\n").append(Utils.createSmallNewLine());
+            int start = text.length();
+            text.append(footer);
+            text.setSpan(new ForegroundColorSpan(dim), start, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            text.setSpan(new RelativeSizeSpan(0.85f), start, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+
+        return text;
     }
 
     public static List<ChatItemMessage> fromSplit(Context context, CommentItem commentItem) {

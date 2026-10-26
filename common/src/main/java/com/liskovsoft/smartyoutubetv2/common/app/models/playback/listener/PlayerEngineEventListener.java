@@ -1,6 +1,6 @@
 package com.liskovsoft.smartyoutubetv2.common.app.models.playback.listener;
 
-import com.google.android.exoplayer2.ExoPlaybackException;
+import androidx.media3.exoplayer.ExoPlaybackException;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.FormatItem;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.TrackSelectorManager;
@@ -25,7 +25,7 @@ public interface PlayerEngineEventListener {
     /**
      * The error was an {@link OutOfMemoryError}.
      */
-    int ERROR_TYPE_OUT_OF_MEMORY = ExoPlaybackException.TYPE_OUT_OF_MEMORY;
+    int ERROR_TYPE_OUT_OF_MEMORY = 4; // M3: Media3 has no TYPE_OUT_OF_MEMORY (2.10 value kept, see the OutOfMemoryError checks)
     int RENDERER_INDEX_UNKNOWN = TrackSelectorManager.RENDERER_INDEX_UNKNOWN;
     int RENDERER_INDEX_VIDEO = TrackSelectorManager.RENDERER_INDEX_VIDEO;
     int RENDERER_INDEX_AUDIO = TrackSelectorManager.RENDERER_INDEX_AUDIO;

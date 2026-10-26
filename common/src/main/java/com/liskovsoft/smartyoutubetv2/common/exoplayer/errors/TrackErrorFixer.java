@@ -1,16 +1,19 @@
 package com.liskovsoft.smartyoutubetv2.common.exoplayer.errors;
 
 import androidx.annotation.Nullable;
-import com.google.android.exoplayer2.ExoPlaybackException;
-import com.google.android.exoplayer2.mediacodec.MediaCodecRenderer.DecoderInitializationException;
-import com.google.android.exoplayer2.source.DefaultMediaSourceEventListener;
-import com.google.android.exoplayer2.source.MediaSource.MediaPeriodId;
-import com.google.android.exoplayer2.source.chunk.Chunk;
-import com.google.android.exoplayer2.source.chunk.ContainerMediaChunk;
-import com.google.android.exoplayer2.upstream.HttpDataSource.InvalidResponseCodeException;
-import com.google.android.exoplayer2.util.MimeTypes;
+import androidx.media3.exoplayer.ExoPlaybackException;
+import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.DecoderInitializationException;
+import androidx.media3.exoplayer.source.LoadEventInfo;
+import androidx.media3.exoplayer.source.MediaLoadData;
+import androidx.media3.exoplayer.source.MediaSourceEventListener;
+import androidx.media3.exoplayer.source.MediaSource.MediaPeriodId;
+import androidx.media3.exoplayer.source.chunk.Chunk;
+import androidx.media3.exoplayer.source.chunk.ContainerMediaChunk;
+import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException;
+import androidx.media3.common.MimeTypes;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.sharedutils.mylogger.Log;
+import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ShortsQueue;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.TrackSelectorManager;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.track.MediaTrack;
 
@@ -20,7 +23,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 
-public class TrackErrorFixer extends DefaultMediaSourceEventListener {
+public class TrackErrorFixer implements MediaSourceEventListener {
     private static final int BLACKLIST_CHECK_MS = 1_000;
     private static final int BLACKLIST_CLEAR_MS = 10_000;
     private static final String TAG = TrackErrorFixer.class.getSimpleName();
@@ -249,6 +252,31 @@ public class TrackErrorFixer extends DefaultMediaSourceEventListener {
                 }
             }
         }
+    }
+
+    /**
+     * JoTube M3: listener for the source of one video. While Shorts are playing, a load error of a preloaded (not playing)
+     * Short must not switch the codec of the Short that is playing.
+     */
+    public MediaSourceEventListener forVideo(@Nullable String videoId) {
+        if (videoId == null) {
+            return this;
+        }
+
+        return new MediaSourceEventListener() {
+            @Override
+            public void onLoadError(int windowIndex, @Nullable MediaPeriodId mediaPeriodId, LoadEventInfo loadEventInfo,
+                                    MediaLoadData mediaLoadData, IOException error, boolean wasCanceled) {
+                ShortsQueue queue = ShortsQueue.getActive();
+
+                if (queue != null && queue.indexOf(videoId) != -1 && !videoId.equals(queue.getCurrentVideoId())) {
+                    Log.d(TAG, "Ignoring the load error of the not playing Short %s", videoId);
+                    return;
+                }
+
+                fixError(error);
+            }
+        };
     }
 
     @Override

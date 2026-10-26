@@ -13,6 +13,8 @@ import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import com.liskovsoft.smartyoutubetv2.tv.R;
+
 /**
  * JoTube: on-screen keyboard for the search (the Android keyboard never pops up).<br/>
  * Keys are plain focusable cells, so the D-pad moves between them like between any other views.
@@ -146,7 +148,7 @@ public class SearchKeyboardView extends LinearLayout {
         TextView key = new TextView(context);
         key.setText(label);
         key.setTextSize(TypedValue.COMPLEX_UNIT_SP, label.length() > 1 ? 15 : 20);
-        key.setTypeface(Typeface.DEFAULT_BOLD);
+        key.setTypeface(androidx.core.content.res.ResourcesCompat.getFont(context, R.font.roboto_medium));
         key.setGravity(Gravity.CENTER);
         key.setFocusable(true);
         key.setClickable(true);

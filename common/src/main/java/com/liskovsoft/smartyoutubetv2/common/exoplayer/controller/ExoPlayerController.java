@@ -6,20 +6,28 @@ import android.os.Build.VERSION;
 import android.os.Handler;
 import android.os.Looper;
 
-import com.google.android.exoplayer2.C;
-import com.google.android.exoplayer2.ExoPlaybackException;
-import com.google.android.exoplayer2.Format;
-import com.google.android.exoplayer2.PlaybackParameters;
-import com.google.android.exoplayer2.Player;
-import com.google.android.exoplayer2.PlayerMessage;
-import com.google.android.exoplayer2.SimpleExoPlayer;
-import com.google.android.exoplayer2.Timeline;
-import com.google.android.exoplayer2.source.MediaSource;
-import com.google.android.exoplayer2.source.MergingMediaSource;
-import com.google.android.exoplayer2.source.TrackGroupArray;
-import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
-import com.google.android.exoplayer2.trackselection.TrackSelection;
-import com.google.android.exoplayer2.trackselection.TrackSelectionArray;
+import androidx.media3.common.C;
+import com.liskovsoft.smartyoutubetv2.common.utils.JoTubeTiming;
+import androidx.media3.exoplayer.ExoPlaybackException;
+import androidx.media3.common.Format;
+import androidx.media3.common.PlaybackParameters;
+import androidx.media3.common.Player;
+import androidx.media3.common.PlaybackException;
+import androidx.media3.datasource.HttpDataSource;
+import androidx.media3.datasource.HttpDataSource.HttpDataSourceException;
+import androidx.media3.common.Tracks;
+import androidx.media3.exoplayer.PlayerMessage;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.common.Timeline;
+import androidx.media3.exoplayer.source.MediaSource;
+import androidx.media3.exoplayer.source.MergingMediaSource;
+import androidx.media3.exoplayer.source.TrackGroupArray;
+import androidx.media3.exoplayer.source.preload.DefaultPreloadManager;
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
+import com.liskovsoft.smartyoutubetv2.common.exoplayer.versions.selector.RestoreTrackSelector;
+import androidx.media3.exoplayer.trackselection.ExoTrackSelection;
+import androidx.media3.exoplayer.trackselection.TrackSelectionArray;
+import androidx.media3.exoplayer.trackselection.TrackSelection;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.sharedutils.mylogger.Log;
@@ -41,11 +49,12 @@ import com.liskovsoft.smartyoutubetv2.common.exoplayer.versions.ExoUtils;
 import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerData;
 import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerTweaksData;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ref.WeakReference;
 import java.util.List;
 
-public class ExoPlayerController implements Player.EventListener {
+public class ExoPlayerController implements Player.Listener {
     private static final String TAG = ExoPlayerController.class.getSimpleName();
     private final Context mContext;
     private final ExoMediaSourceFactory mMediaSourceFactory;
@@ -55,7 +64,7 @@ public class ExoPlayerController implements Player.EventListener {
     private boolean mOnSourceChanged;
     private WeakReference<Video> mVideo;
     private final PlayerEventListener mEventListener;
-    private SimpleExoPlayer mPlayer;
+    private ExoPlayer mPlayer;
     private PlayerView mPlayerView;
     private VolumeBooster mVolumeBooster;
     private boolean mIsEnded;
@@ -63,17 +72,13 @@ public class ExoPlayerController implements Player.EventListener {
     private static WeakReference<ExoPlayerController> sCurrent;
     // BEGIN SmartTube J: Shorts queue
     private static final int SWITCH_NOT_QUEUED = 0;
-    private static final int SWITCH_NOT_READY = 1;
     private static final int SWITCH_DONE = 2;
-    private static final int SWITCH_RETRY_MS = 50;
-    private static final int SWITCH_MAX_RETRIES = 20; // ~1 s
     private static final long ITEM_END_MARGIN_MS = 300;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
-    private final Runnable mRetrySwitch = this::retryPendingSwitch;
-    private MediaItemFormatInfo mPendingSwitch;
-    private int mPendingSwitchRetries;
     private PlayerMessage mItemEndMessage;
     private int mItemEndIndex = -1;
+    private DefaultPreloadManager mPreloadManager; // JoTube M3: preloads the queued Shorts
+    private ShortsPreloadControl mPreloadControl;
     // END SmartTube J
 
     public ExoPlayerController(Context context, PlayerEventListener eventListener) {
@@ -87,7 +92,7 @@ public class ExoPlayerController implements Player.EventListener {
 
         mMediaSourceFactory.setTrackErrorFixer(mTrackErrorFixer);
         mEventListener = eventListener;
-        
+
         applyShield720pFix();
         VideoTrack.sIsAltPresetsEnabled = playerTweaksData.isAltPresetsEnabled();
         MediaTrack.setAvcOverVp9Preferred(playerTweaksData.isAvcOverVp9Preferred());
@@ -121,17 +126,26 @@ public class ExoPlayerController implements Player.EventListener {
     // BEGIN SmartTube J: Shorts preloading
 
     /**
-     * Shorts are opened inside a player playlist, so the next ones can be appended and preloaded.
+     * JoTube M3: the preload manager the player was built with (null: no Shorts preloading, e.g. the embed player).
+     */
+    public void setPreloadManager(DefaultPreloadManager preloadManager, ShortsPreloadControl preloadControl) {
+        mPreloadManager = preloadManager;
+        mPreloadControl = preloadControl;
+    }
+
+    /**
+     * Shorts are opened as the first item of a queue, so the next ones can be added and preloaded.
      */
     private void openShortsAware(MediaItemFormatInfo formatInfo, MediaSource mediaSource) {
+        ShortsQueue.setActive(null); // releases the previous queue (and what it preloaded) before the new one is built
         ShortsQueue queue = null;
 
-        if (ShortsTransitionState.isShortsMode() && formatInfo != null && formatInfo.getVideoId() != null) {
-            queue = new ShortsQueue(formatInfo, mediaSource);
-            mediaSource = queue.getPlaylist();
+        if (ShortsTransitionState.isShortsMode() && formatInfo != null && formatInfo.getVideoId() != null && mPreloadManager != null) {
+            queue = new ShortsQueue(mPreloadManager, mPreloadControl, formatInfo, mediaSource);
+            mediaSource = queue.getMediaSource(0);
         }
 
-        openMediaSource(mediaSource); // resets the previous queue
+        openMediaSource(mediaSource);
         ShortsQueue.setActive(queue);
         scheduleItemEnd();
     }
@@ -140,54 +154,11 @@ public class ExoPlayerController implements Player.EventListener {
      * @return true if the video is played (or about to be played) from the queue
      */
     private boolean openQueued(MediaItemFormatInfo formatInfo) {
-        cancelPendingSwitch();
-
-        int result = switchToQueued(formatInfo);
-
-        if (result == SWITCH_NOT_READY) {
-            // E.g. a Short has just been appended and the player's timeline isn't updated yet.
-            // Wait a moment instead of throwing away the queue with everything preloaded in it.
-            mPendingSwitch = formatInfo;
-            mPendingSwitchRetries = 0;
-            mHandler.postDelayed(mRetrySwitch, SWITCH_RETRY_MS);
-            return true;
-        }
-
-        return result == SWITCH_DONE;
-    }
-
-    private void retryPendingSwitch() {
-        MediaItemFormatInfo formatInfo = mPendingSwitch;
-
-        if (formatInfo == null || mPlayer == null) {
-            mPendingSwitch = null;
-            return;
-        }
-
-        int result = switchToQueued(formatInfo);
-
-        if (result == SWITCH_NOT_READY && ++mPendingSwitchRetries < SWITCH_MAX_RETRIES) {
-            mHandler.postDelayed(mRetrySwitch, SWITCH_RETRY_MS);
-            return;
-        }
-
-        mPendingSwitch = null;
-
-        if (result != SWITCH_DONE) {
-            Log.d(TAG, "Shorts: queue still out of sync, opening %s from scratch", formatInfo.getVideoId());
-            MediaSource mediaSource = formatInfo.containsDashFormats() ?
-                    mMediaSourceFactory.fromDashFormatInfo(formatInfo) : mMediaSourceFactory.fromSabrFormatInfo(formatInfo);
-            openShortsAware(formatInfo, mediaSource);
-        }
-    }
-
-    private void cancelPendingSwitch() {
-        mHandler.removeCallbacks(mRetrySwitch);
-        mPendingSwitch = null;
+        return switchToQueued(formatInfo) == SWITCH_DONE;
     }
 
     /**
-     * The video is already in the player (preloaded next or the previous one): just jump to it.
+     * The video is already queued (preloaded next or the previous one): play its source.
      */
     private int switchToQueued(MediaItemFormatInfo formatInfo) {
         ShortsQueue queue = ShortsQueue.getActive();
@@ -202,16 +173,13 @@ public class ExoPlayerController implements Player.EventListener {
             return SWITCH_NOT_QUEUED;
         }
 
-        // The player's timeline is updated asynchronously: switch only when it's in sync with the queue
-        if (mPlayer.getCurrentTimeline().getWindowCount() != queue.size() ||
-                mPlayer.getCurrentWindowIndex() != queue.getCurrentIndex()) {
-            Log.d(TAG, "Shorts: not in sync yet for %s (index %s, current %s, size %s, timeline %s, window %s)",
-                    formatInfo.getVideoId(), index, queue.getCurrentIndex(), queue.size(),
-                    mPlayer.getCurrentTimeline().getWindowCount(), mPlayer.getCurrentWindowIndex());
-            return SWITCH_NOT_READY;
+        MediaSource source = queue.getMediaSource(index);
+
+        if (source == null) {
+            return SWITCH_NOT_QUEUED;
         }
 
-        Log.d(TAG, "Shorts: switching to preloaded item %s (index %s)", formatInfo.getVideoId(), index);
+        Log.d(TAG, "Shorts: switching to queued item %s (index %s)", formatInfo.getVideoId(), index);
 
         setQualityInfo("");
         // The track selection cache is synced with the new item in onTracksChanged (no invalidate here:
@@ -219,20 +187,39 @@ public class ExoPlayerController implements Player.EventListener {
         mTrackSelectorManager.onQueuedSourceSwitch();
         mOnSourceChanged = true;
         mEventListener.onSourceChanged(getVideo());
-        queue.setCurrentIndex(index);
         sSourceGeneration++;
         cancelItemEnd();
-        // Default position = where the background buffering started (keeps the preloaded data)
-        mPlayer.seekToDefaultPosition(index);
+        JoTubeTiming.mark("queued Short: setMediaSource (preloaded)");
+        mPlayer.setMediaSource(source);
+        mPlayer.prepare();
         mPlayer.setPlayWhenReady(true);
-        scheduleItemEnd();
+        queue.setCurrentIndex(index); // after the player has the source: the manager re-ranks the others
 
         return SWITCH_DONE;
     }
 
     /**
-     * Append the next Short to the player playlist. ExoPlayer starts buffering it in the background
-     * as soon as the current one is fully buffered.
+     * JoTube: a separate source of the same Short for the preview player (it can't share the queued one: a source
+     * belongs to one player at a time).
+     */
+    public static MediaSource createPreviewSource(MediaItemFormatInfo formatInfo) {
+        ExoPlayerController controller = sCurrent != null ? sCurrent.get() : null;
+
+        if (controller == null || formatInfo == null) {
+            return null;
+        }
+
+        if (formatInfo.containsDashFormats()) {
+            return controller.mMediaSourceFactory.fromDashFormatInfo(formatInfo);
+        } else if (formatInfo.containsSabrFormats()) {
+            return controller.mMediaSourceFactory.fromSabrFormatInfo(formatInfo);
+        }
+
+        return null;
+    }
+
+    /**
+     * Add the next Short to the queue. The preload manager starts loading it in the background.
      */
     public static boolean enqueueShort(MediaItemFormatInfo formatInfo) {
         return enqueueShort(formatInfo, 1);
@@ -271,16 +258,18 @@ public class ExoPlayerController implements Player.EventListener {
             return false;
         }
 
-        queue.insertAt(distance, formatInfo, mediaSource);
+        if (!queue.insertAt(distance, formatInfo, mediaSource)) {
+            return false;
+        }
+
         Log.d(TAG, "Shorts: preloading %s (+%s)", formatInfo.getVideoId(), distance);
 
         return true;
     }
 
     /**
-     * Fires shortly before the current Short ends, i.e. before ExoPlayer moves into the next (preloaded)
-     * playlist item by itself. The app decides what's next, exactly like at the end of a regular video
-     * (loop, next, pause...). Not removed after delivery, so it fires again after a loop.
+     * Fires shortly before the current Short ends. The app decides what's next, exactly like at the end of a regular
+     * video (loop, next, pause...). Not removed after delivery, so it fires again after a loop.
      */
     private void scheduleItemEnd() {
         ShortsQueue queue = ShortsQueue.getActive();
@@ -300,11 +289,12 @@ public class ExoPlayerController implements Player.EventListener {
 
         Timeline timeline = mPlayer.getCurrentTimeline();
 
-        if (index >= timeline.getWindowCount()) {
+        if (timeline.isEmpty()) {
             return; // scheduled on the next timeline change
         }
 
-        long durationMs = timeline.getWindow(index, new Timeline.Window()).getDurationMs();
+        // JoTube M3: the player plays one Short at a time: it is always window 0
+        long durationMs = timeline.getWindow(0, new Timeline.Window()).getDurationMs();
 
         if (durationMs == C.TIME_UNSET || durationMs <= ITEM_END_MARGIN_MS * 2) {
             return; // duration isn't known yet: scheduled on the next timeline change
@@ -312,8 +302,8 @@ public class ExoPlayerController implements Player.EventListener {
 
         mItemEndIndex = index;
         mItemEndMessage = mPlayer.createMessage((messageType, payload) -> onItemEnding(index))
-                .setPosition(index, durationMs - ITEM_END_MARGIN_MS)
-                .setHandler(mHandler)
+                .setPosition(0, durationMs - ITEM_END_MARGIN_MS)
+                .setLooper(mHandler.getLooper())
                 .setDeleteAfterDelivery(false)
                 .send();
     }
@@ -331,7 +321,8 @@ public class ExoPlayerController implements Player.EventListener {
         ShortsQueue queue = ShortsQueue.getActive();
 
         if (queue == null || mPlayer == null || queue.getCurrentIndex() != index ||
-                mPlayer.getCurrentWindowIndex() != index || !mPlayer.getPlayWhenReady() || isLoadingOtherVideo(queue)) {
+                !ShortsQueue.isPlayerOn(queue.getVideoId(index), mPlayer.getCurrentMediaItem()) ||
+                !mPlayer.getPlayWhenReady() || isLoadingOtherVideo(queue)) {
             return;
         }
 
@@ -346,43 +337,7 @@ public class ExoPlayerController implements Player.EventListener {
      */
     private boolean isLoadingOtherVideo(ShortsQueue queue) {
         Video video = getVideo();
-        return mPendingSwitch != null || (video != null && !Helpers.equals(video.videoId, queue.getCurrentVideoId()));
-    }
-
-    /**
-     * Fallback: the player moved into the next Short by itself (the end wasn't handled in time).
-     * Go back to the end of the finished Short and let the app decide (loop, next, pause...).
-     */
-    private boolean handleQueueAutoAdvance() {
-        ShortsQueue queue = ShortsQueue.getActive();
-
-        if (queue == null || mPlayer == null) {
-            return false;
-        }
-
-        int finished = queue.getCurrentIndex();
-        Timeline timeline = mPlayer.getCurrentTimeline();
-
-        if (mPlayer.getCurrentWindowIndex() == finished || finished >= timeline.getWindowCount()) {
-            return false;
-        }
-
-        if (isLoadingOtherVideo(queue)) {
-            // The app is already switching to another video: just keep the queue in sync with the player
-            queue.setCurrentIndex(mPlayer.getCurrentWindowIndex());
-            cancelItemEnd();
-            scheduleItemEnd();
-            return true;
-        }
-
-        long durationMs = timeline.getWindow(finished, new Timeline.Window()).getDurationMs();
-
-        // Paused, so the player doesn't move on by itself
-        mPlayer.setPlayWhenReady(false);
-        mPlayer.seekTo(finished, durationMs != C.TIME_UNSET ? durationMs : 0);
-        mEventListener.onPlayEnd();
-
-        return true;
+        return video != null && !Helpers.equals(video.videoId, queue.getCurrentVideoId());
     }
 
     // END SmartTube J
@@ -436,8 +391,23 @@ public class ExoPlayerController implements Player.EventListener {
         mTrackSelectorManager.setMergedSource(mediaSource instanceof MergingMediaSource);
         mTrackSelectorManager.invalidate();
         mOnSourceChanged = true;
-        mEventListener.onSourceChanged(getVideo());
-        mPlayer.prepare(mediaSource);
+        mStartPositionMs = C.TIME_UNSET;
+        mEventListener.onSourceChanged(getVideo()); // may call setStartPositionMs
+        long startPositionMs = mStartPositionMs;
+        mStartPositionMs = C.TIME_UNSET;
+        if (startPositionMs != C.TIME_UNSET && startPositionMs > 0) {
+            // JoTube M3: start at the saved position instead of seeking after the tracks are known
+            mPlayer.setMediaSource(mediaSource, startPositionMs);
+            mPlayer.prepare();
+        } else {
+            mPlayer.prepare(mediaSource);
+        }
+    }
+
+    private long mStartPositionMs = C.TIME_UNSET;
+
+    public void setStartPositionMs(long positionMs) {
+        mStartPositionMs = positionMs;
     }
 
     public long getPositionMs() {
@@ -454,7 +424,9 @@ public class ExoPlayerController implements Player.EventListener {
      */
     public void setPositionMs(long positionMs) {
         // Url list videos at load stage has undefined (-1) length. So, we need to remove length check.
-        if (mPlayer != null && positionMs >= 0 && positionMs <= getDurationMs()) {
+        // JoTube M3: Media3 keeps a seek made before the timeline is known (pending initial seek position).
+        long duration = getDurationMs();
+        if (mPlayer != null && positionMs >= 0 && (duration < 0 || positionMs <= duration)) {
             mPlayer.seekTo(positionMs);
         }
     }
@@ -485,7 +457,7 @@ public class ExoPlayerController implements Player.EventListener {
     public boolean isPlaying() {
         return ExoUtils.isPlaying(mPlayer);
     }
-    
+
     public boolean isLoading() {
         return ExoUtils.isLoading(mPlayer);
     }
@@ -493,7 +465,7 @@ public class ExoPlayerController implements Player.EventListener {
     public boolean isBuffering() {
         return ExoUtils.isBuffering(mPlayer);
     }
-    
+
     public boolean containsMedia() {
         if (mPlayer == null) {
             return false;
@@ -501,10 +473,9 @@ public class ExoPlayerController implements Player.EventListener {
 
         return mPlayer.getPlaybackState() != Player.STATE_IDLE;
     }
-    
+
     public void release() {
         ShortsQueue.setActive(null);
-        cancelPendingSwitch();
         cancelItemEnd();
         mTrackSelectorManager.release();
         mMediaSourceFactory.release();
@@ -513,10 +484,85 @@ public class ExoPlayerController implements Player.EventListener {
         // Don't destroy it (needed inside the bridge)!
         //mEventListener = null;
     }
-    
-    public void setPlayer(SimpleExoPlayer player) {
+
+    public void setPlayer(ExoPlayer player) {
         mPlayer = player;
         player.addListener(this);
+        player.addAnalyticsListener(new androidx.media3.exoplayer.analytics.AnalyticsListener() {
+            @Override
+            public void onVideoDecoderInitialized(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime, String decoderName,
+                                                  long initializedTimestampMs, long initializationDurationMs) {
+                JoTubeTiming.mark("video decoder " + decoderName + " init " + initializationDurationMs + " ms");
+            }
+
+            @Override
+            public void onAudioDecoderInitialized(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime, String decoderName,
+                                                  long initializedTimestampMs, long initializationDurationMs) {
+                JoTubeTiming.mark("audio decoder " + decoderName + " init " + initializationDurationMs + " ms");
+            }
+
+            @Override
+            public void onVideoInputFormatChanged(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime,
+                                                  androidx.media3.common.Format format,
+                                                  @androidx.annotation.Nullable androidx.media3.exoplayer.DecoderReuseEvaluation decoderReuseEvaluation) {
+                // First Format of the video stream reaching the renderer (before the decoder is created / reused)
+                JoTubeTiming.mark("video format " + format.width + "x" + format.height + (decoderReuseEvaluation != null ?
+                        " reuse result " + decoderReuseEvaluation.result : ""));
+            }
+
+            @Override
+            public void onVideoSizeChanged(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime,
+                                           androidx.media3.common.VideoSize videoSize) {
+                JoTubeTiming.mark("video size " + videoSize.width + "x" + videoSize.height);
+            }
+
+            // JoTube: breakdown of a Shorts switch (what the playback thread does between setMediaSource and the first frame)
+            @Override
+            public void onVideoEnabled(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime,
+                                       androidx.media3.exoplayer.DecoderCounters counters) {
+                JoTubeTiming.mark("video renderer enabled");
+            }
+
+            @Override
+            public void onVideoDisabled(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime,
+                                        androidx.media3.exoplayer.DecoderCounters counters) {
+                JoTubeTiming.mark("video renderer disabled");
+            }
+
+            @Override
+            public void onAudioEnabled(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime,
+                                       androidx.media3.exoplayer.DecoderCounters counters) {
+                JoTubeTiming.mark("audio renderer enabled");
+            }
+
+            @Override
+            public void onAudioDisabled(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime,
+                                        androidx.media3.exoplayer.DecoderCounters counters) {
+                JoTubeTiming.mark("audio renderer disabled");
+            }
+
+            @Override
+            public void onVideoDecoderReleased(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime, String decoderName) {
+                JoTubeTiming.mark("video decoder released " + decoderName);
+            }
+
+            @Override
+            public void onTimelineChanged(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime, int reason) {
+                JoTubeTiming.mark("timeline changed (" + reason + ")");
+            }
+
+            @Override
+            public void onPositionDiscontinuity(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime,
+                                                androidx.media3.common.Player.PositionInfo oldPosition,
+                                                androidx.media3.common.Player.PositionInfo newPosition, int reason) {
+                JoTubeTiming.mark("position discontinuity (" + reason + ")");
+            }
+
+            @Override
+            public void onDroppedVideoFrames(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime eventTime, int droppedFrames, long elapsedMs) {
+                JoTubeTiming.mark("dropped video frames " + droppedFrames + " in " + elapsedMs + " ms");
+            }
+        });
         sCurrent = new WeakReference<>(this);
     }
 
@@ -524,30 +570,30 @@ public class ExoPlayerController implements Player.EventListener {
     //public void setEventListener(PlayerEventListener eventListener) {
     //    mEventListener = eventListener;
     //}
-    
+
     public void setPlayerView(PlayerView playerView) {
         mPlayerView = playerView;
     }
-    
+
+    public void setPreloadTrackSelector(RestoreTrackSelector selector) {
+        mTrackSelectorManager.setPreloadTrackSelector(selector);
+    }
+
     public void setTrackSelector(DefaultTrackSelector trackSelector) {
         mTrackSelectorManager.setTrackSelector(trackSelector);
         mTunnelingTrackSelector = null;
 
         // JoTube: tunneled playback is off for every video (the setting is ignored). In tunnel mode each start
         // waited ~0.5 s for the A/V sync on the Streamer, and the video frame can't be captured for transitions.
+        // M3: Media3 switches tunneling with Parameters.setTunnelingEnabled (no audio session id any more).
         if (TUNNELING_ALLOWED && mContext != null && trackSelector != null && PlayerTweaksData.instance(mContext).isTunneledPlaybackEnabled()) {
-            // Enable tunneling if supported by the current media and device configuration.
-            if (VERSION.SDK_INT >= 21) {
-                mTunnelingSessionId = C.generateAudioSessionIdV21(mContext);
-                mTunnelingTrackSelector = trackSelector;
-                trackSelector.setParameters(trackSelector.buildUponParameters().setTunnelingAudioSessionId(mTunnelingSessionId));
-            }
+            mTunnelingTrackSelector = trackSelector;
+            trackSelector.setParameters(trackSelector.buildUponParameters().setTunnelingEnabled(true));
         }
     }
 
     private static final boolean TUNNELING_ALLOWED = false;
     private DefaultTrackSelector mTunnelingTrackSelector; // tunneling is enabled in the settings
-    private int mTunnelingSessionId = C.AUDIO_SESSION_ID_UNSET;
 
     /**
      * JoTube: no tunneled playback for Shorts. In tunnel mode every Short switch re-creates the audio track and
@@ -560,33 +606,33 @@ public class ExoPlayerController implements Player.EventListener {
             return;
         }
 
-        int sessionId = ShortsTransitionState.isShortsMode() ? C.AUDIO_SESSION_ID_UNSET : mTunnelingSessionId;
+        boolean tunneling = !ShortsTransitionState.isShortsMode();
 
-        if (trackSelector.getParameters().tunnelingAudioSessionId != sessionId) {
-            trackSelector.setParameters(trackSelector.buildUponParameters().setTunnelingAudioSessionId(sessionId));
+        if (trackSelector.getParameters().tunnelingEnabled != tunneling) {
+            trackSelector.setParameters(trackSelector.buildUponParameters().setTunnelingEnabled(tunneling));
         }
     }
-    
+
     public void setVideo(Video video) {
         mVideo = new WeakReference<>(video);
     }
-    
+
     public Video getVideo() {
         return mVideo != null ? mVideo.get() : null;
     }
-    
+
     public List<FormatItem> getVideoFormats() {
         return ExoFormatItem.from(mTrackSelectorManager.getVideoTracks());
     }
-    
+
     public List<FormatItem> getAudioFormats() {
         return ExoFormatItem.from(mTrackSelectorManager.getAudioTracks());
     }
-    
+
     public List<FormatItem> getSubtitleFormats() {
         return ExoFormatItem.from(mTrackSelectorManager.getSubtitleTracks());
     }
-    
+
     public void selectFormat(FormatItem formatItem) {
         if (formatItem != null && formatItem.getTrack() != null) {
             FormatItem selectedFormatItem = getSelectedFormat(formatItem.getTrack().rendererIndex);
@@ -614,7 +660,26 @@ public class ExoPlayerController implements Player.EventListener {
     }
 
     @Override
-    public void onTracksChanged(TrackGroupArray trackGroups, TrackSelectionArray trackSelections) {
+    public void onPlaybackStateChanged(int playbackState) {
+        JoTubeTiming.mark("player state " + playbackState); // 2 = buffering, 3 = ready
+
+        if (playbackState == Player.STATE_READY) {
+            ShortsQueue queue = ShortsQueue.getActive();
+
+            if (queue != null) {
+                queue.releasePreloadHold(); // the Short has started: preload the next ones now
+            }
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    @Override
+    public void onTracksChanged(Tracks tracks) {
+        JoTubeTiming.mark("tracks changed");
+        // M3: the 2.10 callback got the renderer track groups and selections; ExoPlayer still exposes both
+        // (deprecated getters), which keeps the per-renderer logic below unchanged.
+        TrackGroupArray trackGroups = mPlayer != null ? mPlayer.getCurrentTrackGroups() : TrackGroupArray.EMPTY;
+        TrackSelectionArray trackSelections = mPlayer != null ? mPlayer.getCurrentTrackSelections() : new TrackSelectionArray();
         Log.d(TAG, "onTracksChanged: start: groups length: " + trackGroups.length);
 
         if (trackGroups.length == 0) {
@@ -642,7 +707,7 @@ public class ExoPlayerController implements Player.EventListener {
                 mTrackFormatter.setFormat(format);
             }
         }
-        
+
         setQualityInfo(mTrackFormatter.getQualityLabel());
 
         // Manage audio focus. E.g. use Spotify when audio is disabled. (NOT NEEDED!!!)
@@ -667,7 +732,7 @@ public class ExoPlayerController implements Player.EventListener {
     }
 
     @Override
-    public void onTimelineChanged(Timeline timeline, Object manifest, int reason) {
+    public void onTimelineChanged(Timeline timeline, int reason) {
         // Shorts queue: the duration of the current item becomes known
         if (ShortsQueue.getActive() != null) {
             scheduleItemEnd();
@@ -675,16 +740,104 @@ public class ExoPlayerController implements Player.EventListener {
     }
 
     @Override
-    public void onPlayerError(ExoPlaybackException error) {
-        Log.e(TAG, "onPlayerError: " + error);
+    public void onPlayerError(PlaybackException playbackError) {
+        Log.e(TAG, "onPlayerError: " + playbackError);
 
         // NOTE: Player is released at this point. So, there is no sense to restore the playback here.
 
-        Throwable nested = error.getCause() != null ? error.getCause() : error;
+        // JoTube M3: a live stream fell behind its window: jump to the live edge, not a client/CDN problem
+        if (playbackError.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW && mPlayer != null) {
+            mPlayer.seekToDefaultPosition();
+            mPlayer.prepare();
+            return;
+        }
 
-        mEventListener.onEngineError(error.type, error.rendererIndex, nested);
+        // JoTube M3: rented/purchased movies are DRM protected: retrying never helps (it looped every ~2 s), say it once
+        if (isDrmError(playbackError)) {
+            com.liskovsoft.sharedutils.helpers.MessageHelpers.showLongMessage(mContext,
+                    "Skyddat innehåll (hyrd/köpt film) kan inte spelas i JoTube");
+            return;
+        }
+
+        Throwable nested = playbackError.getCause() != null ? playbackError.getCause() : playbackError;
+
+        // M3: Media3 no longer says "Unable to connect to"; map the network errors to the old message for ErrorFixerController
+        if (isConnectError(playbackError)) {
+            nested = new IOException("Unable to connect to: " + nested.getMessage(), nested);
+        }
+
+        // M3: ExoPlayer reports ExoPlaybackException; an OutOfMemoryError is TYPE_UNEXPECTED now (2.10 had its own type)
+        int type = ExoPlaybackException.TYPE_UNEXPECTED;
+        int rendererIndex = C.INDEX_UNSET;
+        if (playbackError instanceof ExoPlaybackException) {
+            ExoPlaybackException error = (ExoPlaybackException) playbackError;
+            type = error.type;
+            rendererIndex = error.rendererIndex;
+        }
+        if (nested instanceof OutOfMemoryError) {
+            type = PlayerEventListener.ERROR_TYPE_OUT_OF_MEMORY;
+        }
+        // JoTube M3: the fork reported transient MediaCodec IllegalStateExceptions as TYPE_UNEXPECTED (FORK_CHANGES D);
+        // Media3 wraps them as ERROR_CODE_DECODING_FAILED / TYPE_RENDERER, which would lower the saved preset.
+        if (type == ExoPlaybackException.TYPE_RENDERER && playbackError.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED) {
+            Throwable root = nested;
+            while (root.getCause() != null && root.getCause() != root) {
+                root = root.getCause();
+            }
+            if (root instanceof IllegalStateException && !(root instanceof android.media.MediaCodec.CodecException)) {
+                type = ExoPlaybackException.TYPE_UNEXPECTED;
+                nested = root;
+            }
+        }
+
+        mEventListener.onEngineError(type, rendererIndex, nested);
     }
 
+    private static boolean isDrmError(PlaybackException error) {
+        if (error.errorCode >= PlaybackException.ERROR_CODE_DRM_UNSPECIFIED && error.errorCode <= PlaybackException.ERROR_CODE_DRM_LICENSE_EXPIRED) {
+            return true;
+        }
+
+        for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+            if (cause instanceof androidx.media3.exoplayer.drm.DrmSession.DrmSessionException
+                    || cause instanceof androidx.media3.exoplayer.drm.UnsupportedDrmException) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * 2.10 said "Unable to connect to" only when opening a connection failed with an IOException.
+     * Not for a bad HTTP status or content type (also TYPE_OPEN in Media3: 403 etc. keep their own handling),
+     * not for read errors and not for Cronet errors (ErrorFixerController has its own Cronet branch).
+     */
+    private static boolean isConnectError(PlaybackException error) {
+        boolean connectError = false;
+
+        for (Throwable cause = error.getCause(); cause != null; cause = cause.getCause()) {
+            String message = cause.getMessage();
+            if (message != null && message.contains("Exception in CronetUrlRequest")) {
+                return false;
+            }
+
+            if (cause instanceof HttpDataSourceException
+                    && !(cause instanceof HttpDataSource.InvalidResponseCodeException)
+                    && !(cause instanceof HttpDataSource.InvalidContentTypeException)) {
+                HttpDataSourceException httpError = (HttpDataSourceException) cause;
+                if (httpError.type == HttpDataSourceException.TYPE_OPEN &&
+                        (httpError.reason == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                         httpError.reason == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT)) {
+                    connectError = true;
+                }
+            }
+        }
+
+        return connectError;
+    }
+
+    @SuppressWarnings("deprecation") // M3: still called by ExoPlayer (one callback for both values, like 2.10)
     @Override
     public void onPlayerStateChanged(boolean playWhenReady, int playbackState) {
         if (BuildConfig.DEBUG) {
@@ -718,23 +871,22 @@ public class ExoPlayerController implements Player.EventListener {
     }
 
     @Override
-    public void onPositionDiscontinuity(int reason) {
-        Log.e(TAG, "onPositionDiscontinuity");
+    public void onPositionDiscontinuity(Player.PositionInfo oldPosition, Player.PositionInfo newPosition, int reason) {
+        Log.d(TAG, "onPositionDiscontinuity");
+
+        // M3: onSeekProcessed is gone; the seek discontinuity is the closest event (reported when the seek starts)
+        // SEEK_ADJUSTMENT: the seek landed on another position (e.g. a sync sample): refresh the ending time and chapter
+        if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) {
+            mEventListener.onSeekEnd();
+            return;
+        }
 
         // Fix video loop on 480p with legacy codes enabled
-        if (reason == Player.DISCONTINUITY_REASON_PERIOD_TRANSITION) {
-            if (handleQueueAutoAdvance()) {
-                return;
-            }
-
+        // M3: DISCONTINUITY_REASON_PERIOD_TRANSITION became DISCONTINUITY_REASON_AUTO_TRANSITION
+        if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION) {
             mPlayer.stop();
             mEventListener.onPlayEnd();
         }
-    }
-
-    @Override
-    public void onSeekProcessed() {
-        mEventListener.onSeekEnd();
     }
 
     public float getSpeed() {
@@ -780,7 +932,7 @@ public class ExoPlayerController implements Player.EventListener {
             //applyVolumeBoost(volume);
         }
     }
-    
+
     public float getVolume() {
         if (mPlayer != null) {
             return mPlayer.getVolume();
@@ -796,14 +948,14 @@ public class ExoPlayerController implements Player.EventListener {
      */
     public void resetPlayerState() {
         ShortsQueue.setActive(null);
-        cancelPendingSwitch();
         cancelItemEnd();
 
         if (containsMedia()) {
-            mPlayer.stop(true);
+            mPlayer.stop(); // M3: stop(true) = stop() + clearMediaItems()
+            mPlayer.clearMediaItems();
         }
     }
-    
+
     public void setOnVideoLoaded(Runnable onVideoLoaded) {
         mOnVideoLoaded = onVideoLoaded;
     }
@@ -820,7 +972,7 @@ public class ExoPlayerController implements Player.EventListener {
         }
 
         if (mVolumeBooster != null) {
-            mPlayer.removeAudioListener(mVolumeBooster);
+            mPlayer.removeListener(mVolumeBooster);
             mVolumeBooster = null;
         }
 
@@ -828,10 +980,10 @@ public class ExoPlayerController implements Player.EventListener {
         // also, other 2.0 tracks in 5.1 group is already too loud. so cancel them too.
         if (volume > 1f && !contains51Audio() && Build.VERSION.SDK_INT >= 19) {
             mVolumeBooster = new VolumeBooster(true, volume, null);
-            mPlayer.addAudioListener(mVolumeBooster);
+            mPlayer.addListener(mVolumeBooster);
         }
     }
-    
+
     private boolean contains51Audio() {
         if (mTrackSelectorManager == null || mTrackSelectorManager.getAudioTracks() == null) {
             return false;
@@ -853,7 +1005,8 @@ public class ExoPlayerController implements Player.EventListener {
 
         try {
             mPlayer.removeListener(this);
-            mPlayer.stop(true); // Cause input lags due to high cpu load?
+            mPlayer.stop(); // Cause input lags due to high cpu load?
+            mPlayer.clearMediaItems();
             mPlayer.clearVideoSurface();
             mPlayer.release();
         } catch (ArrayIndexOutOfBoundsException e) { // thrown on stop()

@@ -2,9 +2,10 @@ package com.liskovsoft.smartyoutubetv2.common.exoplayer.selector;
 
 import android.text.TextUtils;
 import android.util.Pair;
-import com.google.android.exoplayer2.Format;
-import com.google.android.exoplayer2.Player;
-import com.google.android.exoplayer2.util.MimeTypes;
+import androidx.media3.common.Format;
+import com.liskovsoft.media3.sabr.parser.models.SabrFormatMetadata;
+import androidx.media3.common.Player;
+import androidx.media3.common.MimeTypes;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.track.SubtitleTrack;
 
@@ -213,7 +214,7 @@ public class TrackSelectorUtil {
     }
 
     public static boolean isDrc(Format format) {
-        return format != null && (Helpers.endsWithAny(format.id, "drc") || format.isDrc);
+        return format != null && (Helpers.endsWithAny(format.id, "drc") || SabrFormatMetadata.isDrc(format));
     }
 
     public static boolean is51Audio(Format format) {

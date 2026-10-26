@@ -1,0 +1,1 @@
+-keep class com.liskovsoft.media3.sabr.protos.** { *; }

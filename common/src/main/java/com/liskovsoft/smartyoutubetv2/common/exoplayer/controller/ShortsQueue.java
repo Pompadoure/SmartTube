@@ -1,52 +1,111 @@
 package com.liskovsoft.smartyoutubetv2.common.exoplayer.controller;
 
-import com.google.android.exoplayer2.source.ConcatenatingMediaSource;
-import com.google.android.exoplayer2.source.MediaSource;
+import androidx.annotation.Nullable;
+import androidx.media3.common.MediaItem;
+import androidx.media3.exoplayer.source.MediaSource;
+import androidx.media3.exoplayer.source.preload.DefaultPreloadManager;
+import androidx.media3.exoplayer.source.preload.PreloadException;
+import androidx.media3.exoplayer.source.preload.PreloadManagerListener;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * SmartTube J: Shorts are played from a player playlist, so ExoPlayer buffers the next Shorts
- * in the background (it starts loading the next item once the current one is fully buffered).
- * Switching to a queued Short is a seek inside the playlist: no new source, no player reset.
+ * JoTube M3 (stage 4): Shorts are preloaded by a {@link DefaultPreloadManager}. Every queued Short is a source in the
+ * manager; the player plays one Short at a time (a source taken from the manager), so there is no playlist and no
+ * timeline to keep in sync. Switching to a queued Short = playing its (preloaded) source.
  *
- * The id list here is the single source of truth. The player's timeline is updated asynchronously,
- * so a switch is only allowed while both have the same size. Items are never removed during a session
- * (removal is what made the indexes go out of sync); inactive items hold no buffered media.
+ * The entry list is the single source of truth and is kept in feed order. Entries are never removed from the list during
+ * a session (indices stay valid); Shorts more than KEEP_BEHIND behind the current one are only taken out of the manager.
+ * The manager ranks a Short by a stable key (order preserving, with gaps for insertions).
  *
  * Only accessed from the main thread.
  */
 public final class ShortsQueue {
     private static final int MAX_SIZE = 50;
+    private static final int KEEP_BEHIND = 2;
+    private static final int KEY_GAP = 1 << 16;
     // Stream urls are valid for ~6 h, the poToken ~12 h. Stay well below.
     public static final long FORMAT_INFO_MAX_AGE_MS = 60 * 60 * 1000;
     private static volatile ShortsQueue sActive;
-    private final ConcatenatingMediaSource mPlaylist;
-    private final List<String> mVideoIds = new ArrayList<>();
-    private final List<MediaItemFormatInfo> mFormatInfos = new ArrayList<>();
-    private final List<Long> mAddedTimesMs = new ArrayList<>();
+    private static volatile Runnable sChangeListener; // JoTube: the preview player follows the queue
+
+    private static final class Entry {
+        final String videoId;
+        final MediaItemFormatInfo formatInfo;
+        final long addedTimeMs = System.currentTimeMillis();
+        final MediaItem mediaItem;
+        final int key;
+        volatile boolean failed; // the preload failed (403, expired poToken...): swipe to it with a normal fetch
+        boolean removed; // taken out of the preload manager (far behind the current Short): swipe to it with a normal fetch
+
+        Entry(MediaItemFormatInfo formatInfo, MediaSource source, int key) {
+            this.videoId = formatInfo.getVideoId();
+            this.formatInfo = formatInfo;
+            this.mediaItem = source.getMediaItem();
+            this.key = key;
+        }
+    }
+
+    private final DefaultPreloadManager mPreloadManager;
+    private final ShortsPreloadControl mPreloadControl;
+    private final List<Entry> mEntries = new ArrayList<>();
     private int mCurrentIndex;
+    private boolean mReleased;
+    // The first Short of a queue is still starting: the manager doesn't preload the next ones yet (they would share the
+    // network with the first segments of the Short the user waits for)
+    private boolean mPreloadHeld = true;
+    private final PreloadManagerListener mPreloadListener;
 
-    ShortsQueue(MediaItemFormatInfo formatInfo, MediaSource first) {
-        mPlaylist = new ConcatenatingMediaSource(first);
-        mVideoIds.add(formatInfo.getVideoId());
-        mFormatInfos.add(formatInfo);
-        mAddedTimesMs.add(System.currentTimeMillis());
+    ShortsQueue(DefaultPreloadManager preloadManager, ShortsPreloadControl preloadControl, MediaItemFormatInfo formatInfo, MediaSource first) {
+        mPreloadManager = preloadManager;
+        mPreloadControl = preloadControl;
+        // A failed preload never reaches the player's error callback: remember it so the swipe doesn't play a broken source
+        mPreloadListener = new PreloadManagerListener() {
+            @Override
+            public void onError(PreloadException exception) {
+                for (Entry e : mEntries) {
+                    if (e.mediaItem.equals(exception.mediaItem)) {
+                        e.failed = true;
+                    }
+                }
+            }
+        };
+        mPreloadManager.addListener(mPreloadListener);
+        Entry entry = new Entry(formatInfo, first, 0);
+        mEntries.add(entry);
         mCurrentIndex = 0;
+        publish();
+        mPreloadManager.add(first, entry.key);
+        mPreloadManager.setCurrentPlayingIndex(entry.key);
     }
 
-    MediaSource getPlaylist() {
-        return mPlaylist;
+    /**
+     * The source to play for the Short (the preloaded one if the manager has loaded it already).
+     */
+    @Nullable
+    MediaSource getMediaSource(int index) {
+        return index >= 0 && index < mEntries.size() && !mReleased && !mEntries.get(index).removed ?
+                mPreloadManager.getMediaSource(mEntries.get(index).mediaItem) : null;
     }
 
-    int indexOf(String videoId) {
-        return videoId != null ? mVideoIds.indexOf(videoId) : -1;
+    public int indexOf(String videoId) {
+        if (videoId == null) {
+            return -1;
+        }
+
+        for (int i = 0; i < mEntries.size(); i++) {
+            if (videoId.equals(mEntries.get(i).videoId)) {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     int size() {
-        return mVideoIds.size();
+        return mEntries.size();
     }
 
     boolean contains(String videoId) {
@@ -57,48 +116,169 @@ public final class ShortsQueue {
         return mCurrentIndex;
     }
 
-    String getCurrentVideoId() {
-        return mCurrentIndex >= 0 && mCurrentIndex < mVideoIds.size() ? mVideoIds.get(mCurrentIndex) : null;
+    String getVideoId(int index) {
+        return index >= 0 && index < mEntries.size() ? mEntries.get(index).videoId : null;
+    }
+
+    public String getCurrentVideoId() {
+        return getVideoId(mCurrentIndex);
     }
 
     void setCurrentIndex(int index) {
         mCurrentIndex = index;
+        mPreloadHeld = false; // the user moved on: the next Shorts are wanted now
+
+        if (!mReleased && index >= 0 && index < mEntries.size()) {
+            publish();
+            notifyChanged();
+            removeFarBehind(index);
+            mPreloadManager.setCurrentPlayingIndex(mEntries.get(index).key);
+            mPreloadManager.invalidate(); // preload around the new position
+        }
+    }
+
+    // Bounds the memory of a long session: a played Short far behind isn't swiped back to
+    private void removeFarBehind(int current) {
+        for (int i = 0; i < current - KEEP_BEHIND; i++) {
+            Entry entry = mEntries.get(i);
+
+            if (!entry.removed) {
+                entry.removed = true;
+                mPreloadManager.remove(entry.mediaItem);
+            }
+        }
     }
 
     boolean isFull() {
-        return mVideoIds.size() >= MAX_SIZE;
+        return mEntries.size() >= MAX_SIZE;
     }
 
     /**
      * The stream urls of the item are still valid.
      */
     boolean isActual(int index) {
-        MediaItemFormatInfo formatInfo = index >= 0 && index < mFormatInfos.size() ? mFormatInfos.get(index) : null;
-        return formatInfo != null && formatInfo.isCacheActual() &&
-                System.currentTimeMillis() - mAddedTimesMs.get(index) < FORMAT_INFO_MAX_AGE_MS;
+        Entry entry = index >= 0 && index < mEntries.size() ? mEntries.get(index) : null;
+        return entry != null && !entry.failed && !entry.removed && entry.formatInfo.isCacheActual() &&
+                System.currentTimeMillis() - entry.addedTimeMs < FORMAT_INFO_MAX_AGE_MS;
     }
 
     /**
      * Insert at the given distance after the current item (1 = plays next), keeping the feed order.
+     *
+     * @return false if the Short couldn't be queued
      */
-    void insertAt(int distance, MediaItemFormatInfo formatInfo, MediaSource source) {
-        int index = Math.min(mCurrentIndex + Math.max(1, distance), mVideoIds.size());
-        mPlaylist.addMediaSource(index, source);
-        mVideoIds.add(index, formatInfo.getVideoId());
-        mFormatInfos.add(index, formatInfo);
-        mAddedTimesMs.add(index, System.currentTimeMillis());
+    boolean insertAt(int distance, MediaItemFormatInfo formatInfo, MediaSource source) {
+        if (mReleased) {
+            return false;
+        }
+
+        int index = Math.min(mCurrentIndex + Math.max(1, distance), mEntries.size());
+        int before = index > 0 ? mEntries.get(index - 1).key : -KEY_GAP;
+        int key;
+
+        if (index == mEntries.size()) {
+            key = before + KEY_GAP;
+        } else {
+            int after = mEntries.get(index).key;
+
+            if (after - before < 2) {
+                return false; // no gap left between the neighbours (very rare: ~16 inserts into the same gap)
+            }
+
+            key = before + (after - before) / 2;
+        }
+
+        mEntries.add(index, new Entry(formatInfo, source, key));
+        publish();
+        notifyChanged();
+        mPreloadManager.add(source, key);
+
+        if (!mPreloadHeld) {
+            mPreloadManager.invalidate();
+        }
+
+        return true;
     }
 
-    static void setActive(ShortsQueue queue) {
+    /**
+     * The playing Short has started (ready): the manager may preload the queued ones now.
+     */
+    void releasePreloadHold() {
+        if (!mPreloadHeld) {
+            return;
+        }
+
+        mPreloadHeld = false;
+
+        if (!mReleased && mEntries.size() > 1) {
+            mPreloadManager.invalidate();
+        }
+    }
+
+    public static void setChangeListener(@Nullable Runnable listener) {
+        sChangeListener = listener;
+    }
+
+    private static void notifyChanged() {
+        Runnable listener = sChangeListener;
+
+        if (listener != null) {
+            listener.run();
+        }
+    }
+
+    /**
+     * JoTube: format info of the Short that plays after the current one (null if none or its urls are stale).
+     */
+    public static MediaItemFormatInfo getNextFormatInfo() {
+        ShortsQueue queue = sActive;
+
+        if (queue == null || queue.mReleased) {
+            return null;
+        }
+
+        int index = queue.mCurrentIndex + 1;
+
+        return queue.isActual(index) ? queue.mEntries.get(index).formatInfo : null;
+    }
+
+    private void publish() {
+        int[] keys = new int[mEntries.size()];
+
+        for (int i = 0; i < keys.length; i++) {
+            keys[i] = mEntries.get(i).key;
+        }
+
+        mPreloadControl.update(keys, mCurrentIndex);
+    }
+
+    private void release() {
+        if (!mReleased) {
+            mReleased = true;
+            mPreloadManager.removeListener(mPreloadListener); // the manager outlives the queue
+            mPreloadControl.update(new int[0], -1);
+            mPreloadManager.reset();
+        }
+    }
+
+    /**
+     * Makes the queue the active one; the previous one is released (its preloaded sources are dropped).
+     */
+    static void setActive(@Nullable ShortsQueue queue) {
+        ShortsQueue old = sActive;
         sActive = queue;
+
+        if (old != null && old != queue) {
+            old.release();
+        }
     }
 
-    static ShortsQueue getActive() {
+    public static ShortsQueue getActive() {
         return sActive;
     }
 
     /**
-     * Used by the UI to skip the "black screen" reset when the video is already in the player.
+     * Used by the UI to skip the "black screen" reset when the video is already in the queue.
      */
     public static boolean isQueued(String videoId) {
         ShortsQueue queue = sActive;
@@ -116,8 +296,8 @@ public final class ShortsQueue {
             return result;
         }
 
-        for (int i = queue.mCurrentIndex + 1; i < queue.mVideoIds.size() && result.size() < max; i++) {
-            result.add(queue.mVideoIds.get(i));
+        for (int i = queue.mCurrentIndex + 1; i < queue.mEntries.size() && result.size() < max; i++) {
+            result.add(queue.mEntries.get(i).videoId);
         }
 
         return result;
@@ -126,15 +306,30 @@ public final class ShortsQueue {
     /**
      * JoTube: false if the video is in the queue but the player is still on another item (a frame of the
      * previous Short, rendered before the switch to this one was made).
+     *
+     * @param playing the media item the player plays now
      */
-    public static boolean isPlayerOn(String videoId, int windowIndex) {
+    public static boolean isPlayerOn(String videoId, @Nullable MediaItem playing) {
         ShortsQueue queue = sActive;
         int index = queue != null ? queue.indexOf(videoId) : -1;
-        return index == -1 || index == windowIndex;
+        return index == -1 || (playing != null && queue.mEntries.get(index).mediaItem.mediaId.equals(playing.mediaId));
     }
 
     /**
-     * Format info of a Short that is already in the player (e.g. the previous one), so going back
+     * JoTube: the queued stream data of this Short must not be reused (e.g. the SABR server asked for a new player
+     * response): the next load of it fetches the format info again, like after a failed preload.
+     */
+    public static void invalidate(String videoId) {
+        ShortsQueue queue = sActive;
+        int index = queue != null ? queue.indexOf(videoId) : -1;
+
+        if (index != -1) {
+            queue.mEntries.get(index).failed = true;
+        }
+    }
+
+    /**
+     * Format info of a Short that is already queued (e.g. the previous one), so going back
      * doesn't wait for the network. Null if the video isn't queued (or it's the current one).
      */
     public static MediaItemFormatInfo getQueuedFormatInfo(String videoId) {
@@ -146,6 +341,6 @@ public final class ShortsQueue {
 
         int index = queue.indexOf(videoId);
 
-        return queue.isActual(index) ? queue.mFormatInfos.get(index) : null;
+        return queue.isActual(index) ? queue.mEntries.get(index).formatInfo : null;
     }
 }

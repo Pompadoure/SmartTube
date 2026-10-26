@@ -362,7 +362,22 @@ public class VideoLoaderController extends BasePlayerController {
                     if (now != null && videoId.equals(now.videoId) && getPlayer() != null) {
                         getPlayer().setVideo(now); // already on it: the panel gets the avatar now
                     }
+
+                    // JoTube M3: the Short after the next one too (swiping fast: its avatar is there as well)
+                    Video after = shortAfter(now, next);
+                    Utils.postDelayed(() -> prefetchMetadata(after), 100); // the running action is done by then
                 }, error -> Log.e(TAG, "Shorts: metadata prefetch failed for %s: %s", videoId, error.getMessage()));
+    }
+
+    private Video shortAfter(Video current, Video prefetched) {
+        if (current == null || prefetched == null) {
+            return null;
+        }
+
+        List<Video> ahead = getShortsLookahead(current);
+        int index = ahead.indexOf(prefetched);
+
+        return index >= 0 && index + 1 < ahead.size() ? ahead.get(index + 1) : null;
     }
 
     /**
@@ -405,6 +420,8 @@ public class VideoLoaderController extends BasePlayerController {
             ShortsTransitionState.setShortsMode(item.isShorts && !item.isLive);
             ShortsTransitionState.setLive(item.isLive);
             if (item.isShorts) {
+                // JoTube M3: Shorts switch time (request -> first frame), same log as the regular start
+                JoTubeTiming.click("shorts " + item.videoId);
                 VideoGroup feed = item.getGroup();
                 if (feed != null) {
                     mShortsFeedGroup = feed;
@@ -450,7 +467,7 @@ public class VideoLoaderController extends BasePlayerController {
             return;
         }
 
-        if (current.nextMediaItem != null) {
+        if (current.nextMediaItem != null && !com.liskovsoft.smartyoutubetv2.common.app.models.playback.controllers.SuggestionsController.sMusicOnly) {
             openVideoInt(Video.from(current.nextMediaItem));
         } else if (!current.isSynced) { // Maybe there's nothing left. E.g. when casting from phone
             // Wait in a loop while suggestions have been loaded...
@@ -484,6 +501,7 @@ public class VideoLoaderController extends BasePlayerController {
         final MediaItemFormatInfo prefetched = cached != null ? cached : ShortsQueue.getQueuedFormatInfo(video.videoId);
         if (prefetched != null) {
             Log.d(TAG, "Using prefetched format info for %s", video.videoId);
+            JoTubeTiming.mark("format info: prefetched");
             mCurrentFromPrefetch = true;
             // Keep the original async order (the player state is reset at this point)
             Utils.post(() -> {
@@ -512,6 +530,7 @@ public class VideoLoaderController extends BasePlayerController {
         mFormatInfoAction = mediaItemManager.getFormatInfoObserveForeground(video.videoId)
                 .subscribe(this::processFormatInfo,
                            error -> {
+                               JoTubeTiming.cancel(); // a failed start must not leak into the next measurement
                                // JoTube: the player may be gone when the async error arrives
                                PlaybackView player = getPlayer();
                                if (player != null) {
@@ -847,7 +866,11 @@ public class VideoLoaderController extends BasePlayerController {
 
         VideoGroup group = current.getGroup();
 
-        if (group != null && !group.isEmpty()) {
+        // JoTube M3: a Short opened from another list (the Shorts shelf on Home, search...) doesn't play that list in a row:
+        // the Shorts feed (varied, personal) follows. A channel keeps its own order.
+        boolean fromOtherList = !current.belongsToShorts() && !current.belongsToChannelShorts();
+
+        if (group != null && !group.isEmpty() && !fromOtherList) {
             boolean found = false;
 
             for (Video item : group.getVideos()) {
@@ -868,7 +891,7 @@ public class VideoLoaderController extends BasePlayerController {
         // JoTube: a Short opened from another list (e.g. the Shorts shelf on Home, a channel): when that list ends,
         // carry on with the Shorts feed (like the official app) instead of stopping at "Please wait..."
         // (not for a channel: its Shorts play in the order of the channel, nothing random is added)
-        if (result.size() < PREFETCH_LOOKAHEAD && !current.belongsToShorts() && !current.belongsToChannelShorts()) {
+        if (result.size() < PREFETCH_LOOKAHEAD && fromOtherList) {
             appendFallbackShorts(current, group, result);
         }
 
@@ -1258,6 +1281,18 @@ public class VideoLoaderController extends BasePlayerController {
     private void applyAspectRatio(MediaItemFormatInfo formatInfo) {
         if (getPlayer() == null) {
             return;
+        }
+
+        // JoTube M3: a Short's frame gets its shape from the format info (SABR too), not only when the first frame is
+        // decoded: switching between normal and wide Shorts doesn't wait for the decoder
+        if (!formatInfo.containsDashFormats() && getVideo() != null && getVideo().isShorts &&
+                formatInfo.getAdaptiveFormats() != null) {
+            for (MediaFormat format : formatInfo.getAdaptiveFormats()) {
+                if (format != null && format.getWidth() > 0 && format.getHeight() > 0) {
+                    getPlayer().setAspectRatio((float) format.getWidth() / format.getHeight());
+                    return;
+                }
+            }
         }
 
         // Fix stretched video for a couple milliseconds (before the onVideoSizeChanged gets called)

@@ -5,7 +5,6 @@ import android.os.Build.VERSION;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.support.v4.media.MediaMetadataCompat;
-import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
 import android.text.TextUtils;
 import android.view.KeyEvent;
@@ -36,17 +35,16 @@ import com.github.vkay94.dtpv.DoubleTapPlayerAdapter;
 import com.github.vkay94.dtpv.DoubleTapPlayerView;
 import com.github.vkay94.dtpv.youtube.YouTubeOverlay;
 import com.github.vkay94.dtpv.youtube.YouTubeOverlay.PerformListener;
-import com.google.android.exoplayer2.ControlDispatcher;
-import com.google.android.exoplayer2.DefaultControlDispatcher;
-import com.google.android.exoplayer2.DefaultRenderersFactory;
-import com.google.android.exoplayer2.Player;
-import com.google.android.exoplayer2.SimpleExoPlayer;
-import com.google.android.exoplayer2.ext.leanback.LeanbackPlayerAdapter;
-import com.google.android.exoplayer2.ext.mediasession.MediaSessionConnector;
-import com.google.android.exoplayer2.trackselection.AdaptiveTrackSelection;
-import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
-import com.google.android.exoplayer2.util.Util;
-import com.google.android.exoplayer2.video.VideoListener;
+import androidx.media3.common.ForwardingPlayer;
+import androidx.media3.common.MediaMetadata;
+import androidx.media3.exoplayer.DefaultRenderersFactory;
+import androidx.media3.common.Player;
+import androidx.media3.exoplayer.ExoPlayer;
+import com.liskovsoft.smartyoutubetv2.tv.ui.playback.other.JoLeanbackPlayerAdapter;
+import androidx.media3.session.MediaSession;
+import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection;
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
+import androidx.media3.common.util.Util;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.sharedutils.mylogger.Log;
@@ -85,7 +83,6 @@ import com.liskovsoft.smartyoutubetv2.tv.ui.mod.leanback.misc.ProgressBarManager
 import com.liskovsoft.smartyoutubetv2.tv.ui.mod.leanback.playerglue.tweaks.PlaybackTransportRowPresenter;
 import com.liskovsoft.smartyoutubetv2.tv.ui.playback.mod.SeekModePlaybackFragment;
 import com.liskovsoft.smartyoutubetv2.tv.ui.playback.mod.surface.SurfacePlaybackFragmentGlueHost;
-import com.liskovsoft.smartyoutubetv2.tv.ui.playback.other.BackboneQueueNavigator;
 import com.liskovsoft.smartyoutubetv2.tv.ui.playback.other.VideoPlayerGlue;
 import com.liskovsoft.smartyoutubetv2.tv.ui.playback.other.VideoPlayerGlue.OnActionClickedListener;
 import com.liskovsoft.smartyoutubetv2.tv.ui.playback.previewtimebar.StoryboardSeekDataProvider;
@@ -109,7 +106,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     private static final int UPDATE_DELAY_MS = 100;
     private static final int SUGGESTIONS_START_INDEX = 1;
     private VideoPlayerGlue mPlayerGlue;
-    private SimpleExoPlayer mPlayer;
+    private ExoPlayer mPlayer;
     private PlaybackPresenter mPlaybackPresenter;
     private ArrayObjectAdapter mRowsAdapter;
     private ListRowPresenter mRowPresenter;
@@ -124,8 +121,8 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     private RowsSupportFragment mRowsSupportFragment;
     private boolean mIsUIAnimationsEnabled = false;
     private boolean mIsEngineBlocked;
-    private MediaSessionCompat mMediaSession;
-    private MediaSessionConnector mMediaSessionConnector;
+    private MediaSession mMediaSession; // M3: media3-session (replaces MediaSessionCompat + MediaSessionConnector)
+    private SessionPlayer mSessionPlayer;
     private DoubleTapPlayerAdapter mDoubleTapPlayerAdapter;
     private YouTubeOverlay mYouTubeOverlay;
     private Boolean mIsControlsShownPreviously;
@@ -133,16 +130,17 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     private String mSelectedVideoId;
     private final ShortsTransitionOverlay mShortsTransition = new ShortsTransitionOverlay();
     private final ShortsBackground mShortsBackground = new ShortsBackground();
+    private final ShortsPreview mShortsPreview = new ShortsPreview();
     private final ShortsSidePanel mShortsPanel = new ShortsSidePanel();
     private Video mLastVideo; // the video before the current one (for the Shorts swipe)
     private int mCoverGeneration = -1; // the player's source when the transition cover was shown
     private long mCoverTimeMs;
-    private final VideoListener mFirstFrameListener = new VideoListener() {
+    private final Player.Listener mFirstFrameListener = new Player.Listener() {
         @Override
         public void onRenderedFirstFrame() {
             // JoTube: only the frame of the video the overlay waits for (not a late one of the previous Short)
             Video video = getVideo();
-            if (mPlayer != null && video != null && !ShortsQueue.isPlayerOn(video.videoId, mPlayer.getCurrentWindowIndex())) {
+            if (mPlayer != null && video != null && !ShortsQueue.isPlayerOn(video.videoId, mPlayer.getCurrentMediaItem())) {
                 return;
             }
             // A frame of the previous video, delivered after the new one was requested (no new source yet)
@@ -154,6 +152,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             Log.d(TAG, "First frame rendered: %s", video != null ? video.videoId : null);
             JoTubeTiming.markFirstFrame();
             mShortsTransition.hide(true);
+            mShortsPreview.onMainFirstFrame();
             if (video != null && video.isShorts) {
                 // JoTube: the blurred backgrounds of the next Shorts, ready before the swipe
                 ShortsBackground.preload(getContext(), ShortsQueue.getUpcomingIds(3));
@@ -161,12 +160,13 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         }
     };
     // JoTube: no first frame will come (error, audio only): don't let the thumbnail cover the screen
-    private final Player.EventListener mTransitionStateListener = new Player.EventListener() {
+    private final Player.Listener mTransitionStateListener = new Player.Listener() {
         @Override
-        public void onPlayerError(com.google.android.exoplayer2.ExoPlaybackException error) {
+        public void onPlayerError(androidx.media3.common.PlaybackException error) {
             mShortsTransition.hide(false);
         }
 
+        @SuppressWarnings("deprecation") // M3: still called by ExoPlayer
         @Override
         public void onPlayerStateChanged(boolean playWhenReady, int playbackState) {
             if (playbackState == Player.STATE_READY && mPlayer != null && mPlayer.getVideoFormat() == null) {
@@ -225,6 +225,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         getProgressBarManager().disableProgressBar();
 
         // Above the video surface, below the controls
+        mShortsTransition.setPreview(mShortsPreview, getPlayerTweaksData().isShortsPreviewPlayerEnabled());
         mShortsTransition.attach((ViewGroup) root);
         mShortsBackground.attach((ViewGroup) root);
         mShortsPanel.attach((ViewGroup) root, new ShortsSidePanel.Callback() {
@@ -514,18 +515,11 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             mRowsSupportFragment.getBridgeAdapter().getPresenterMapper().clear();
             mRowsSupportFragment = null;
         }
-        if (mMediaSessionConnector != null) {
-            mMediaSessionConnector.setPlayer(null);
-            mMediaSessionConnector.setControlDispatcher(null);
-            mMediaSessionConnector.setMediaMetadataProvider(null);
-            mMediaSessionConnector.setQueueNavigator(null);
-            mMediaSessionConnector = null;
-        }
         if (mMediaSession != null) {
-            mMediaSession.setActive(false);
             mMediaSession.release();
             mMediaSession = null;
         }
+        mSessionPlayer = null;
         if (mPlayerGlue != null) {
             ((PlaybackTransportRowPresenter) mPlayerGlue.getPlaybackRowPresenter()).setOnActionLongClickedListener(null);
             ((PlaybackTransportRowPresenter) mPlayerGlue.getPlaybackRowPresenter()).setOnActionClickedListener(null);
@@ -538,7 +532,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             mDebugInfoManager = null;
         }
         if (mPlayer != null) {
-            mPlayer.removeVideoListener(mFirstFrameListener);
+            mPlayer.removeListener(mFirstFrameListener);
             mPlayer.removeListener(mTransitionStateListener);
         }
         mShortsTransition.hide(false);
@@ -580,23 +574,34 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         initializeDoubleTapHandler();
     }
 
+    private RestoreTrackSelector newTrackSelector() {
+        return new RestoreTrackSelector(new AdaptiveTrackSelection.Factory(3_000, 25_000, 25_000, 0.85f));
+    }
+
     private void createPlayer() {
         // Use default or pass your bandwidthMeter here: bandwidthMeter = new DefaultBandwidthMeter.Builder(getContext()).build()
         // JoTube: fast start. Quality goes up as soon as 3 s is buffered and the measured bandwidth allows it.
-        DefaultTrackSelector trackSelector = new RestoreTrackSelector(new AdaptiveTrackSelection.Factory(
-                ExoMediaSourceFactory.getBandwidthMeter(), 3_000, 25_000, 25_000, 0.85f));
+        // M3: the bandwidth meter isn't passed to the factory any more: ExoPlayer hands its own meter (set in
+        // ExoPlayerInitializer: ExoMediaSourceFactory.getBandwidthMeter) to the track selector.
+        DefaultTrackSelector trackSelector = newTrackSelector();
         mExoPlayerController.setTrackSelector(trackSelector);
 
         DefaultRenderersFactory renderersFactory = new CustomOverridesRenderersFactory(getContext());
-        mPlayer = mPlayerInitializer.createPlayer(getContext(), renderersFactory, trackSelector);
-        mPlayer.addVideoListener(mFirstFrameListener);
+        // JoTube M3: built together with the preload manager (Shorts); its selector selects like the player's
+        mPlayer = mPlayerInitializer.createPlayer(getContext(), renderersFactory, trackSelector, ctx -> {
+            RestoreTrackSelector preloadSelector = newTrackSelector();
+            mExoPlayerController.setPreloadTrackSelector(preloadSelector);
+            return preloadSelector;
+        });
+        mPlayer.addListener(mFirstFrameListener);
         mPlayer.addListener(mTransitionStateListener);
 
         mExoPlayerController.setPlayer(mPlayer);
+        mExoPlayerController.setPreloadManager(mPlayerInitializer.getPreloadManager(), mPlayerInitializer.getPreloadControl());
     }
 
     private void createPlayerGlue() {
-        PlayerAdapter playerAdapter = new LeanbackPlayerAdapter(getContext(), mPlayer, UPDATE_DELAY_MS); // NOTE: possible context memory leak
+        PlayerAdapter playerAdapter = new JoLeanbackPlayerAdapter(getContext(), mPlayer, UPDATE_DELAY_MS); // NOTE: possible context memory leak. M3: copy with the no-surface fix
 
         OnActionClickedListener playerActionListener = new PlayerActionListener();
         mPlayerGlue = new VideoPlayerGlue(getContext(), playerAdapter, playerActionListener); // NOTE: possible context memory leak
@@ -619,10 +624,8 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         if (mSubtitleManager == null) {
             mSubtitleManager = new SubtitleManager(getView().findViewById(R.id.leanback_subtitles));
 
-            // subs renderer
-            if (mPlayer.getTextComponent() != null) {
-                mPlayer.getTextComponent().addTextOutput(mSubtitleManager);
-            }
+            // subs renderer (M3: cues arrive as Player.Listener.onCues)
+            mPlayer.addListener(mSubtitleManager);
         }
     }
 
@@ -712,77 +715,129 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         });
     }
 
+    /**
+     * M3: a session player that can tell the session's listeners about new metadata (a new video in the same player).
+     */
+    private static class SessionPlayer extends ForwardingPlayer {
+        private final List<Player.Listener> mSessionListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+        SessionPlayer(Player player) {
+            super(player);
+        }
+
+        @Override
+        public void addListener(Player.Listener listener) {
+            super.addListener(listener);
+            mSessionListeners.add(listener);
+        }
+
+        @Override
+        public void removeListener(Player.Listener listener) {
+            super.removeListener(listener);
+            mSessionListeners.remove(listener);
+        }
+
+        void notifyMediaMetadataChanged() {
+            MediaMetadata metadata = getMediaMetadata();
+            for (Player.Listener listener : mSessionListeners) {
+                listener.onMediaMetadataChanged(metadata);
+            }
+        }
+    }
+
     private void createMediaSession() {
-        if (VERSION.SDK_INT <= 19 || getContext() == null) {
-            // Fix Android 4.4 bug: java.lang.IllegalArgumentException: MediaButtonReceiver component may not be null
+        if (getContext() == null || mPlayer == null) {
             return;
         }
 
         // NOTE: No way to disable only a notifications. We need to disable the media session instead.
-        boolean disableNotifications = getPlayerTweaksData().isPlaybackNotificationsDisabled();
-        mMediaSession = new MediaSessionCompat(getContext().getApplicationContext(), getContext().getPackageName()); // NOTE: mem leak fix (SegmentTimelineElement)
-        mMediaSession.setActive(!disableNotifications);
-        mMediaSessionConnector = new MediaSessionConnector(mMediaSession);
-
-        try {
-            mMediaSessionConnector.setPlayer(mPlayer);
-        } catch (NoSuchMethodError e) {
-            // Android 9, Sony
-            // No virtual method setState(IJFJ)Landroid/media/session/PlaybackState$Builder;
-            // in class Landroid/media/session/PlaybackState$Builder;
+        // M3: a media3 MediaSession is always active, so a disabled one isn't created at all (was setActive(false)).
+        if (getPlayerTweaksData().isPlaybackNotificationsDisabled()) {
             return;
         }
 
-        // NOTE: Don't set to null. This won't disable a notifications but makes them empty.
-        mMediaSessionConnector.setMediaMetadataProvider(player -> {
-            if (getVideo() == null) {
-                return null;
-            }
-
-            MediaMetadataCompat.Builder metadataBuilder = new MediaMetadataCompat.Builder();
-
-            metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, getVideo().videoId);
-            metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_TITLE, getVideo().getTitleFull());
-            metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, getVideo().getTitleFull());
-            metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_ARTIST, getVideo().getAuthor());
-            metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, Helpers.toString(getVideo().getSecondTitleFull()));
-            metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, getVideo().getCardImageUrl());
-            metadataBuilder.putLong(MediaMetadataCompat.METADATA_KEY_DURATION, getDurationMs());
-
-            return metadataBuilder.build();
-        });
-
-        mMediaSessionConnector.setQueueNavigator(new BackboneQueueNavigator() {
+        // M3: the MediaSessionConnector parts (metadata provider, queue navigator, control dispatcher) live in a
+        // ForwardingPlayer the session talks to. The session reads the metadata only on onMediaMetadataChanged, so
+        // setVideo() calls notifyMediaMetadataChanged() (MediaSessionConnector re-read it on every player event).
+        // The duration comes from the player itself.
+        SessionPlayer sessionPlayer = new SessionPlayer(mPlayer) {
             @Override
-            public long getSupportedQueueNavigatorActions(Player player) {
-                return PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS | PlaybackStateCompat.ACTION_SKIP_TO_NEXT;
+            public MediaMetadata getMediaMetadata() {
+                Video video = getVideo();
+                if (video == null) {
+                    return super.getMediaMetadata();
+                }
+
+                MediaMetadata.Builder builder = new MediaMetadata.Builder()
+                        .setTitle(video.getTitleFull())
+                        .setDisplayTitle(video.getTitleFull())
+                        .setArtist(video.getAuthor())
+                        .setSubtitle(Helpers.toString(video.getSecondTitleFull()));
+                if (video.getCardImageUrl() != null) {
+                    builder.setArtworkUri(android.net.Uri.parse(video.getCardImageUrl()));
+                }
+                return builder.build();
             }
 
             @Override
-            public void onSkipToPrevious(Player player, ControlDispatcher controlDispatcher) {
+            public boolean isCommandAvailable(int command) {
+                return command == COMMAND_SEEK_TO_NEXT || command == COMMAND_SEEK_TO_PREVIOUS || super.isCommandAvailable(command);
+            }
+
+            @Override
+            public Commands getAvailableCommands() {
+                return super.getAvailableCommands().buildUpon().add(COMMAND_SEEK_TO_NEXT).add(COMMAND_SEEK_TO_PREVIOUS).build();
+            }
+
+            @Override
+            public void seekToPrevious() {
                 mPlaybackPresenter.onPreviousClicked();
             }
 
             @Override
-            public void onSkipToNext(Player player, ControlDispatcher controlDispatcher) {
+            public void seekToNext() {
                 mPlaybackPresenter.onNextClicked();
             }
-        });
 
-        // Fix exoplayer pause when switching AFR. The code seems buggy.
-        mMediaSessionConnector.setControlDispatcher(new DefaultControlDispatcher() {
-            @Override
-            public boolean dispatchSetPlayWhenReady(Player player, boolean playWhenReady) {
-                // Fix exoplayer pause after activity is resumed (AFR switching).
-                // It's tied to activity state transitioning because window has different mode.
-                // NOTE: may be a problems with background playback or bluetooth button events
-                if (System.currentTimeMillis() - getPlayerData().getAfrSwitchTimeMs() < 5_000) {
-                    return false;
-                }
-
-                return super.dispatchSetPlayWhenReady(player, playWhenReady);
+            // Fix exoplayer pause when switching AFR. The code seems buggy.
+            // Fix exoplayer pause after activity is resumed (AFR switching).
+            // It's tied to activity state transitioning because window has different mode.
+            // NOTE: may be a problems with background playback or bluetooth button events
+            private boolean isAfrSwitching() {
+                return System.currentTimeMillis() - getPlayerData().getAfrSwitchTimeMs() < 5_000;
             }
-        });
+
+            @Override
+            public void setPlayWhenReady(boolean playWhenReady) {
+                if (!isAfrSwitching()) {
+                    super.setPlayWhenReady(playWhenReady);
+                }
+            }
+
+            @Override
+            public void play() {
+                if (!isAfrSwitching()) {
+                    super.play();
+                }
+            }
+
+            @Override
+            public void pause() {
+                if (!isAfrSwitching()) {
+                    super.pause();
+                }
+            }
+        };
+
+        try {
+            mMediaSession = new MediaSession.Builder(getContext().getApplicationContext(), sessionPlayer)
+                    .setId(getContext().getPackageName() + "." + SystemClock.uptimeMillis()) // unique per player instance
+                    .build();
+            mSessionPlayer = sessionPlayer;
+        } catch (RuntimeException e) {
+            // E.g. a session with the same id that wasn't released yet
+            Log.e(TAG, "createMediaSession: " + e.getMessage());
+        }
     }
 
     private void initializePlayerRows() {
@@ -950,10 +1005,19 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             mPlayerGlue.setVideo(video);
         }
 
-        if (video != null && video.isShorts) {
+        // A swipe to another Short: resetPlayerState() changes the panel together with the slide
+        boolean swipePending = video != null && mLastVideo != null && mLastVideo.isShorts && video.isShorts &&
+                ShortsTransitionState.peekDirection() != ShortsTransitionState.DIRECTION_NONE &&
+                !Helpers.equals(mLastVideo.videoId, video.videoId);
+
+        if (video != null && video.isShorts && !swipePending) {
             mShortsPanel.bind(video);
         }
         updateShortsPanel();
+
+        if (mSessionPlayer != null && mMediaSession != null) {
+            mSessionPlayer.notifyMediaMetadataChanged();
+        }
     }
 
     /**
@@ -998,14 +1062,31 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
      * Blurred thumbnail next to the vertical video (like the official app), only for Shorts.
      */
     private void updateShortsBackground(Video video) {
+        updateShortsBackground(video, ShortsTransitionState.DIRECTION_NONE);
+    }
+
+    /**
+     * @param direction the swipe direction: the background cross-fades as long as the slide, the panel content moves with it
+     */
+    private void updateShortsBackground(Video video, int direction) {
+        boolean animate = direction != ShortsTransitionState.DIRECTION_NONE;
+
         if (video != null && video.isShorts && !isInPIPMode()) {
-            mShortsBackground.show(video);
+            if (animate) {
+                mShortsBackground.show(video, ShortsTransitionOverlay.SWIPE_DURATION_MS);
+            } else {
+                mShortsBackground.show(video);
+            }
         } else {
             mShortsBackground.hide();
         }
 
         if (video != null && video.isShorts) {
-            mShortsPanel.bind(video);
+            if (animate) {
+                mShortsPanel.bindAnimated(video, direction);
+            } else {
+                mShortsPanel.bind(video);
+            }
         }
         updateShortsPanel();
     }
@@ -1152,6 +1233,11 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     @Override
     public void setPositionMs(long positionMs) {
         mExoPlayerController.setPositionMs(positionMs);
+    }
+
+    @Override
+    public void setStartPositionMs(long positionMs) {
+        mExoPlayerController.setStartPositionMs(positionMs);
     }
 
     @Override
@@ -1304,6 +1390,12 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
     @Override
     public void setAspectRatio(float ratio) {
+        Video video = getVideo();
+
+        if (ratio > 0 && video != null && video.isShorts && !video.isLive) {
+            mShortsPanel.setVideoAspect(ratio); // the frame is shaped before the first frame
+        }
+
         setAspect(ratio);
     }
 
@@ -1787,19 +1879,30 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                 direction != ShortsTransitionState.DIRECTION_NONE && !isInPIPMode() &&
                 !Helpers.equals(previous.videoId, video.videoId);
 
+        mShortsPreview.onMainStarting();
         if (video != null && ShortsQueue.getQueuedFormatInfo(video.videoId) != null) {
             // Preloaded Short: it's already in the player, keep everything as is (no black screen, no reset).
             // The swipe covers the moment until the new video's first frame is rendered.
             if (swipe) {
                 // The old video is still on the surface: its last frame slides out
                 mShortsTransition.swipe(previous, video, direction, getSurfaceView());
+                // Background, frame shape and panel change together with the slide (the format info of a preloaded
+                // Short is known already, so its frame doesn't reshape in the middle of the slide)
+                final float queuedAspect = getQueuedAspect(video);
+                final int slideDirection = direction;
+                mShortsTransition.runAtSlideStart(() -> {
+                    if (queuedAspect > 0) {
+                        mShortsPanel.setVideoAspect(queuedAspect);
+                    }
+                    updateShortsBackground(video, slideDirection);
+                });
             } else {
                 mShortsTransition.hide(false);
                 if (!isInPIPMode()) {
                     mShortsTransition.showIfSlow(video, 250);
                 }
+                updateShortsBackground(video);
             }
-            updateShortsBackground(video);
             setChatReceiver(null);
             setSeekBarSegments(null);
             setSeekPreviewTitle(null);
@@ -1826,10 +1929,34 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                 showBackgroundColor(R.color.player_background);
             }
         });
-        updateShortsBackground(video);
+        if (swipe) {
+            final int slideDirection = direction;
+            mShortsTransition.runAtSlideStart(() -> updateShortsBackground(video, slideDirection));
+        } else {
+            updateShortsBackground(video);
+        }
         setChatReceiver(null);
         setSeekBarSegments(null);
         setSeekPreviewTitle(null);
+    }
+
+    /**
+     * JoTube: width / height of a preloaded Short from its format info (0 if unknown).
+     */
+    private static float getQueuedAspect(Video video) {
+        MediaItemFormatInfo info = video != null ? ShortsQueue.getQueuedFormatInfo(video.videoId) : null;
+
+        if (info == null || info.getAdaptiveFormats() == null) {
+            return 0;
+        }
+
+        for (com.liskovsoft.mediaserviceinterfaces.data.MediaFormat format : info.getAdaptiveFormats()) {
+            if (format != null && format.getWidth() > 0 && format.getHeight() > 0) {
+                return (float) format.getWidth() / format.getHeight();
+            }
+        }
+
+        return 0;
     }
 
     @Override
