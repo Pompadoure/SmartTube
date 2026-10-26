@@ -93,11 +93,11 @@ jobs:
               done
             fi
             # Failed unit tests (test name + first line of the failure), one annotation
-            fails=$(grep -E "Test > .* FAILED$" -A1 build.log | grep -v "^--$" | head -60)
+            fails=$(grep -E "Test > .* FAILED$" -A1 build.log | grep -v "^--$" | head -60 || true)
             if [ -n "$fails" ]; then
               echo "::error::UNIT TEST FAILURES%0A$(echo "$fails" | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
             fi
-            wrong=$(grep -E "What went wrong" -A3 build.log | head -8)
+            wrong=$(grep -E "What went wrong" -A3 build.log | head -8 || true)
             echo "::error::WHAT WENT WRONG%0A$(echo "$wrong" | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
             exit 1
           fi
