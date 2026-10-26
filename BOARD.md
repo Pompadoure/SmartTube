@@ -11,16 +11,11 @@ or a task is unclear/blocked, Jules writes that under "Requests" and stops. Clau
 Johan's instructions override both.
 
 ## Task queue for Jules (Claude writes here; top = next)
-| # | Task | Branch to create | Allowed files / areas | Done when |
+Note 2026-10-26: Johan archived the earlier Jules jobs (role-swap review PR #2, hello test #3). New flow starts with the mobile music player problem.
+| # | Task | Branch to create (base: media3-mobile) | Allowed files / areas | Done when |
 |---|---|---|---|---|
-| 0 | TEST TASK: create `docs/agents/jules-hello.md` containing (a) the branch you based your work on, (b) the 5 most important hard rules from AGENTS.md section 4 in your own words, (c) one question for Claude about the repo. No other file changes. | m3/jules-hello | `docs/agents/jules-hello.md` only | PR into `media3`; Log line on the board |
-| 1 | Unit tests for `media3-sabr` (no behaviour change; test only what exists) | m3/jules-sabr-tests | `media3-sabr/src/test/**` only | `:media3-sabr:testReleaseUnitTest` green in CI; PR into `media3` |
-
-## How Jules asks for input (Johan's decision 2026-10-26)
-Jules: if you need input, a decision, or you are blocked, do not stop silently. Write a comment on your issue/PR that starts
-with `NEEDS INPUT:` and asks one concrete question (also add it under "Requests" here). Claude checks all comments hourly
-(scheduled task), answers in the same thread and decides. Johan only gets asked when Claude cannot decide.
-Dispatch: Claude creates a GitHub issue with the label `jules` for each queue task (Jules picks it up at once).
+| 1 | Mobile: in-app "Share log" (dump this app's own logcat, last ~5 min, to a file and open the Android share sheet) + a settings entry for it. Johan has no way to see what happens on his phone. | m3m/jules-share-log | NEW files in `smarttubemobile/` plus one settings entry. Do NOT edit PlaybackActivity, MediaPlaybackService, SuggestionsController, VideoLoaderController, ErrorFixerController (Claude owns them) | PR into `media3-mobile`, CI `build-mobile` green |
+| 2 | Independent review of Claude's PR for the music load fix (when Claude posts it as a request) | review only | read-only | `REVIEW:` comment on the PR |
 
 ## Reply protocol (Jules <-> Claude), binding for every task
 Claude reads **GitHub comments** (the issue that assigned your task, and your PR). Your chat in the Jules app is NOT read.
@@ -52,7 +47,8 @@ Areas: `Shorts player`, `SABR / media3-sabr`, `MediaServiceCore patches`, `TV UI
 ## Active claims
 | Agent | Task | Branch | Areas / files | Started (UTC) | Updated (UTC) |
 |---|---|---|---|---|---|
-| Claude | Shorts role swap: remove the still image at the hand-over (review + merge) | m3/role-swap-3 | Shorts player: ShortsLiveSwitch, ShortsPreview, PlaybackFragment, ExoPlayerController, JoLeanbackPlayerAdapter | 2026-10-24 | 2026-10-25 |
+| Claude | Shorts role swap: still-image fix merged (PR #4), waiting for device test with Johan | media3 (build d438f009) | Shorts player: ShortsLiveSwitch, ShortsPreview, PlaybackFragment, ExoPlayerController, JoLeanbackPlayerAdapter | 2026-10-24 | 2026-10-25 |
+| Claude | Mobile music player: slow next song + `loadSuggestions error: UnknownHostException` toast (hypothesis: no CPU/Wi-Fi lock between songs) | m3m/music-load | MediaPlaybackService, PlaybackActivity (music part), SuggestionsController, VideoLoaderController, ErrorFixerController | 2026-10-26 | 2026-10-26 |
 
 ## Requests (agent to agent)
 _none_
@@ -61,5 +57,6 @@ _none_
 - (Old note) Jules had no task; now see the queue. Suggested start: tasks that do not touch the Shorts player (docs, unit tests for `media3-sabr`, cleanup of stale branches listed under Log).
 
 ## Log (newest first)
+- 2026-10-26 Claude: PR #2 closed (superseded by PR #4, merged: Shorts still fix, build d438f009). New work: mobile music load; Jules gets the share-log task.
 - 2026-10-26 Claude: set the rule "Claude leads, Jules executes" and added the task queue.
 - 2026-10-25 Claude: created AGENTS.md (branch m3/agents-md) and this board.
