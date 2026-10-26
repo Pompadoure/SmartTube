@@ -388,11 +388,13 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         channelRow.setGravity(Gravity.CENTER_VERTICAL);
         channelRow.setPadding(0, Ui.dp(this, 14), 0, Ui.dp(this, 10));
         mAvatarView = avatar(40);
+        mAvatarView.setOnClickListener(v -> onChannelTapped());
         ((LinearLayout.LayoutParams) mAvatarView.getLayoutParams()).setMarginEnd(Ui.dp(this, 12));
         channelRow.addView(mAvatarView);
         LinearLayout names = new LinearLayout(this);
         names.setOrientation(LinearLayout.VERTICAL);
         mAuthorView = text(15, R.color.yt_text, true);
+        mAuthorView.setOnClickListener(v -> onChannelTapped());
         mAuthorView.setMaxLines(1);
         mAuthorView.setEllipsize(TextUtils.TruncateAt.END);
         names.addView(mAuthorView);
@@ -1028,9 +1030,11 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         LinearLayout channel = new LinearLayout(this);
         channel.setGravity(Gravity.CENTER_VERTICAL);
         mShortAvatar = avatar(36);
+        mShortAvatar.setOnClickListener(v -> onChannelTapped());
         ((LinearLayout.LayoutParams) mShortAvatar.getLayoutParams()).setMarginEnd(Ui.dp(this, 10));
         channel.addView(mShortAvatar);
         mShortAuthor = text(15, R.color.yt_text, true);
+        mShortAuthor.setOnClickListener(v -> onChannelTapped());
         mShortAuthor.setMaxLines(1);
         mShortAuthor.setEllipsize(TextUtils.TruncateAt.END);
         mShortAuthor.setShadowLayer(4, 0, 0, 0xFF000000);
