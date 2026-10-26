@@ -839,6 +839,8 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
             enterPip();
             if (!isFinishing()) {
                 new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this::openPendingChannel, 800);
+            } else {
+                openPendingChannel(); // no floating window possible: the channel page still opens
             }
             return;
         }
