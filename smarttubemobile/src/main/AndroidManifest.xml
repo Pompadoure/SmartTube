@@ -84,6 +84,7 @@
             android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity"
             android:exported="false"
             android:launchMode="singleTask"
+            android:taskAffinity="${applicationId}.playback"
             android:supportsPictureInPicture="true"
             android:resizeableActivity="true"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
