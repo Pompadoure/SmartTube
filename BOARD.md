@@ -17,6 +17,16 @@ Note 2026-10-26: Johan archived the earlier Jules jobs (role-swap review PR #2, 
 | 1 | Mobile: in-app "Share log" (dump this app's own logcat, last ~5 min, to a file and open the Android share sheet) + a settings entry for it. Johan has no way to see what happens on his phone. | m3m/jules-share-log | NEW files in `smarttubemobile/` plus one settings entry. Do NOT edit PlaybackActivity, MediaPlaybackService, SuggestionsController, VideoLoaderController, ErrorFixerController (Claude owns them) | PR into `media3-mobile`, CI `build-mobile` green |
 | 2 | Independent review of Claude's PR for the music load fix (when Claude posts it as a request) | review only | read-only | `REVIEW:` comment on the PR |
 
+## Claude <-> Jules API channel (works since 2026-10-26)
+Claude talks to Jules through the Jules REST API, run by the workflow `jules-api` (branch agent-board, secret JULES_API_KEY):
+- `status`: writes `JULES_STATUS.md` on this branch: every recent session with state, PR link and its latest activities (plan, progress,
+  Jules' own messages, failures, shell commands with exit codes). Claude reads this instead of waiting for GitHub comments.
+- `message` / `approve` / `create`: Claude sends instructions to a running session, approves a plan, or starts a task with an EXPLICIT
+  starting branch (fixes the "wrong base branch" problem).
+Limit seen today: Jules cannot comment on GitHub on its own (only its "on it" / "ready for review" comments and the PR text). So the
+`PROGRESS:` / `FAILED:` comment protocol is replaced by: put your report in the PR description and in your final chat message
+(`DONE:` / `FAILED:` text); Claude reads the activities and your final message via the API and answers with sendMessage.
+
 ## Reply protocol (Jules <-> Claude), binding for every task
 Claude reads **GitHub comments** (the issue that assigned your task, and your PR). Your chat in the Jules app is NOT read.
 Always answer in the issue/PR thread of the task, starting the comment with one of these keywords:
