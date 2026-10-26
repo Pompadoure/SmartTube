@@ -117,7 +117,10 @@ public class SplashPresenter extends BasePresenter<SplashView> {
     private void runBackgroundTasks() {
         YouTubeServiceManager.instance().refreshCacheIfNeeded(); // warm up player engine
         enableHistoryIfNeeded();
-        Utils.updateChannels(getContext());
+        // JoTube: the home channels sync (subscriptions, recommended: several network calls) is not run while the first
+        // video starts: on the Streamer it ran together with the first Short, whose format info then took 6.4 s.
+        final android.content.Context channelsContext = getContext();
+        Utils.postDelayed(() -> Utils.updateChannels(channelsContext), 60_000);
         GDriveBackupWorker.schedule(getContext());
         LocalDriveBackupWorker.schedule(getContext());
     }
