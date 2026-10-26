@@ -46,6 +46,7 @@ public class MediaPlaybackService extends MediaSessionService {
     public static void bind(Context context, Player player) {
         Context app = context.getApplicationContext();
         sPlayer = new SessionPlayer(app, player);
+        PlaybackNetworkLock.attach(app, player); // the network stays awake between two songs too
         com.liskovsoft.smartyoutubetv2.mobile.ui.podcast.PodcastPlayer.pause(); // one sound at a time
         attach(app, sPlayer);
     }
@@ -126,6 +127,7 @@ public class MediaPlaybackService extends MediaSessionService {
     /** The YouTube playback screen released its player. */
     public static void unbind() {
         sPlayer = null;
+        PlaybackNetworkLock.detach();
 
         if (sPodcastPlayer != null && sSession != null) {
             sSession.setPlayer(sPodcastPlayer);
