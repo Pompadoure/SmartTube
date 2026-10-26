@@ -38,11 +38,12 @@ final class ShortsLiveSwitch {
     private static final int GAP_DP = 24;
     private static final long OPEN_TIMEOUT_MS = 8_000; // the core didn't open the Short (format info): give up
     private static final long HAND_OVER_TIMEOUT_MS = 700; // no first frame on the main surface: uncover anyway
+    private static final long HAND_OVER_SAFETY_MS = 2000; // from takeForAdoption until onAdopted starts the real timeout
     // After the surface move the adopted player renders its next frame on the main surface within a frame or two; the
     // spare frame on top only shows its last picture by then (a still: device test 2026-10-24 22:43), so it goes away
     // this soon instead of waiting for the first-frame callback (100-250 ms late on a busy main thread)
     private static final long UNCOVER_POLL_MS = 16;
-    private java.util.concurrent.atomic.AtomicBoolean mFrameShown; // a frame of the adopted player on the main surface
+    private java.util.concurrent.atomic.AtomicLong mFrameShownAtNs; // nanoTime when the first frame of the adopted player is on the main surface (0 = none yet)
     private static final long DIAG_AFTER_MS = 5_000; // glitches of the adopted player right after the swap are logged
 
     interface Host {
@@ -92,8 +93,9 @@ final class ShortsLiveSwitch {
     private final Runnable mUncover = new Runnable() {
         @Override
         public void run() {
-            java.util.concurrent.atomic.AtomicBoolean shown = mFrameShown;
-            if (shown == null || shown.get()) {
+            java.util.concurrent.atomic.AtomicLong shown = mFrameShownAtNs;
+            long at = shown != null ? shown.get() : 0;
+            if (shown == null || (at != 0 && System.nanoTime() >= at)) {
                 Log.d(TAG, "Uncovered: a frame of the adopted player is on the main surface (+%s ms)", SystemClock.uptimeMillis() - mStartMs);
                 finishHandOver();
             } else {
@@ -396,7 +398,7 @@ final class ShortsLiveSwitch {
         // From now on the core talks to the adopted player itself (volume, speed and play state go to the controller)
         mState = State.ADOPTED;
         mTarget = null;
-        mHandler.postDelayed(mHandOverTimeout, HAND_OVER_TIMEOUT_MS);
+        mHandler.postDelayed(mHandOverTimeout, HAND_OVER_SAFETY_MS); // the real timeout starts in onAdopted (after the swap work)
         return player;
     }
 
@@ -405,7 +407,7 @@ final class ShortsLiveSwitch {
      * surface shows a frame of it ({@link #onMainFirstFrame}), then {@code onHandedOver} gives the old player to the
      * preview.
      */
-    void onAdopted(Runnable onHandedOver, java.util.concurrent.atomic.AtomicBoolean frameShown) {
+    void onAdopted(Runnable onHandedOver, java.util.concurrent.atomic.AtomicLong frameShownAtNs) {
         if (mState != State.ADOPTED) {
             if (onHandedOver != null) {
                 onHandedOver.run(); // uncovered already
@@ -418,7 +420,9 @@ final class ShortsLiveSwitch {
         }
         mOnHandedOver = onHandedOver;
         Log.d(TAG, "Swapped: +%s ms (no reload, no seek)", SystemClock.uptimeMillis() - mStartMs);
-        mFrameShown = frameShown;
+        mFrameShownAtNs = frameShownAtNs;
+        mHandler.removeCallbacks(mHandOverTimeout);
+        mHandler.postDelayed(mHandOverTimeout, HAND_OVER_TIMEOUT_MS);
         mHandler.post(mUncover);
         mHandler.removeCallbacks(mDetachDiag);
         mHandler.postDelayed(mDetachDiag, DIAG_AFTER_MS);
@@ -435,7 +439,7 @@ final class ShortsLiveSwitch {
     private void finishHandOver() {
         mHandler.removeCallbacks(mHandOverTimeout);
         mHandler.removeCallbacks(mUncover);
-        mFrameShown = null;
+        mFrameShownAtNs = null;
         if (mState != State.ADOPTED) {
             return;
         }

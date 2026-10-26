@@ -787,7 +787,12 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
         // The core: same events as after an open of the Short (the Short keeps playing live on the spare frame meanwhile)
         long t0 = SystemClock.uptimeMillis();
-        mExoPlayerController.adoptPlayer(incoming, incomingSelector, formatInfo);
+        try {
+            mExoPlayerController.adoptPlayer(incoming, incomingSelector, formatInfo);
+        } catch (RuntimeException e) {
+            // The surface move and the hand-over below must still happen: otherwise the main surface stays black
+            Log.e(TAG, "Role swap: the core failed to adopt the player: %s", e.getMessage());
+        }
         long t1 = SystemClock.uptimeMillis();
 
         if (mMediaSession != null) {
@@ -819,11 +824,12 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         // covered by the spare frame until a frame of it is on the main surface: noticed on the playback thread, not
         // with the first-frame callback, which comes 100-250 ms late on the busy main thread)
         final java.util.concurrent.atomic.AtomicBoolean moved = new java.util.concurrent.atomic.AtomicBoolean();
-        final java.util.concurrent.atomic.AtomicBoolean frameShown = new java.util.concurrent.atomic.AtomicBoolean();
+        final java.util.concurrent.atomic.AtomicLong frameShownAtNs = new java.util.concurrent.atomic.AtomicLong();
         final androidx.media3.exoplayer.video.VideoFrameMetadataListener frameListener =
                 (presentationTimeUs, releaseTimeNs, format, mediaFormat) -> {
-                    if (moved.get()) {
-                        frameShown.set(true);
+                    if (moved.get() && frameShownAtNs.get() == 0) {
+                        // The frame is released up to ~50 ms before its display time and shown at the next vsync after that
+                        frameShownAtNs.set(Math.max(releaseTimeNs, System.nanoTime()) + 20_000_000L);
                     }
                 };
         incoming.setVideoFrameMetadataListener(frameListener);
@@ -838,7 +844,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             if (mSparePlayer == old) {
                 mShortsPreview.setPlayer(old); // the next Short is prepared on it
             }
-        }, frameShown);
+        }, frameShownAtNs);
         return true;
     }
 
