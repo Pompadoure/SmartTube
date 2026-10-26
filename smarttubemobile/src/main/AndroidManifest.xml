@@ -26,8 +26,8 @@
         tools:ignore="GoogleAppIndexingWarning,UnusedAttribute">
 
         <provider
-            android:name="androidx.core.content.FileProvider"
-            android:authorities="${applicationId}.fileprovider"
+            android:name="com.liskovsoft.smartyoutubetv2.mobile.ui.utils.LogFileProvider"
+            android:authorities="${applicationId}.logshare"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data

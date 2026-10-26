@@ -46,7 +46,7 @@ public class LogShare {
                     return;
                 }
 
-                String authority = context.getPackageName() + ".fileprovider";
+                String authority = context.getPackageName() + ".logshare";
                 Uri contentUri = FileProvider.getUriForFile(context, authority, logFile);
 
                 Intent shareIntent = new Intent(Intent.ACTION_SEND);
