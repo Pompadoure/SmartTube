@@ -16,6 +16,7 @@ import java.io.PrintWriter;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.LinkedList;
 import java.util.Locale;
 
 public class LogShare {
@@ -70,9 +71,16 @@ public class LogShare {
         String[] cmd = new String[] {
                 "logcat",
                 "-d",
-                "-t", "5000",
+                "-t", "60000",
                 "-v", "threadtime",
                 "--pid=" + pid
+        };
+
+        String[] noisyTags = {
+                "JoTubeSabr", "SabrStream", "DefaultSabrChunkSource", "SabrMatroskaAdapter",
+                "SabrExtractorInput", "CCodec", "CCodecConfig", "ReflectedParamUpdater",
+                "AidlBufferPool", "JsonPathTypeAdapter", "VRI", "BLASTBufferQueue",
+                "Choreographer", "MediaCodec", "LoudnessCodecController"
         };
 
         try {
@@ -80,8 +88,31 @@ public class LogShare {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
                  PrintWriter writer = new PrintWriter(new FileWriter(outputFile))) {
                 String line;
+                LinkedList<String> lines = new LinkedList<>();
+                int totalBytes = 0;
+                final int MAX_BYTES = 3 * 1024 * 1024; // ~3 MB
+
                 while ((line = reader.readLine()) != null) {
-                    writer.println(line);
+                    boolean skip = false;
+                    for (String tag : noisyTags) {
+                        if (line.contains(tag)) {
+                            skip = true;
+                            break;
+                        }
+                    }
+                    if (skip) continue;
+
+                    lines.add(line);
+                    totalBytes += line.length() + 1; // +1 for newline
+
+                    while (totalBytes > MAX_BYTES && !lines.isEmpty()) {
+                        String removed = lines.removeFirst();
+                        totalBytes -= (removed.length() + 1);
+                    }
+                }
+
+                for (String l : lines) {
+                    writer.println(l);
                 }
             }
             process.waitFor();
