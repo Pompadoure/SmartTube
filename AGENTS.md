@@ -120,3 +120,15 @@ ended in "unexpected error" without a word). That must not happen again. Follow 
    within 1 hour, continue with your recommendation and say so in a comment.
 7. **Do not merge** your own PR and do not touch other agents' branches.
 Claude reads your comments and reacts with 👀 when read. Claude answers with `DECISION:` or `REVIEW:`.
+
+## 9. Setup for Jules (environment)
+- Line endings: set `git config --global core.autocrlf false` and `core.safecrlf false` first (many files are CRLF; the repo has no
+  line-ending normalisation). The Jules environment setup script does this, but check with `git config core.autocrlf`.
+- Submodules: `git submodule update --init --depth 1` is fine. Do NOT apply the MediaServiceCore patches in your working tree
+  and never commit a changed submodule pointer; CI applies `patches/MediaServiceCore/*.patch` itself (see section 5).
+- Building the whole Android app locally is normally not possible (no Android SDK, signing secrets). Push your branch and use
+  GitHub Actions as the judge (`build-media3.yml` for the TV app, `build-mobile.yml` for the phone app). Unit tests of the
+  SABR module: `chmod +x gradlew && ./gradlew :media3-sabr:testReleaseUnitTest`.
+- Which branch is yours to base on is always in the issue (TV work: `media3`; phone work: `media3-mobile`).
+- Say in your `DONE:` comment what you could compile or run and what not.
+
