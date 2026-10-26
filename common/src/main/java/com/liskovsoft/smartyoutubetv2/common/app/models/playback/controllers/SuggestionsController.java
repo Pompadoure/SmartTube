@@ -249,6 +249,10 @@ public class SuggestionsController extends BasePlayerController {
     }
 
     private void loadMetadata(Video video, OnMetadata callback) {
+        loadMetadata(video, callback, 0);
+    }
+
+    private void loadMetadata(Video video, OnMetadata callback, int retry) {
         disposeActions();
 
         if (video == null) {
@@ -278,6 +282,19 @@ public class SuggestionsController extends BasePlayerController {
                             // Usual errors here is something with title parsing
                             String message = error.getMessage();
                             Log.e(TAG, "loadSuggestions error: %s", message);
+                            // JoTube: a network hiccup (DNS, timeout, no route) isn't worth a message: try again quietly a few times
+                            if (isNetworkError(error)) {
+                                if (retry < NETWORK_RETRIES) {
+                                    Log.d(TAG, "loadSuggestions: network error, retry %s of %s in %s ms", retry + 1, NETWORK_RETRIES, NETWORK_RETRY_DELAY_MS * (retry + 1));
+                                    Utils.postDelayed(() -> {
+                                        // Only while this video is still the current one (the user may have skipped meanwhile)
+                                        if (getPlayer() != null && video.equals(getVideo())) {
+                                            loadMetadata(video, callback, retry + 1);
+                                        }
+                                    }, NETWORK_RETRY_DELAY_MS * (retry + 1));
+                                }
+                                return;
+                            }
                             if (!Helpers.containsAny(message, "fromNullable result is null")) {
                                 MessageHelpers.showLongMessage(getContext(), "loadSuggestions error: %s", message);
                             }
@@ -286,6 +303,19 @@ public class SuggestionsController extends BasePlayerController {
                 );
 
         mActions.add(metadataAction);
+    }
+
+    private static final int NETWORK_RETRIES = 3;
+    private static final long NETWORK_RETRY_DELAY_MS = 3_000;
+
+    private static boolean isNetworkError(Throwable error) {
+        for (Throwable t = error; t != null; t = t.getCause() == t ? null : t.getCause()) {
+            if (t instanceof java.net.UnknownHostException || t instanceof java.net.SocketTimeoutException
+                    || t instanceof java.net.ConnectException || t instanceof java.net.NoRouteToHostException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** JoTube mobile: music mode, the next one comes from the music list / the mix only, never from related videos. */
