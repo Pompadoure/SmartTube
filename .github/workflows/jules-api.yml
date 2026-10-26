@@ -1,0 +1,74 @@
+name: Jules API (Claude's channel to Jules)
+
+# Lets Claude read Jules' sessions and talk to Jules without the Jules app. The key is the repository secret JULES_API_KEY.
+# Runs only by manual dispatch (or when this file changes). Never prints the key.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "status | message | approve | create | sources"
+        required: true
+        default: status
+      session_id:
+        description: "Jules session id (message, approve)"
+        required: false
+        default: ""
+      prompt:
+        description: "Text for message / create"
+        required: false
+        default: ""
+      branch:
+        description: "Starting branch for create (media3 or media3-mobile)"
+        required: false
+        default: media3-mobile
+      title:
+        description: "Title for create"
+        required: false
+        default: ""
+  push:
+    branches: [ "agent-board" ]
+    paths: [ ".github/workflows/jules-api.yml", "tools/jules_api.py" ]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: jules-api
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: agent-board
+
+      - name: Jules API
+        env:
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          ACTION: ${{ github.event.inputs.action || 'status' }}
+          SESSION_ID: ${{ github.event.inputs.session_id }}
+          PROMPT: ${{ github.event.inputs.prompt }}
+          BRANCH: ${{ github.event.inputs.branch || 'media3-mobile' }}
+          TITLE: ${{ github.event.inputs.title }}
+        run: |
+          if [ -z "$JULES_API_KEY" ]; then echo "::error::The secret JULES_API_KEY is missing"; exit 1; fi
+          python3 tools/jules_api.py "$ACTION" | tee out.txt
+          # Short result as annotations (readable through the API without log access)
+          head -c 3400 out.txt | sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g' | sed 's/^/::notice title=Jules API::/'
+
+      - name: Save status on the board branch
+        if: env.ACTION == 'status' || github.event_name == 'push'
+        env:
+          ACTION: ${{ github.event.inputs.action || 'status' }}
+        run: |
+          if [ -f JULES_STATUS.md ]; then
+            git config user.name "github-actions"
+            git config user.email "actions@users.noreply.github.com"
+            git add JULES_STATUS.md
+            git diff --cached --quiet || git commit -m "Jules status (jules-api workflow)"
+            git pull --rebase origin agent-board
+            git push origin HEAD:agent-board
+          fi
