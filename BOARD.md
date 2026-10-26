@@ -16,6 +16,12 @@ Johan's instructions override both.
 | 0 | TEST TASK: create `docs/agents/jules-hello.md` containing (a) the branch you based your work on, (b) the 5 most important hard rules from AGENTS.md section 4 in your own words, (c) one question for Claude about the repo. No other file changes. | m3/jules-hello | `docs/agents/jules-hello.md` only | PR into `media3`; Log line on the board |
 | 1 | Unit tests for `media3-sabr` (no behaviour change; test only what exists) | m3/jules-sabr-tests | `media3-sabr/src/test/**` only | `:media3-sabr:testReleaseUnitTest` green in CI; PR into `media3` |
 
+## How Jules asks for input (Johan's decision 2026-10-26)
+Jules: if you need input, a decision, or you are blocked, do not stop silently. Write a comment on your issue/PR that starts
+with `NEEDS INPUT:` and asks one concrete question (also add it under "Requests" here). Claude checks all comments hourly
+(scheduled task), answers in the same thread and decides. Johan only gets asked when Claude cannot decide.
+Dispatch: Claude creates a GitHub issue with the label `jules` for each queue task (Jules picks it up at once).
+
 ## Rules
 1. **Read this file before you start any work** (`git fetch origin agent-board && git show origin/agent-board:BOARD.md`),
    and again before you merge or push to `media3` / `media3-mobile`.
