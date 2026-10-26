@@ -817,6 +817,14 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         finish();
     }
 
+    /**
+     * The channel avatar or name was tapped (watch page or Shorts overlay): the video goes to the small floating
+     * window and the channel page opens behind it.
+     */
+    private void onChannelTapped() {
+        // Claude fills this in (PiP + ChannelPresenter). Jules only wires the click listeners to it.
+    }
+
     /** Leaving the app with a video playing: the small floating window. */
     private void enterPip() {
         if (android.os.Build.VERSION.SDK_INT < 26 || mShortsMode) {
