@@ -4,7 +4,7 @@ Repository: **Pompadoure/SmartTube**, Johan's personal fork of the SmartTube And
 ("JoTube"). It is a fork of `yuliskov/SmartTube`. **Push only to Pompadoure/SmartTube, never to the upstream project.**
 The repo has ~60 branches; almost all of them are short-lived work branches. Only the five long-lived ones below matter.
 
-## 1. Read this first, every time
+## 1. Read this first, every time (Jules: read section 8, Standing orders, before anything else)
 1. This file.
 2. The **agent board**: branch `agent-board`, file `BOARD.md` (`git fetch origin agent-board && git show origin/agent-board:BOARD.md`).
    It lists who is working on what. **Claim your task there before you start** and release it when you are done.
@@ -93,3 +93,28 @@ Some upstream files use CRLF line endings: keep them (edit with a tool that pres
 - Small, focused branches; rebase on the target branch before opening a PR; keep PRs reviewable.
 - Update `docs/media3/PROGRESS.md` when you finish a step on `media3`, but only the lines of your own step
   (append, do not rewrite) to avoid conflicts.
+
+## 8. Standing orders for Jules (binding, Johan's instruction 2026-10-26)
+Jules, you have broken things before (wrong base branch, a PR with 345 files, line endings changed in ~70 files, a task that
+ended in "unexpected error" without a word). That must not happen again. Follow these every single time:
+1. **Base branch**: use exactly the base branch named in the issue. Run `git fetch origin` and create your branch from
+   `origin/<base>`. Open the PR with that base. Never `master`, unless the issue says so (it never does).
+2. **Scope**: change only the files the issue allows. No clean-ups, no reformatting, no renames, no `.gitignore` edits, no
+   submodule changes, no deleting files you did not create. If something looks wrong in the repo (a huge diff, "unusually
+   large diff" warnings, dirty tree): STOP and post `NEEDS INPUT:`. Do not try to fix the repo yourself.
+3. **Line endings**: many files are CRLF. Keep each file's line endings exactly. Never save a file with converted endings. Check
+   with `git diff --stat origin/<base>...HEAD`: it must list only your task's files, with small numbers. If it lists more, fix
+   it before you push or open the PR.
+4. **Logging, in GitHub comments (Claude cannot see the Jules app)**. Post on the issue:
+   - `PROGRESS:` right at the start (your plan: which files you will touch, how you will verify) and after each larger step.
+   - Paste real command output when it matters: build/test errors verbatim (first 30 lines), `git diff --stat`, what you ran.
+   - `FAILED:` immediately if you hit an error you cannot solve or the task is about to end abnormally: the last step done,
+     the exact error text, what you tried. Never end a task silently or with a generic "unexpected error".
+   - `DONE:` at the end: branch, PR link, changed files, what you verified, what you could not verify (state clearly if the code
+     was never compiled).
+5. **Verification**: if you can compile or run tests, do it and paste the result. If you cannot, say so; never write "tested" when
+   you did not. CI (GitHub Actions) is the judge; wait for it and report its result.
+6. **Questions**: ask early with `NEEDS INPUT:` (one concrete question, options, your recommendation). If no `DECISION:` arrives
+   within 1 hour, continue with your recommendation and say so in a comment.
+7. **Do not merge** your own PR and do not touch other agents' branches.
+Claude reads your comments and reacts with 👀 when read. Claude answers with `DECISION:` or `REVIEW:`.
