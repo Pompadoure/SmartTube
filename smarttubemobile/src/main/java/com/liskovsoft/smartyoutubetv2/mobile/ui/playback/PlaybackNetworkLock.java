@@ -38,9 +38,14 @@ final class PlaybackNetworkLock {
             if (player != null && player.getPlayWhenReady() && player.getPlaybackState() != Player.STATE_ENDED && player.getPlaybackState() != Player.STATE_IDLE) {
                 acquire();
                 sHandler.postDelayed(this, RENEW_MS);
+            } else {
+                sHandler.postDelayed(sRelease, TIMEOUT_MS);
             }
         }
     };
+
+    // The end of the queue or a stuck player: both locks are given back after the safety timeout
+    private static final Runnable sRelease = PlaybackNetworkLock::release;
 
     private static final Player.Listener sListener = new Player.Listener() {
         @Override
@@ -89,6 +94,7 @@ final class PlaybackNetworkLock {
 
     static void detach() {
         sHandler.removeCallbacks(sRenew);
+        sHandler.removeCallbacks(sRelease);
         Player player = sPlayer;
         sPlayer = null;
         if (player != null) {
@@ -106,15 +112,19 @@ final class PlaybackNetworkLock {
     private static void update() {
         Player player = sPlayer;
         sHandler.removeCallbacks(sRenew);
+        sHandler.removeCallbacks(sRelease);
 
         if (player != null && player.getPlayWhenReady() && player.getPlaybackState() != Player.STATE_IDLE) {
             acquire();
             if (player.getPlaybackState() != Player.STATE_ENDED) {
                 sHandler.postDelayed(sRenew, RENEW_MS);
+            } else {
+                sHandler.postDelayed(sRelease, TIMEOUT_MS);
             }
         } else if (player != null && player.getPlayWhenReady()) {
             // IDLE while the user wants playback: the next song is being opened; keep the network awake for a while
             acquire();
+            sHandler.postDelayed(sRelease, TIMEOUT_MS);
         } else {
             release();
         }

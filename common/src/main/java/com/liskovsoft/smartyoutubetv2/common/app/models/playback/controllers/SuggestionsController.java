@@ -283,17 +283,15 @@ public class SuggestionsController extends BasePlayerController {
                             String message = error.getMessage();
                             Log.e(TAG, "loadSuggestions error: %s", message);
                             // JoTube: a network hiccup (DNS, timeout, no route) isn't worth a message: try again quietly a few times
-                            if (isNetworkError(error)) {
-                                if (retry < NETWORK_RETRIES) {
-                                    Log.d(TAG, "loadSuggestions: network error, retry %s of %s in %s ms", retry + 1, NETWORK_RETRIES, NETWORK_RETRY_DELAY_MS * (retry + 1));
-                                    Utils.postDelayed(() -> {
-                                        // Only while this video is still the current one (the user may have skipped meanwhile)
-                                        if (getPlayer() != null && video.equals(getVideo())) {
-                                            loadMetadata(video, callback, retry + 1);
-                                        }
-                                    }, NETWORK_RETRY_DELAY_MS * (retry + 1));
-                                }
-                                return;
+                            if (isNetworkError(error) && retry < NETWORK_RETRIES) {
+                                Log.d(TAG, "loadSuggestions: network error, retry %s of %s in %s ms", retry + 1, NETWORK_RETRIES, NETWORK_RETRY_DELAY_MS * (retry + 1));
+                                Utils.postDelayed(() -> {
+                                    // Only while this video is still the current one (the user may have skipped meanwhile)
+                                    if (getPlayer() != null && video.equals(getVideo())) {
+                                        loadMetadata(video, callback, retry + 1);
+                                    }
+                                }, NETWORK_RETRY_DELAY_MS * (retry + 1));
+                                return; // the message comes only if the retries fail too
                             }
                             if (!Helpers.containsAny(message, "fromNullable result is null")) {
                                 MessageHelpers.showLongMessage(getContext(), "loadSuggestions error: %s", message);
