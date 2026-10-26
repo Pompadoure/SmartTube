@@ -95,7 +95,8 @@ public class LogShare {
                 while ((line = reader.readLine()) != null) {
                     boolean skip = false;
                     for (String tag : noisyTags) {
-                        if (line.contains(tag)) {
+                        // Noise is dropped, but the lines that tell what failed stay (network errors, retries)
+                        if (line.contains(tag) && !line.contains("failed") && !line.contains("Retrying") && !line.contains("Exception")) {
                             skip = true;
                             break;
                         }
