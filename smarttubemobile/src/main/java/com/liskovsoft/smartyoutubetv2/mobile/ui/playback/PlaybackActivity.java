@@ -75,6 +75,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     private android.widget.SeekBar mSeekBar;
     private boolean mSeeking;
     private boolean mInPip;
+    private Video mPendingChannel; // opened once the floating window is up, so the video is not stopped half-way
     private boolean mPipSession; // the floating window was shown and the screen has not been opened again
     private boolean mFastForward;
     private float mSpeedBeforeFastForward = 1f;
@@ -831,11 +832,27 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
         // Regular video: the floating window keeps playing. Shorts and music have no floating window; they just
         // end up behind the channel page.
-        if (!mShortsMode && !mAudioMode && mPlayer != null && android.os.Build.VERSION.SDK_INT >= 26) {
+        if (!mShortsMode && !mAudioMode && mPlayer != null && !mInPip && android.os.Build.VERSION.SDK_INT >= 26) {
+            // The channel page opens from onPictureInPictureModeChanged, not before: opening it first would stop the
+            // video track. The timer is the way out if the system never reports the window.
+            mPendingChannel = video;
             enterPip();
+            if (!isFinishing()) {
+                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this::openPendingChannel, 800);
+            }
+            return;
         }
 
-        com.liskovsoft.smartyoutubetv2.common.app.presenters.ChannelPresenter.instance(this).openChannel(video);
+        mPendingChannel = video;
+        openPendingChannel();
+    }
+
+    private void openPendingChannel() {
+        Video video = mPendingChannel;
+        mPendingChannel = null;
+        if (video != null) {
+            com.liskovsoft.smartyoutubetv2.common.app.presenters.ChannelPresenter.instance(this).openChannel(video);
+        }
     }
 
     /** Leaving the app with a video playing: the small floating window. */
@@ -870,6 +887,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         mInPip = isInPictureInPictureMode;
         if (isInPictureInPictureMode) {
             mPipSession = true;
+            openPendingChannel();
         }
 
         if (mInPip) {
