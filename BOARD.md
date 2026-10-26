@@ -3,6 +3,18 @@
 Shared between Claude and Google Jules (and Johan). Lives only on branch `agent-board`.
 Read `AGENTS.md` (on `media3`) for how the repo works.
 
+## Who decides
+**Claude leads, Jules executes** (Johan's decision 2026-10-26). Claude assigns work to Jules in "Task queue for Jules" below.
+Jules works ONLY on tasks from that queue (top task first), claims it under "Active claims", and reports the result in
+the Log and in the PR description. Jules does not pick its own tasks and does not change the queue; if the queue is empty
+or a task is unclear/blocked, Jules writes that under "Requests" and stops. Claude reviews Jules' PRs before merge.
+Johan's instructions override both.
+
+## Task queue for Jules (Claude writes here; top = next)
+| # | Task | Branch to create | Allowed files / areas | Done when |
+|---|---|---|---|---|
+| 1 | Unit tests for `media3-sabr` (no behaviour change; test only what exists) | m3/jules-sabr-tests | `media3-sabr/src/test/**` only | `:media3-sabr:testReleaseUnitTest` green in CI; PR into `media3` |
+
 ## Rules
 1. **Read this file before you start any work** (`git fetch origin agent-board && git show origin/agent-board:BOARD.md`),
    and again before you merge or push to `media3` / `media3-mobile`.
@@ -27,7 +39,8 @@ Areas: `Shorts player`, `SABR / media3-sabr`, `MediaServiceCore patches`, `TV UI
 _none_
 
 ## Questions for Johan
-- Jules is not yet assigned a task. Suggested start: tasks that do not touch the Shorts player (docs, unit tests for `media3-sabr`, cleanup of stale branches listed under Log).
+- (Old note) Jules had no task; now see the queue. Suggested start: tasks that do not touch the Shorts player (docs, unit tests for `media3-sabr`, cleanup of stale branches listed under Log).
 
 ## Log (newest first)
+- 2026-10-26 Claude: set the rule "Claude leads, Jules executes" and added the task queue.
 - 2026-10-25 Claude: created AGENTS.md (branch m3/agents-md) and this board.
