@@ -822,7 +822,18 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
      * window and the channel page opens behind it.
      */
     private void onChannelTapped() {
-        // Claude fills this in (PiP + ChannelPresenter). Jules only wires the click listeners to it.
+        Video video = mPlaybackPresenter.getVideo();
+        if (video == null) {
+            return;
+        }
+
+        // Regular video: the floating window keeps playing. Shorts and music have no floating window; they just
+        // end up behind the channel page.
+        if (!mShortsMode && !mAudioMode && mPlayer != null && android.os.Build.VERSION.SDK_INT >= 26) {
+            enterPip();
+        }
+
+        com.liskovsoft.smartyoutubetv2.common.app.presenters.ChannelPresenter.instance(this).openChannel(video);
     }
 
     /** Leaving the app with a video playing: the small floating window. */
