@@ -7,11 +7,10 @@ import android.view.Gravity;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewGroup;
-import com.google.android.exoplayer2.C;
 import android.widget.FrameLayout;
 
 import androidx.annotation.Nullable;
-import com.google.android.exoplayer2.C;
+import androidx.media3.common.C;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.VideoSize;

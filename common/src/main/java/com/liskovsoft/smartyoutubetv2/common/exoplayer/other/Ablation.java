@@ -13,7 +13,7 @@ public class Ablation {
     private static Set<String> sWords = null;
     private static final Set<String> sLoggedWords = new HashSet<>();
 
-    public static boolean has(Context ctx, String word) {
+    public static synchronized boolean has(Context ctx, String word) {
         if (sWords == null) {
             sWords = new HashSet<>();
             try {
