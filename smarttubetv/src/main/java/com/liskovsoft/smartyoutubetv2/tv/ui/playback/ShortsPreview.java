@@ -25,6 +25,7 @@ import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo;
 import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.ExoMediaSourceFactory;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ExoPlayerController;
+import com.liskovsoft.smartyoutubetv2.common.exoplayer.other.Ablation;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ShortsQueue;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.other.VolumeBooster;
 import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerData;
@@ -55,6 +56,7 @@ public class ShortsPreview {
     private AspectRatioFrameLayout mAspect;
     private SurfaceView mSurface;
     private ExoPlayer mPlayer;
+    private com.liskovsoft.smartyoutubetv2.common.exoplayer.versions.selector.RestoreTrackSelector mSelector;
     private String mVideoId;
     private boolean mFrameRendered;
     private boolean mMainStarted; // the playing Short has shown its first frame
@@ -202,32 +204,12 @@ public class ShortsPreview {
 
         mHandler.removeCallbacks(mRefresh);
         long quiet = mQuietUntilMs - android.os.SystemClock.uptimeMillis();
-        mHandler.postDelayed(mRefresh, Math.max(START_DELAY_MS, quiet));
+        long delay = Ablation.has(mContext, "late") ? 8000 : START_DELAY_MS;
+        mHandler.postDelayed(mRefresh, Math.max(delay, quiet));
     }
 
-    // Test switch (JoTube): the word "preview" in <external files>/ablate.txt = the next Short isn't prepared at all
-    private Boolean mAblated;
-
     private boolean isAblated() {
-        if (mAblated == null) {
-            boolean off = false;
-            try {
-                java.io.File dir = mContext.getExternalFilesDir(null);
-                java.io.File file = dir != null ? new java.io.File(dir, "ablate.txt") : null;
-                if (file != null && file.exists()) {
-                    try (java.io.FileInputStream in = new java.io.FileInputStream(file)) {
-                        byte[] data = new byte[(int) Math.min(file.length(), 200)];
-                        int n = in.read(data);
-                        off = new String(data, 0, Math.max(n, 0)).contains("preview");
-                    }
-                }
-            } catch (Exception e) {
-                // no switch
-            }
-            mAblated = off;
-            Log.d(TAG, "Ablation: preview=%s", off);
-        }
-        return mAblated;
+        return Ablation.has(mContext, "preview");
     }
 
     private void refresh() {
@@ -247,6 +229,15 @@ public class ShortsPreview {
 
         if (next.getVideoId().equals(mVideoId)) {
             return; // prepared or preparing
+        }
+
+        if (mSelector != null) {
+            if (Ablation.has(mContext, "cap480")) {
+                mSelector.setParameters(mSelector.buildUponParameters().setMaxVideoSize(Integer.MAX_VALUE, 480));
+            }
+            if (Ablation.has(mContext, "noaudio")) {
+                mSelector.setParameters(mSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true));
+            }
         }
 
         MediaSource source = ExoPlayerController.createPreviewSource(next);
@@ -282,7 +273,7 @@ public class ShortsPreview {
      * next Short here; on a swipe it plays it live and is handed to the core ({@link #handOverLive}); the core's old
      * player comes back here as the new spare.
      */
-    public void setPlayer(@Nullable ExoPlayer player) {
+    public void setPlayer(@Nullable ExoPlayer player, @Nullable com.liskovsoft.smartyoutubetv2.common.exoplayer.versions.selector.RestoreTrackSelector selector) {
         if (mPlayer == player) {
             return;
         }
@@ -299,6 +290,7 @@ public class ShortsPreview {
         }
 
         mPlayer = player;
+        mSelector = selector;
         mLive = false;
         mVideoId = null;
         mFrameRendered = false;
@@ -328,6 +320,7 @@ public class ShortsPreview {
 
         player.removeListener(mListener);
         mPlayer = null;
+        mSelector = null;
         mLive = false;
         mVideoId = null;
         mFrameRendered = false;
@@ -371,6 +364,9 @@ public class ShortsPreview {
     public boolean startLive() {
         if (mPlayer == null || !mFrameRendered) {
             return false;
+        }
+        if (mSelector != null && Ablation.has(mContext, "noaudio")) {
+            mSelector.setParameters(mSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false));
         }
         mLive = true;
         mHandler.removeCallbacks(mRefresh);
@@ -453,6 +449,6 @@ public class ShortsPreview {
 
     /** JoTube role swap: the player isn't this one's (the player screen releases it): only let it go. */
     private void releasePlayer() {
-        setPlayer(null);
+        setPlayer(null, null);
     }
 }

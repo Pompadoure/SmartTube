@@ -25,7 +25,7 @@ public class ExoPlayerInitializer {
     private float mVolumeBoost;
     private ExoPlayer mPlayer;
     private DefaultPreloadManager mPreloadManager;
-    private final ShortsPreloadControl mPreloadControl = new ShortsPreloadControl();
+    private final ShortsPreloadControl mPreloadControl;
     private static AudioAttributes sAudioAttributes;
     // JoTube role swap: the load control of every player built here (the spare one loads only a few seconds)
     private final java.util.Map<ExoPlayer, FastStartLoadControl> mLoadControls = new java.util.HashMap<>();
@@ -33,6 +33,7 @@ public class ExoPlayerInitializer {
     private VolumeBooster mSpareVolumeBooster;
 
     public ExoPlayerInitializer(Context context) {
+        mPreloadControl = new ShortsPreloadControl(context);
         mPlayerData = PlayerData.instance(context);
         mPlayerTweaksData = PlayerTweaksData.instance(context);
 
