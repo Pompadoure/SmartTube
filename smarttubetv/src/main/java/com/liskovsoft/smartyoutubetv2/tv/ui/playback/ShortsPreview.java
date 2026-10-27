@@ -45,7 +45,7 @@ public class ShortsPreview {
     private static final float PARKED_Y = 10_000f; // visible (the surface must exist) but far off screen
 
     // after a take-over the main player's sound is young: no decoder start-up and network work on this weak box then
-    private static final int QUIET_AFTER_TAKEOVER_MS = 2_500;
+    private static final int QUIET_AFTER_TAKEOVER_MS = 0;
     private long mQuietUntilMs;
 
     private final Handler mHandler = new Handler(Looper.getMainLooper());
