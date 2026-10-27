@@ -205,9 +205,38 @@ public class ShortsPreview {
         mHandler.postDelayed(mRefresh, Math.max(START_DELAY_MS, quiet));
     }
 
+    // Test switch (JoTube): the word "preview" in <external files>/ablate.txt = the next Short isn't prepared at all
+    private Boolean mAblated;
+
+    private boolean isAblated() {
+        if (mAblated == null) {
+            boolean off = false;
+            try {
+                java.io.File dir = mContext.getExternalFilesDir(null);
+                java.io.File file = dir != null ? new java.io.File(dir, "ablate.txt") : null;
+                if (file != null && file.exists()) {
+                    try (java.io.FileInputStream in = new java.io.FileInputStream(file)) {
+                        byte[] data = new byte[(int) Math.min(file.length(), 200)];
+                        int n = in.read(data);
+                        off = new String(data, 0, Math.max(n, 0)).contains("preview");
+                    }
+                }
+            } catch (Exception e) {
+                // no switch
+            }
+            mAblated = off;
+            Log.d(TAG, "Ablation: preview=%s", off);
+        }
+        return mAblated;
+    }
+
     private void refresh() {
         if (!mEnabled || !mMainStarted || mHolder == null || mLive) {
             return; // live: it is the Short on screen right now
+        }
+
+        if (isAblated()) {
+            return; // test switch: no preview work at all
         }
 
         MediaItemFormatInfo next = ShortsQueue.getNextFormatInfo();
