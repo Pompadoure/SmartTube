@@ -449,6 +449,6 @@ public class ShortsPreview {
 
     /** JoTube role swap: the player isn't this one's (the player screen releases it): only let it go. */
     private void releasePlayer() {
-        setPlayer(null);
+        setPlayer(null, null);
     }
 }
