@@ -626,7 +626,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         mShortsTransition.hide(false);
         mLiveSwitch.release();
         // JoTube role swap: the spare player belongs to this screen like the main one
-        mShortsPreview.setPlayer(null);
+        mShortsPreview.setPlayer(null, null);
         mExoPlayerController.setShortsAdopter(null);
         ExoPlayer spare = mSparePlayer;
         mSparePlayer = null;
@@ -723,7 +723,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             mExoPlayerController.addSpareTrackSelector(spareSelector);
             mSparePlayer = mPlayerInitializer.createSparePlayer(getContext(), new CustomOverridesRenderersFactory(getContext()), spareSelector);
             mSpareSelector = spareSelector;
-            mShortsPreview.setPlayer(mSparePlayer);
+            mShortsPreview.setPlayer(mSparePlayer, mSpareSelector);
             mExoPlayerController.setShortsAdopter(new ExoPlayerController.ShortsAdopter() {
                 @Override
                 public boolean adopt(MediaItemFormatInfo formatInfo) {
@@ -842,7 +842,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         mLiveSwitch.onAdopted(() -> {
             incoming.clearVideoFrameMetadataListener(frameListener);
             if (mSparePlayer == old) {
-                mShortsPreview.setPlayer(old); // the next Short is prepared on it
+                mShortsPreview.setPlayer(old, oldSelector); // the next Short is prepared on it
             }
         }, frameShownAtNs);
         return true;

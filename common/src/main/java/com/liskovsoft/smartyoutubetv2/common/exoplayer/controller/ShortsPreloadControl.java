@@ -3,6 +3,9 @@ package com.liskovsoft.smartyoutubetv2.common.exoplayer.controller;
 import androidx.media3.exoplayer.source.preload.DefaultPreloadManager.PreloadStatus;
 import androidx.media3.exoplayer.source.preload.TargetPreloadStatusControl;
 
+import android.content.Context;
+import com.liskovsoft.smartyoutubetv2.common.exoplayer.other.Ablation;
+
 /**
  * JoTube M3: how much of each queued Short {@link androidx.media3.exoplayer.source.preload.DefaultPreloadManager}
  * loads in advance. The ranking data of a Short is a stable key (order-preserving, with gaps so a Short can be inserted
@@ -13,6 +16,11 @@ public final class ShortsPreloadControl implements TargetPreloadStatusControl<In
     public static final long NEXT_PRELOAD_MS = 6_000;
     public static final long NEXT_2_PRELOAD_MS = 3_000;
     public static final long PREVIOUS_PRELOAD_MS = 3_000; // the swipe back
+
+    private final Context mContext;
+    public ShortsPreloadControl(Context context) {
+        mContext = context;
+    }
 
     private static final class State {
         final int[] keys;
@@ -49,6 +57,9 @@ public final class ShortsPreloadControl implements TargetPreloadStatusControl<In
 
     @Override
     public PreloadStatus getTargetPreloadStatus(Integer key) {
+        if (Ablation.has(mContext, "nopm")) {
+            return PreloadStatus.PRELOAD_STATUS_NOT_PRELOADED;
+        }
         State state = mState;
         int index = -1;
 
