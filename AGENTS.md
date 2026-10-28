@@ -117,6 +117,22 @@ ended in "unexpected error" without a word). That must not happen again. Follow 
 6. **Questions**: ask early with `NEEDS INPUT:` (one concrete question, options, your recommendation). If no `DECISION:` arrives
    within 1 hour, continue with your recommendation and say so in a comment.
 7. **Do not merge** your own PR and do not touch other agents' branches.
+8. **Which library you are on (Johan, 2026-10-28, after PR #17)**: branches `media3` and `media3-mobile` use AndroidX Media3
+   (`androidx.media3.*`). `com.google.android.exoplayer2.*` is the OLD ExoPlayer 2.10.6 fork that lives only on `master` (the
+   frozen old JoTube). NEVER write or keep an `com.google.android.exoplayer2` import on `media3`/`media3-mobile`. Before you add
+   or change an import, look at the imports already in the same file and in the neighbouring files of the branch you are on, and
+   copy that style. Do not replace an import unless the issue says so. Do not learn APIs from `master` or from old code.
+9. **You cannot see compile errors, so make them impossible**: when you change a method signature, constructor or type, `grep -rn`
+   EVERY caller in ALL modules (`common`, `smarttubetv`, `smarttubemobile`, tests) and update them all in the same commit. Read your
+   own diff line by line before pushing (`git diff origin/<base>...HEAD`): no unexpected import changes, no leftover edits.
+10. **No debris**: no helper scripts (`*.py`, `*.sh`), notes or temporary files in the repo; no file mode changes (`chmod`, e.g. on
+   `gradlew`). `git diff --stat` must show only the files named in the issue. If you edit with a script, delete it before you commit.
+11. **CI first**: after you push, wait for the CI result of your branch and fix every error yourself (read the annotations / log)
+   BEFORE you report DONE. A PR whose build is red is not done. Claude reviews only PRs with a green build.
+12. **Lessons log** (you read this every time): 2026-10-27 PR #17: replaced `androidx.media3.common.C` with the old
+   `com.google.android.exoplayer2.C` (does not compile on media3), changed a `setPlayer` signature but missed one caller, left a
+   helper script and a `gradlew` mode change in the PR. 2026-10-26: wrong base branch, a 345-file PR, CRLF converted in ~70 files,
+   claimed the PoToken warm-up was missing when it existed. Do not repeat any of these.
 Claude reads your comments and reacts with 👀 when read. Claude answers with `DECISION:` or `REVIEW:`.
 
 ## 9. Setup for Jules (environment)
