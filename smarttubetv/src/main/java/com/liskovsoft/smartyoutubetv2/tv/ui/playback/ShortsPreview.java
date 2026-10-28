@@ -42,7 +42,7 @@ import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerTweaksData;
 public class ShortsPreview {
     private static final String TAG = "ShortsPreview";
     // after the playing Short's first frame (JoTube live switch: soon, so a swipe after ~1 s finds it ready)
-    private static final int START_DELAY_MS = 500; // silent spare (2026-10-28): cheap enough to start soon; 1200 ms left fast swipers without a ready Short (log 12:40: 9 of 14 swipes)
+    private static final int START_DELAY_MS = 150; // silent spare (2026-10-28): cheap enough to start soon; 1200 ms left fast swipers without a ready Short (log 12:40: 9 of 14 swipes)
     private static final float PARKED_Y = 10_000f; // visible (the surface must exist) but far off screen
 
     // after a take-over the main player's sound is young: no decoder start-up and network work on this weak box then
@@ -218,7 +218,13 @@ public class ShortsPreview {
     }
 
     private void scheduleRefresh() {
-        if (!mEnabled || !mMainStarted) {
+        if (!mEnabled) {
+            return;
+        }
+
+        prebuildNext(); // as soon as the next Short is known: its manifest is ready when the preparation starts
+
+        if (!mMainStarted) {
             return;
         }
 
@@ -317,6 +323,22 @@ public class ShortsPreview {
         return thread;
     });
     private MediaItemFormatInfo mBuilding;
+
+    /** The next Short's SABR manifest in the background (150-480 ms on the Streamer, log 2026-10-28 19:25). */
+    private void prebuildNext() {
+        final MediaItemFormatInfo next = ShortsQueue.getNextFormatInfo();
+        if (next == null || !next.containsSabrFormats() || isAblated() ||
+                com.liskovsoft.smartyoutubetv2.common.exoplayer.ExoMediaSourceFactory.hasPrebuiltSabrManifest(next)) {
+            return;
+        }
+        sBuilder.execute(() -> {
+            try {
+                com.liskovsoft.smartyoutubetv2.common.exoplayer.ExoMediaSourceFactory.prebuildSabrManifest(next);
+            } catch (Throwable e) {
+                // built again when it is prepared
+            }
+        });
+    }
 
     private boolean prepare(MediaItemFormatInfo next) {
         if (next.containsSabrFormats() && !com.liskovsoft.smartyoutubetv2.common.exoplayer.ExoMediaSourceFactory.hasPrebuiltSabrManifest(next)) {
