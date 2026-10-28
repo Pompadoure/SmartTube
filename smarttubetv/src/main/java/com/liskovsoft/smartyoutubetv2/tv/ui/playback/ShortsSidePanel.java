@@ -104,31 +104,6 @@ public class ShortsSidePanel {
     private final View.OnLayoutChangeListener mLayoutListener =
             (v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> mHandler.post(mUpdatePosition);
 
-    // Test switches (JoTube): a file <external files>/ablate.txt with the words border, card, panel switches that part of
-    // the Shorts frame off, to see what makes the video stutter. No file: everything on.
-    private boolean mAblateBorder, mAblateCard, mAblatePanel;
-
-    private void readAblation(Context context) {
-        String text = "";
-        try {
-            java.io.File dir = context.getExternalFilesDir(null);
-            java.io.File file = dir != null ? new java.io.File(dir, "ablate.txt") : null;
-            if (file != null && file.exists()) {
-                try (java.io.FileInputStream in = new java.io.FileInputStream(file)) {
-                    byte[] data = new byte[(int) Math.min(file.length(), 200)];
-                    int n = in.read(data);
-                    text = new String(data, 0, Math.max(n, 0));
-                }
-            }
-        } catch (Exception e) {
-            // no switches
-        }
-        mAblateBorder = text.contains("border");
-        mAblateCard = text.contains("card");
-        mAblatePanel = text.contains("panel");
-        Log.d("ShortsSidePanel", "Ablation: border=%s card=%s panel=%s", mAblateBorder, mAblateCard, mAblatePanel);
-    }
-
     public void attach(ViewGroup root, Callback callback) {
         if (root == null || mPanel != null) {
             return;
@@ -137,7 +112,6 @@ public class ShortsSidePanel {
         mRoot = root;
         mCallback = callback;
         Context context = root.getContext();
-        readAblation(context);
 
         mPanel = new LinearLayout(context);
         mPanel.setOrientation(LinearLayout.VERTICAL);
@@ -664,7 +638,7 @@ public class ShortsSidePanel {
                 cardParams.height = frameHeight;
                 mCard.setLayoutParams(cardParams);
             }
-            int cardVisibility = show && !mAblateCard ? View.VISIBLE : View.GONE;
+            int cardVisibility = show ? View.VISIBLE : View.GONE;
             if (mCard.getVisibility() != cardVisibility) {
                 mCard.setVisibility(cardVisibility);
             }
@@ -687,7 +661,7 @@ public class ShortsSidePanel {
             }
         }
 
-        int visibility = show && !mAblateBorder ? View.VISIBLE : View.GONE;
+        int visibility = show ? View.VISIBLE : View.GONE;
 
         if (mBorder.getVisibility() != visibility) {
             mBorder.setVisibility(visibility);
@@ -718,7 +692,7 @@ public class ShortsSidePanel {
 
     private void updateVisibility() {
         if (mPanel != null) {
-            mPanel.setVisibility(isShown() && !mAblatePanel ? View.VISIBLE : View.GONE);
+            mPanel.setVisibility(isShown() ? View.VISIBLE : View.GONE);
         }
     }
 

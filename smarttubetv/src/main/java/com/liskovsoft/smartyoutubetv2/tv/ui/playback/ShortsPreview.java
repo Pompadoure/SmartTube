@@ -25,7 +25,6 @@ import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo;
 import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.ExoMediaSourceFactory;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ExoPlayerController;
-import com.liskovsoft.smartyoutubetv2.common.exoplayer.other.Ablation;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ShortsQueue;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.other.VolumeBooster;
 import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerData;
@@ -233,7 +232,7 @@ public class ShortsPreview {
         }
 
         long quiet = mQuietUntilMs - android.os.SystemClock.uptimeMillis();
-        long delay = Ablation.has(mContext, "late") ? 8000 : START_DELAY_MS;
+        long delay = START_DELAY_MS;
         mRefreshPending = true;
         mHandler.postDelayed(mRefresh, Math.max(delay, quiet));
     }
@@ -241,14 +240,14 @@ public class ShortsPreview {
     /**
      * The spare player prepares the next Short without audio (the audio track is switched on when it goes live). Measured on
      * the Streamer (2026-10-28, 12-16 swipes per run): with audio the playing Short dropped up to 41 frames per swap, without
-     * it at most 5 and the incoming one none. The word "audio" in ablate.txt brings the old behaviour back for comparison.
+     * it at most 5 and the incoming one none.
      */
     private boolean silentSpare() {
-        return !Ablation.has(mContext, "audio");
+        return true;
     }
 
     private boolean isAblated() {
-        return Ablation.has(mContext, "preview");
+        return false;
     }
 
     private void refresh() {
@@ -375,19 +374,13 @@ public class ShortsPreview {
             return true;
         }
 
-        long tSel = android.os.SystemClock.uptimeMillis();
         if (mSelector != null) {
-            if (Ablation.has(mContext, "cap480")) {
-                mSelector.setParameters(mSelector.buildUponParameters().setMaxVideoSize(Integer.MAX_VALUE, 480));
-            }
             if (silentSpare()) {
                 mSelector.setParameters(mSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true));
             }
         }
 
-        long t0 = android.os.SystemClock.uptimeMillis();
         MediaSource source = ExoPlayerController.createPreviewSource(next);
-        long t1 = android.os.SystemClock.uptimeMillis();
 
         if (source == null) {
             return false;
@@ -408,8 +401,6 @@ public class ShortsPreview {
         player.setPlayWhenReady(false);
         player.setMediaSource(source);
         player.prepare();
-        Log.d(TAG, "Prepare timing: source %s ms, setMediaSource+prepare %s ms (selector before: %s ms)",
-                t1 - t0, android.os.SystemClock.uptimeMillis() - t1, t0 - tSel);
         return true;
     }
 
