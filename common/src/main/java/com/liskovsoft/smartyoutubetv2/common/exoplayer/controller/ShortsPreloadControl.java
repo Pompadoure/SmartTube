@@ -83,7 +83,9 @@ public final class ShortsPreloadControl implements TargetPreloadStatusControl<In
             return PreloadStatus.PRELOAD_STATUS_NOT_PRELOADED;
         }
 
-        if (sSpareCoversNext && index > state.current && !Ablation.has(mContext, "pmnext")) {
+        // With the spare player nothing is preloaded: the playing Short and the previous one were downloaded again by the
+        // preload manager too (its sources play only on one of the two players): log 2026-10-28 16:48, 3 start chunks per swipe
+        if (sSpareCoversNext && index != state.current && !Ablation.has(mContext, "pmnext")) {
             return PreloadStatus.PRELOAD_STATUS_NOT_PRELOADED;
         }
 
