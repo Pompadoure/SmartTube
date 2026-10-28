@@ -208,6 +208,15 @@ public class ShortsPreview {
         mHandler.postDelayed(mRefresh, Math.max(delay, quiet));
     }
 
+    /**
+     * The spare player prepares the next Short without audio (the audio track is switched on when it goes live). Measured on
+     * the Streamer (2026-10-28, 12-16 swipes per run): with audio the playing Short dropped up to 41 frames per swap, without
+     * it at most 5 and the incoming one none. The word "audio" in ablate.txt brings the old behaviour back for comparison.
+     */
+    private boolean silentSpare() {
+        return !Ablation.has(mContext, "audio");
+    }
+
     private boolean isAblated() {
         return Ablation.has(mContext, "preview");
     }
@@ -235,7 +244,7 @@ public class ShortsPreview {
             if (Ablation.has(mContext, "cap480")) {
                 mSelector.setParameters(mSelector.buildUponParameters().setMaxVideoSize(Integer.MAX_VALUE, 480));
             }
-            if (Ablation.has(mContext, "noaudio")) {
+            if (silentSpare()) {
                 mSelector.setParameters(mSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true));
             }
         }
@@ -365,7 +374,7 @@ public class ShortsPreview {
         if (mPlayer == null || !mFrameRendered) {
             return false;
         }
-        if (mSelector != null && Ablation.has(mContext, "noaudio")) {
+        if (mSelector != null && silentSpare()) {
             mSelector.setParameters(mSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false));
         }
         mLive = true;
