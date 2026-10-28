@@ -291,7 +291,28 @@ public class ExoMediaSourceFactory {
         return path != null && path.contains("timedtext");
     }
 
+    // JoTube: the SABR manifest of a Short is built from its format info (80-300 ms on the Streamer, device log
+    // 2026-10-28 18:17); the spare player's preparation builds it on a background thread first (prebuildSabrManifest)
+    private static final java.util.Map<MediaItemFormatInfo, SabrManifest> sSabrManifests =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
+    /** Any thread: builds and keeps the SABR manifest, so creating the source later on the main thread is quick. */
+    public static void prebuildSabrManifest(MediaItemFormatInfo formatInfo) {
+        if (formatInfo == null || !formatInfo.containsSabrFormats() || sSabrManifests.containsKey(formatInfo)) {
+            return;
+        }
+        sSabrManifests.put(formatInfo, new SabrManifestParser().parse(formatInfo));
+    }
+
+    public static boolean hasPrebuiltSabrManifest(MediaItemFormatInfo formatInfo) {
+        return formatInfo != null && sSabrManifests.containsKey(formatInfo);
+    }
+
     private SabrManifest getSabrManifest(MediaItemFormatInfo formatInfo) {
+        SabrManifest prebuilt = sSabrManifests.get(formatInfo);
+        if (prebuilt != null) {
+            return prebuilt;
+        }
         SabrManifestParser parser = new SabrManifestParser();
         return parser.parse(formatInfo);
     }

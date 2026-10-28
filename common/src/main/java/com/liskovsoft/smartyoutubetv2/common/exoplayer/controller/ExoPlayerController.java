@@ -231,6 +231,7 @@ public class ExoPlayerController implements Player.Listener {
         }
         mStartPositionMs = C.TIME_UNSET; // the Short plays already: a saved position isn't applied
 
+        ShortsPreloadControl.setPlayingFromPreload(false); // the adopted player plays its own source
         ShortsQueue queue = ShortsQueue.getActive();
         if (queue != null && formatInfo != null) {
             int index = queue.indexOf(formatInfo.getVideoId());
@@ -284,9 +285,11 @@ public class ExoPlayerController implements Player.Listener {
             if (canPlayPreloaded()) {
                 queue = new ShortsQueue(mPreloadManager, mPreloadControl, formatInfo, mediaSource);
                 mediaSource = queue.getMediaSource(0);
+                ShortsPreloadControl.setPlayingFromPreload(true);
             } else {
                 // JoTube role swap: this player can't play the preload manager's sources: it plays its own source, the
                 // queue (next Shorts, preloading) gets a source of its own for the first item
+                ShortsPreloadControl.setPlayingFromPreload(false);
                 MediaSource queueSource = createSource(formatInfo);
                 if (queueSource != null) {
                     queue = new ShortsQueue(mPreloadManager, mPreloadControl, formatInfo, queueSource);
@@ -341,6 +344,7 @@ public class ExoPlayerController implements Player.Listener {
         sSourceGeneration++;
         cancelItemEnd();
         JoTubeTiming.mark("queued Short: setMediaSource (preloaded)");
+        ShortsPreloadControl.setPlayingFromPreload(true);
         mPlayer.setMediaSource(source);
         mPlayer.prepare();
         mPlayer.setPlayWhenReady(true);

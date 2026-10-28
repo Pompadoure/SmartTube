@@ -307,7 +307,52 @@ public class ShortsPreview {
         mFirstFrameListener = listener;
     }
 
+    // JoTube: the SABR manifest of the next Short is built here, not on the main thread (80-300 ms on the Streamer)
+    private static final java.util.concurrent.ExecutorService sBuilder = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(() -> {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+            r.run();
+        }, "JoTubeManifest");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private MediaItemFormatInfo mBuilding;
+
     private boolean prepare(MediaItemFormatInfo next) {
+        if (next.containsSabrFormats() && !com.liskovsoft.smartyoutubetv2.common.exoplayer.ExoMediaSourceFactory.hasPrebuiltSabrManifest(next)) {
+            final String videoId = next.getVideoId();
+            mVideoId = videoId; // preparing (the waiting switch counts on it)
+            mFrameRendered = false;
+            mAspectRatio = 0;
+            mBuilding = next;
+            final long tb = android.os.SystemClock.uptimeMillis();
+            sBuilder.execute(() -> {
+                try {
+                    com.liskovsoft.smartyoutubetv2.common.exoplayer.ExoMediaSourceFactory.prebuildSabrManifest(next);
+                } catch (Throwable e) {
+                    Log.e(TAG, "Manifest build failed for %s: %s", videoId, e.getMessage());
+                }
+                mHandler.post(() -> {
+                    if (mBuilding != next) {
+                        return; // another Short or no player meanwhile
+                    }
+                    mBuilding = null;
+                    Log.d(TAG, "Manifest of %s built off the main thread in %s ms", videoId, android.os.SystemClock.uptimeMillis() - tb);
+                    if (!mLive && videoId != null && videoId.equals(mVideoId) && mPlayer != null) {
+                        mVideoId = null;
+                        if (!prepare(next) || !videoId.equals(mVideoId)) {
+                            Runnable listener = mFirstFrameListener; // a waiting switch takes the usual way
+                            mFirstFrameListener = null;
+                            if (listener != null) {
+                                listener.run();
+                            }
+                        }
+                    }
+                });
+            });
+            return true;
+        }
+
         long tSel = android.os.SystemClock.uptimeMillis();
         if (mSelector != null) {
             if (Ablation.has(mContext, "cap480")) {
@@ -375,6 +420,7 @@ public class ShortsPreview {
         mPlayer = player;
         mSelector = selector;
         mLive = false;
+        mBuilding = null;
         mVideoId = null;
         mFrameRendered = false;
         mAspectRatio = 0;
@@ -510,6 +556,7 @@ public class ShortsPreview {
     public void consumed() {
         boolean wasLive = mLive;
         mLive = false;
+        mBuilding = null;
         mVideoId = null;
         mFrameRendered = false;
         mAspectRatio = 0;
