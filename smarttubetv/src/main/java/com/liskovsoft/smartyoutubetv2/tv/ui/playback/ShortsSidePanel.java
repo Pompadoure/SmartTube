@@ -889,7 +889,7 @@ public class ShortsSidePanel {
                 } catch (IllegalArgumentException e) {
                     // Activity destroyed
                 }
-                mAvatar.setImageResource(R.drawable.action_channel);
+                mAvatar.setImageResource(R.drawable.avatar_placeholder_round);
             }
             return;
         }
@@ -904,7 +904,7 @@ public class ShortsSidePanel {
             Glide.with(mAvatar)
                     .load(url)
                     .circleCrop()
-                    .placeholder(R.drawable.action_channel)
+                    .placeholder(R.drawable.avatar_placeholder_round)
                     .transition(com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions.withCrossFade(120)) // late ones only: a cache hit has no transition
                     .into(mAvatar);
         } catch (IllegalArgumentException e) {

@@ -393,7 +393,7 @@ public class VideoPlayerGlue extends MaxControlsVideoPlayerGlue<PlayerAdapter> i
         }
 
         if (iconUrl == null) {
-            channelAction.setIcon(ContextCompat.getDrawable(getContext(), R.drawable.action_channel));
+            channelAction.setIcon(ContextCompat.getDrawable(getContext(), R.drawable.avatar_placeholder_round));
             invalidateUi(channelAction);
             return;
         }
