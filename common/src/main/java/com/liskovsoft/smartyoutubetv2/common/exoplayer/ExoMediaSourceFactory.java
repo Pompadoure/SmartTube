@@ -93,7 +93,13 @@ public class ExoMediaSourceFactory {
     }
 
     public MediaSource fromSabrFormatInfo(MediaItemFormatInfo formatInfo) {
-        return buildSabrMediaSource(formatInfo);
+        return buildSabrMediaSource(formatInfo, false);
+    }
+
+    /** JoTube: the spare player's source, from the manifest built in the background (used once: a manifest holds the
+     * SABR session state, two sources on one manifest got 403s, device log 2026-10-28 22:08). */
+    public MediaSource fromSabrFormatInfoPrebuilt(MediaItemFormatInfo formatInfo) {
+        return buildSabrMediaSource(formatInfo, true);
     }
 
     public MediaSource fromDashFormatInfo(MediaItemFormatInfo formatInfo) {
@@ -192,14 +198,14 @@ public class ExoMediaSourceFactory {
         return source;
     }
 
-    private MediaSource buildSabrMediaSource(MediaItemFormatInfo formatInfo) {
+    private MediaSource buildSabrMediaSource(MediaItemFormatInfo formatInfo, boolean usePrebuilt) {
         // Are you using FrameworkSampleSource or ExtractorSampleSource when you build your player?
         SabrMediaSource sabrSource = new SabrMediaSource.Factory(
                 getSabrChunkSourceFactory(),
                 null
         )
                 .setLoadErrorHandlingPolicy(new SabrDefaultLoadErrorHandlingPolicy())
-                .createMediaSource(getSabrManifest(formatInfo));
+                .createMediaSource(getSabrManifest(formatInfo, usePrebuilt));
         if (mTrackErrorFixer != null) {
             sabrSource.addEventListener(Utils.sHandler, mTrackErrorFixer.forVideo(formatInfo.getVideoId()));
         }
@@ -308,8 +314,8 @@ public class ExoMediaSourceFactory {
         return formatInfo != null && sSabrManifests.containsKey(formatInfo);
     }
 
-    private SabrManifest getSabrManifest(MediaItemFormatInfo formatInfo) {
-        SabrManifest prebuilt = sSabrManifests.get(formatInfo);
+    private SabrManifest getSabrManifest(MediaItemFormatInfo formatInfo, boolean usePrebuilt) {
+        SabrManifest prebuilt = usePrebuilt ? sSabrManifests.remove(formatInfo) : null;
         if (prebuilt != null) {
             return prebuilt;
         }
