@@ -119,6 +119,42 @@ final class ShortsLiveSwitch {
         finishHandOver();
     };
 
+    // JoTube diagnostics: main thread messages of 30 ms or more from the key press until the swap is done (the slide is
+    // animated on the main thread here: Choreographer skipped 31-40 frames at some switches, log 2026-10-28 16:27)
+    private static final long WATCH_MS = 2500;
+    private static final long WATCH_MIN_MS = 30;
+    private long mWatchFromMs;
+    private final android.util.Printer mWatchPrinter = new android.util.Printer() {
+        private long mBeginMs;
+        private String mWhat;
+
+        @Override
+        public void println(String x) {
+            if (x == null) {
+                return;
+            }
+            if (x.startsWith(">>>>> Dispatching")) {
+                mBeginMs = SystemClock.uptimeMillis();
+                mWhat = x;
+            } else if (x.startsWith("<<<<< Finished") && mWhat != null) {
+                long duration = SystemClock.uptimeMillis() - mBeginMs;
+                if (duration >= WATCH_MIN_MS) {
+                    Log.d(TAG, "Slow main thread: %s ms at +%s ms (%s): %s", duration, mBeginMs - mWatchFromMs, mState,
+                            mWhat.length() > 160 ? mWhat.substring(0, 160) : mWhat);
+                }
+                mWhat = null;
+            }
+        }
+    };
+    private final Runnable mStopWatch = () -> Looper.getMainLooper().setMessageLogging(null);
+
+    private void watchMainThread() {
+        mWatchFromMs = SystemClock.uptimeMillis();
+        mHandler.removeCallbacks(mStopWatch);
+        Looper.getMainLooper().setMessageLogging(mWatchPrinter);
+        mHandler.postDelayed(mStopWatch, WATCH_MS);
+    }
+
     ShortsLiveSwitch(Host host) {
         mHost = host;
     }
@@ -146,6 +182,8 @@ final class ShortsLiveSwitch {
                 preview.getView() == null || preview.getPlayer() == null) {
             return false;
         }
+
+        watchMainThread();
 
         if (!preview.isReadyFor(next.videoId)) {
             return startPending(next, open, preview);
@@ -200,6 +238,9 @@ final class ShortsLiveSwitch {
             Log.d(TAG, "The spare player's first frame came after %s ms", SystemClock.uptimeMillis() - mStartMs);
         }
         if (!ready || !startSlide(next, open)) {
+            if (preview != null && !preview.isLive()) {
+                preview.consumed(); // the spare lets the Short go: the core loads it (no second decoder meanwhile)
+            }
             open.run(); // the usual switch
         }
     }

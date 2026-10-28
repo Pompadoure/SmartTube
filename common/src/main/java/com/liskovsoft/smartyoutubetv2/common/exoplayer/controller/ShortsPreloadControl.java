@@ -18,6 +18,15 @@ public final class ShortsPreloadControl implements TargetPreloadStatusControl<In
     public static final long PREVIOUS_PRELOAD_MS = 3_000; // the swipe back
 
     private final Context mContext;
+    // JoTube: the spare player prepares the next Short itself (its own source: the preloaded ones play only on the
+    // preload player's thread). Preloading the Shorts ahead too downloaded every start chunk twice (device log
+    // 2026-10-28 16:26: 3-5 start chunks of 1-2 MB per swipe; the spare's took up to 2.3 s). Word "pmnext": old behaviour.
+    private static volatile boolean sSpareCoversNext;
+
+    public static void setSpareCoversNext(boolean covers) {
+        sSpareCoversNext = covers;
+    }
+
     public ShortsPreloadControl(Context context) {
         mContext = context;
     }
@@ -71,6 +80,10 @@ public final class ShortsPreloadControl implements TargetPreloadStatusControl<In
         }
 
         if (index == -1 || state.current == -1) {
+            return PreloadStatus.PRELOAD_STATUS_NOT_PRELOADED;
+        }
+
+        if (sSpareCoversNext && index > state.current && !Ablation.has(mContext, "pmnext")) {
             return PreloadStatus.PRELOAD_STATUS_NOT_PRELOADED;
         }
 

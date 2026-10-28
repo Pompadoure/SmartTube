@@ -144,6 +144,7 @@ public class ShortsPreview {
         if (mEnabled) {
             ShortsQueue.setChangeListener(this::scheduleRefresh);
         }
+        com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ShortsPreloadControl.setSpareCoversNext(mEnabled);
     }
 
     public void detach() {
@@ -151,6 +152,7 @@ public class ShortsPreview {
         mRefreshPending = false;
         mFirstFrameListener = null;
         ShortsQueue.setChangeListener(null);
+        com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ShortsPreloadControl.setSpareCoversNext(false);
         releasePlayer();
 
         if (mHolder != null && mHolder.getParent() instanceof ViewGroup) {
