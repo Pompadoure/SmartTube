@@ -1,16 +1,8 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Round stand-in for a channel avatar (shown until the real, round-cropped picture has loaded). -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="oval">
-            <solid android:color="#55808080" />
+            <solid android:color="#FF5A6B7D" />
             <size android:width="48dp" android:height="48dp" />
         </shape>
     </item>
-    <item
-        android:drawable="@drawable/action_channel"
-        android:top="10dp"
-        android:bottom="10dp"
-        android:left="10dp"
-        android:right="10dp" />
 </layer-list>

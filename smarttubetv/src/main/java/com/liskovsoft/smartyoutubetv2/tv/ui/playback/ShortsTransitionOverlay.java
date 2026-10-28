@@ -806,9 +806,8 @@ public class ShortsTransitionOverlay {
         mOut.setTranslationY(outStart);
         mOut.setAlpha(1f);
         clearImage(mIn);
-        if (mTargetVideo != null) {
-            loadThumbnail(mIn, mTargetVideo); // preloaded: from the memory cache, at once
-        }
+        // No still here: YouTube's thumbnail is a frame from the middle of the Short, and the video then cuts to its
+        // start (a visible pop-in). The incoming picture stays plain black until the real first frame fades in.
         mIn.setVisibility(View.VISIBLE);
         mIn.setAlpha(1f);
         mIn.setTranslationY(inStart);
