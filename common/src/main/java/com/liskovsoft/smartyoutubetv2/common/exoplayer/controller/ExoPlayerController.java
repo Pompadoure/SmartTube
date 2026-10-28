@@ -364,6 +364,10 @@ public class ExoPlayerController implements Player.Listener {
             return null;
         }
 
+        if (!formatInfo.containsDashFormats() && formatInfo.containsSabrFormats()) {
+            return controller.mMediaSourceFactory.fromSabrFormatInfoPrebuilt(formatInfo); // its own manifest (SABR state)
+        }
+
         return controller.createSource(formatInfo);
     }
 
