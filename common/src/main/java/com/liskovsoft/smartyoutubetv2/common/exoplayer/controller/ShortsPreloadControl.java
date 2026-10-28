@@ -4,7 +4,6 @@ import androidx.media3.exoplayer.source.preload.DefaultPreloadManager.PreloadSta
 import androidx.media3.exoplayer.source.preload.TargetPreloadStatusControl;
 
 import android.content.Context;
-import com.liskovsoft.smartyoutubetv2.common.exoplayer.other.Ablation;
 
 /**
  * JoTube M3: how much of each queued Short {@link androidx.media3.exoplayer.source.preload.DefaultPreloadManager}
@@ -20,7 +19,7 @@ public final class ShortsPreloadControl implements TargetPreloadStatusControl<In
     private final Context mContext;
     // JoTube: the spare player prepares the next Short itself (its own source: the preloaded ones play only on the
     // preload player's thread). Preloading the Shorts ahead too downloaded every start chunk twice (device log
-    // 2026-10-28 16:26: 3-5 start chunks of 1-2 MB per swipe; the spare's took up to 2.3 s). Word "pmnext": old behaviour.
+    // 2026-10-28 16:26: 3-5 start chunks of 1-2 MB per swipe; the spare's took up to 2.3 s).
     private static volatile boolean sSpareCoversNext;
 
     public static void setSpareCoversNext(boolean covers) {
@@ -74,9 +73,6 @@ public final class ShortsPreloadControl implements TargetPreloadStatusControl<In
 
     @Override
     public PreloadStatus getTargetPreloadStatus(Integer key) {
-        if (Ablation.has(mContext, "nopm")) {
-            return PreloadStatus.PRELOAD_STATUS_NOT_PRELOADED;
-        }
         State state = mState;
         int index = -1;
 
@@ -93,7 +89,7 @@ public final class ShortsPreloadControl implements TargetPreloadStatusControl<In
 
         // With the spare player nothing is preloaded: the playing Short and the previous one were downloaded again by the
         // preload manager too (its sources play only on one of the two players): log 2026-10-28 16:48, 3 start chunks per swipe
-        if (sSpareCoversNext && (index != state.current || !sPlayingFromPreload) && !Ablation.has(mContext, "pmnext")) {
+        if (sSpareCoversNext && (index != state.current || !sPlayingFromPreload)) {
             return PreloadStatus.PRELOAD_STATUS_NOT_PRELOADED;
         }
 
