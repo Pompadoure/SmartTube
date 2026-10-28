@@ -27,6 +27,14 @@ public final class ShortsPreloadControl implements TargetPreloadStatusControl<In
         sSpareCoversNext = covers;
     }
 
+    // JoTube: the main player plays the preload manager's source of the current Short (else its own source: then the
+    // manager's copy of the current Short was a second download of it, device log 2026-10-28 18:17)
+    private static volatile boolean sPlayingFromPreload = true;
+
+    public static void setPlayingFromPreload(boolean fromPreload) {
+        sPlayingFromPreload = fromPreload;
+    }
+
     public ShortsPreloadControl(Context context) {
         mContext = context;
     }
@@ -85,7 +93,7 @@ public final class ShortsPreloadControl implements TargetPreloadStatusControl<In
 
         // With the spare player nothing is preloaded: the playing Short and the previous one were downloaded again by the
         // preload manager too (its sources play only on one of the two players): log 2026-10-28 16:48, 3 start chunks per swipe
-        if (sSpareCoversNext && index != state.current && !Ablation.has(mContext, "pmnext")) {
+        if (sSpareCoversNext && (index != state.current || !sPlayingFromPreload) && !Ablation.has(mContext, "pmnext")) {
             return PreloadStatus.PRELOAD_STATUS_NOT_PRELOADED;
         }
 
