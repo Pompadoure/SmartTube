@@ -1,0 +1,30 @@
+name: Branch cleanup (Claude)
+
+# Deletes the listed branches (space separated). Manual dispatch only. The long-lived branches can never be deleted.
+on:
+  workflow_dispatch:
+    inputs:
+      branches:
+        description: "Branches to delete, space separated"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Delete branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCHES: ${{ github.event.inputs.branches }}
+          REPO: ${{ github.repository }}
+        run: |
+          for b in $BRANCHES; do
+            case "$b" in
+              master|media3|media3-mobile|agent-board) echo "::warning::kept $b (protected)"; continue;;
+            esac
+            if gh api -X DELETE "repos/$REPO/git/refs/heads/$b" >/dev/null 2>&1; then echo "deleted $b"; else echo "::warning::could not delete $b"; fi
+          done
