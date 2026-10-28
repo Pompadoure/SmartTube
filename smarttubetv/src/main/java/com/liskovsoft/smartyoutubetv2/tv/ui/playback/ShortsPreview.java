@@ -42,7 +42,7 @@ import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerTweaksData;
 public class ShortsPreview {
     private static final String TAG = "ShortsPreview";
     // after the playing Short's first frame (JoTube live switch: soon, so a swipe after ~1 s finds it ready)
-    private static final int START_DELAY_MS = 300;
+    private static final int START_DELAY_MS = 1200; // a quick swipe-through (device log 2026-10-28: 1 in 3 preparations was dropped within 2 s) prepares nothing
     private static final float PARKED_Y = 10_000f; // visible (the surface must exist) but far off screen
 
     // after a take-over the main player's sound is young: no decoder start-up and network work on this weak box then
