@@ -435,7 +435,9 @@ final class ShortsLiveSwitch {
 
         ShortsSidePanel panel = mHost.panel();
         if (panel != null) {
+            long ta = SystemClock.uptimeMillis();
             panel.setVideoAspect(mTargetAspect); // frame, border and the main surface's frame: the new shape
+            Log.d(TAG, "Slide end timing: setVideoAspect(%s) %s ms", mTargetAspect, SystemClock.uptimeMillis() - ta);
             panel.setSlideAside(false);
         }
 
@@ -452,10 +454,12 @@ final class ShortsLiveSwitch {
             }
             return;
         }
+        long to = SystemClock.uptimeMillis();
         mHost.onLiveOpening();
         if (open != null) {
             open.run(); // the core opens the Short now: it adopts the spare player (adopt, always later: posted)
         }
+        Log.d(TAG, "Slide end timing: core open %s ms", SystemClock.uptimeMillis() - to);
         if (mState == State.WAITING) {
             mHost.onLiveOldPlayerDone(); // after the core's "new video" work (it reads the old player's state)
         }

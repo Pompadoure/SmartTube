@@ -308,6 +308,7 @@ public class ShortsPreview {
     }
 
     private boolean prepare(MediaItemFormatInfo next) {
+        long tSel = android.os.SystemClock.uptimeMillis();
         if (mSelector != null) {
             if (Ablation.has(mContext, "cap480")) {
                 mSelector.setParameters(mSelector.buildUponParameters().setMaxVideoSize(Integer.MAX_VALUE, 480));
@@ -317,7 +318,9 @@ public class ShortsPreview {
             }
         }
 
+        long t0 = android.os.SystemClock.uptimeMillis();
         MediaSource source = ExoPlayerController.createPreviewSource(next);
+        long t1 = android.os.SystemClock.uptimeMillis();
 
         if (source == null) {
             return false;
@@ -338,6 +341,8 @@ public class ShortsPreview {
         player.setPlayWhenReady(false);
         player.setMediaSource(source);
         player.prepare();
+        Log.d(TAG, "Prepare timing: source %s ms, setMediaSource+prepare %s ms (selector before: %s ms)",
+                t1 - t0, android.os.SystemClock.uptimeMillis() - t1, t0 - tSel);
         return true;
     }
 
