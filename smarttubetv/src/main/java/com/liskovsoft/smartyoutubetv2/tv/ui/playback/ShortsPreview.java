@@ -42,7 +42,7 @@ import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerTweaksData;
 public class ShortsPreview {
     private static final String TAG = "ShortsPreview";
     // after the playing Short's first frame (JoTube live switch: soon, so a swipe after ~1 s finds it ready)
-    private static final int START_DELAY_MS = 1200; // a quick swipe-through (device log 2026-10-28: 1 in 3 preparations was dropped within 2 s) prepares nothing
+    private static final int START_DELAY_MS = 500; // silent spare (2026-10-28): cheap enough to start soon; 1200 ms left fast swipers without a ready Short (log 12:40: 9 of 14 swipes)
     private static final float PARKED_Y = 10_000f; // visible (the surface must exist) but far off screen
 
     // after a take-over the main player's sound is young: no decoder start-up and network work on this weak box then
@@ -50,7 +50,12 @@ public class ShortsPreview {
     private long mQuietUntilMs;
 
     private final Handler mHandler = new Handler(Looper.getMainLooper());
-    private final Runnable mRefresh = this::refresh;
+    private final Runnable mRefresh = () -> {
+        mRefreshPending = false;
+        refresh();
+    };
+    private boolean mRefreshPending;
+    private Runnable mFirstFrameListener; // JoTube: the live switch waits for this Short's first frame
     private Context mContext;
     private FrameLayout mHolder; // the frame: set by the overlay (same size as the incoming picture)
     private AspectRatioFrameLayout mAspect;
@@ -70,6 +75,11 @@ public class ShortsPreview {
         public void onRenderedFirstFrame() {
             mFrameRendered = true;
             Log.d(TAG, "First frame of the next Short %s is ready", mVideoId);
+            Runnable listener = mFirstFrameListener;
+            mFirstFrameListener = null;
+            if (listener != null) {
+                listener.run();
+            }
         }
 
         @Override
@@ -93,6 +103,11 @@ public class ShortsPreview {
         public void onPlayerError(PlaybackException error) {
             Log.e(TAG, "Preview failed for %s: %s", mVideoId, error.getMessage());
             mFrameRendered = false;
+            Runnable listener = mFirstFrameListener;
+            mFirstFrameListener = null;
+            if (listener != null) {
+                listener.run(); // the waiting switch sees "not ready" and takes the usual way at once
+            }
             if (mLive && mLiveProblem != null) {
                 mLiveProblem.run();
             }
@@ -133,6 +148,8 @@ public class ShortsPreview {
 
     public void detach() {
         mHandler.removeCallbacksAndMessages(null);
+        mRefreshPending = false;
+        mFirstFrameListener = null;
         ShortsQueue.setChangeListener(null);
         releasePlayer();
 
@@ -195,6 +212,7 @@ public class ShortsPreview {
     public void onMainStarting() {
         mMainStarted = false;
         mHandler.removeCallbacks(mRefresh);
+        mRefreshPending = false;
     }
 
     private void scheduleRefresh() {
@@ -202,9 +220,13 @@ public class ShortsPreview {
             return;
         }
 
-        mHandler.removeCallbacks(mRefresh);
+        if (mRefreshPending) {
+            return; // queue updates must not push the pending preparation back (they came every ~1 s: log 2026-10-28)
+        }
+
         long quiet = mQuietUntilMs - android.os.SystemClock.uptimeMillis();
         long delay = Ablation.has(mContext, "late") ? 8000 : START_DELAY_MS;
+        mRefreshPending = true;
         mHandler.postDelayed(mRefresh, Math.max(delay, quiet));
     }
 
@@ -240,6 +262,50 @@ public class ShortsPreview {
             return; // prepared or preparing
         }
 
+        prepare(next);
+    }
+
+    /**
+     * JoTube: the user swiped to {@code videoId} before it was prepared: prepare it now (not after the start delay).
+     *
+     * @return true if it is prepared or being prepared here (its first frame will come: {@link #setFirstFrameListener})
+     */
+    public boolean prepareNow(String videoId) {
+        if (!mEnabled || mHolder == null || mLive || videoId == null || mPlayer == null || isAblated()) {
+            return false;
+        }
+
+        if (videoId.equals(mVideoId)) {
+            return true;
+        }
+
+        MediaItemFormatInfo info = ShortsQueue.getQueuedFormatInfo(videoId);
+
+        if (info == null) {
+            MediaItemFormatInfo next = ShortsQueue.getNextFormatInfo();
+            info = next != null && videoId.equals(next.getVideoId()) ? next : null;
+        }
+
+        if (info == null) {
+            return false;
+        }
+
+        mHandler.removeCallbacks(mRefresh);
+        mRefreshPending = false;
+        return prepare(info) && videoId.equals(mVideoId);
+    }
+
+    /** This Short is being prepared here and has no first frame yet. */
+    public boolean isPreparing(String videoId) {
+        return mPlayer != null && !mLive && videoId != null && videoId.equals(mVideoId) && !mFrameRendered;
+    }
+
+    /** Called once on the next first frame (or failure) of the prepared Short; null removes it. */
+    public void setFirstFrameListener(@Nullable Runnable listener) {
+        mFirstFrameListener = listener;
+    }
+
+    private boolean prepare(MediaItemFormatInfo next) {
         if (mSelector != null) {
             if (Ablation.has(mContext, "cap480")) {
                 mSelector.setParameters(mSelector.buildUponParameters().setMaxVideoSize(Integer.MAX_VALUE, 480));
@@ -252,13 +318,13 @@ public class ShortsPreview {
         MediaSource source = ExoPlayerController.createPreviewSource(next);
 
         if (source == null) {
-            return;
+            return false;
         }
 
         ExoPlayer player = ensurePlayer();
 
         if (player == null) {
-            return;
+            return false;
         }
 
         mVideoId = next.getVideoId();
@@ -270,6 +336,7 @@ public class ShortsPreview {
         player.setPlayWhenReady(false);
         player.setMediaSource(source);
         player.prepare();
+        return true;
     }
 
     @Nullable

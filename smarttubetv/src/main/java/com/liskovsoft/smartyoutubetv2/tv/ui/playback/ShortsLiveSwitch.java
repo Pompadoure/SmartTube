@@ -71,7 +71,18 @@ final class ShortsLiveSwitch {
         void onLiveFallBack();
     }
 
-    private enum State {IDLE, SLIDING, WAITING, ADOPTED}
+    private enum State {IDLE, PENDING, SLIDING, WAITING, ADOPTED}
+
+    // JoTube: the swiped-to Short isn't ready in the spare player: the playing Short goes on until its first frame is (the
+    // slide then shows real video). Device log 2026-10-28 12:40: the spare had its first frame 0.25-1.1 s after the
+    // preparation started (once 3.3 s); the usual switch needed 1.2-1.4 s and showed a black or a still meanwhile.
+    private static final long PENDING_MAX_MS = 1500;
+    private Video mPendingNext;
+    private Runnable mPendingOpen;
+    private final Runnable mPendingTimeout = () -> {
+        Log.w(TAG, "The spare player had no first frame in %s ms: the usual switch", PENDING_MAX_MS);
+        endPending(false);
+    };
 
     private final Host mHost;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
@@ -126,6 +137,74 @@ final class ShortsLiveSwitch {
             return false; // still switching: the swipe waits (isBusy)
         }
 
+        ShortsPreview preview = mHost.preview();
+        ExoPlayer main = mHost.mainPlayer();
+        View mainSurface = mHost.mainSurface();
+        ShortsSidePanel panel = mHost.panel();
+
+        if (next == null || preview == null || main == null || mainSurface == null || panel == null ||
+                preview.getView() == null || preview.getPlayer() == null) {
+            return false;
+        }
+
+        if (!preview.isReadyFor(next.videoId)) {
+            return startPending(next, open, preview);
+        }
+
+        return startSlide(next, open);
+    }
+
+    /**
+     * The swiped-to Short is (or now gets) prepared in the spare player: the switch starts with its first frame.
+     *
+     * @return false: it can't be prepared (the usual switch is used at once)
+     */
+    private boolean startPending(Video next, Runnable open, ShortsPreview preview) {
+        if (!preview.prepareNow(next.videoId)) {
+            return false;
+        }
+
+        mState = State.PENDING;
+        mPendingNext = next;
+        mPendingOpen = open;
+        mStartMs = SystemClock.uptimeMillis();
+        Log.d(TAG, "Switch to %s waits for the spare player's first frame", next.videoId);
+        preview.setFirstFrameListener(() -> mHandler.post(() -> {
+            if (mState == State.PENDING) {
+                endPending(true);
+            }
+        }));
+        mHandler.postDelayed(mPendingTimeout, PENDING_MAX_MS);
+        return true;
+    }
+
+    /** @param ready the first frame came (else: timeout, failure, the screen goes away) */
+    private void endPending(boolean ready) {
+        mHandler.removeCallbacks(mPendingTimeout);
+        ShortsPreview preview = mHost.preview();
+        if (preview != null) {
+            preview.setFirstFrameListener(null);
+        }
+        Video next = mPendingNext;
+        Runnable open = mPendingOpen;
+        mPendingNext = null;
+        mPendingOpen = null;
+        if (mState != State.PENDING) {
+            return;
+        }
+        mState = State.IDLE;
+        if (next == null || open == null) {
+            return;
+        }
+        if (ready) {
+            Log.d(TAG, "The spare player's first frame came after %s ms", SystemClock.uptimeMillis() - mStartMs);
+        }
+        if (!ready || !startSlide(next, open)) {
+            open.run(); // the usual switch
+        }
+    }
+
+    private boolean startSlide(Video next, Runnable open) {
         ShortsPreview preview = mHost.preview();
         ExoPlayer main = mHost.mainPlayer();
         View mainSurface = mHost.mainSurface();
@@ -223,7 +302,7 @@ final class ShortsLiveSwitch {
 
     /** Sliding, or the core is still opening the Short (the spare player plays it on top): swipes wait. */
     boolean isBusy() {
-        return mState == State.SLIDING || mState == State.WAITING;
+        return mState == State.PENDING || mState == State.SLIDING || mState == State.WAITING;
     }
 
     /** The spare player is the one heard and controlled for the core (until it is adopted). */
@@ -356,6 +435,13 @@ final class ShortsLiveSwitch {
      */
     boolean onMainStarting(Video video) {
         if (mState == State.IDLE || mState == State.ADOPTED) {
+            return false;
+        }
+
+        if (mState == State.PENDING) {
+            Log.d(TAG, "Another video starts while the switch waits: it is dropped");
+            mPendingOpen = null; // something else is opened: not this one
+            endPending(false);
             return false;
         }
 
@@ -560,6 +646,11 @@ final class ShortsLiveSwitch {
             return;
         }
         Log.d(TAG, "Live switch aborted in state %s", mState);
+        if (mState == State.PENDING) {
+            mPendingOpen = null; // the user left: nothing is opened
+            endPending(false);
+            return;
+        }
         if (mState == State.ADOPTED) {
             finishHandOver();
             return;
