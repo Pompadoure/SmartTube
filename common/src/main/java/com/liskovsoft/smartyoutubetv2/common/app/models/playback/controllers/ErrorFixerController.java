@@ -31,6 +31,18 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
     private String mSabrReloadVideoId;
     private int mSabrReloadAttempts;
 
+    // JoTube: a media download can hang without an error (device log 2026-10-29 16:50: one SABR chunk request stalled
+    // for 55 s, the 30 s buffer ran dry and the video froze until the long buffering fix restarted it 24 s later).
+    // While playing: the loaded position hasn't moved for STALL_MS and less than STALL_AHEAD_MS is left -> restart the
+    // engine (keeps the position) before the picture freezes.
+    private static final long STALL_POLL_MS = 2_000;
+    private static final long STALL_MS = 12_000;
+    private static final long STALL_AHEAD_MS = 15_000;
+    private boolean mStallWatch;
+    private long mLastBufferedMs = -1;
+    private long mLastBufferedChangeMs;
+    private final Runnable mStallCheck = this::checkLoadStall;
+
     @Override
     public void onInit() {
         mVideoLoaderController = getController(VideoLoaderController.class);
@@ -100,11 +112,50 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
     public void onPlay() {
         mBufferingDetector.onStopBuffering();
         mSabrReloadAttempts = 0;
+        startStallWatch();
     }
 
     @Override
     public void onPause() {
         mBufferingDetector.onStopBuffering();
+        stopStallWatch();
+    }
+
+    private void startStallWatch() {
+        mStallWatch = true;
+        mLastBufferedMs = -1;
+        Utils.removeCallbacks(mStallCheck);
+        Utils.postDelayed(mStallCheck, STALL_POLL_MS);
+    }
+
+    private void stopStallWatch() {
+        mStallWatch = false;
+        Utils.removeCallbacks(mStallCheck);
+    }
+
+    private void checkLoadStall() {
+        if (!mStallWatch || getPlayer() == null) {
+            return;
+        }
+
+        long now = android.os.SystemClock.uptimeMillis();
+        long buffered = getPlayer().getBufferedPositionMs();
+        long position = getPlayer().getPositionMs();
+        long duration = getPlayer().getDurationMs();
+
+        if (buffered != mLastBufferedMs) {
+            mLastBufferedMs = buffered;
+            mLastBufferedChangeMs = now;
+        } else if (buffered > 0 && position >= 0 && duration > 0 && buffered < duration - 2_000
+                && buffered - position < STALL_AHEAD_MS && now - mLastBufferedChangeMs >= STALL_MS) {
+            Log.w(TAG, "Load stall: loaded to %s ms for %s ms, %s ms left: restarting the engine", buffered,
+                    now - mLastBufferedChangeMs, buffered - position);
+            stopStallWatch();
+            mVideoLoaderController.restartEngine();
+            return;
+        }
+
+        Utils.postDelayed(mStallCheck, STALL_POLL_MS);
     }
 
     @Override
@@ -115,11 +166,13 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
     @Override
     public void onFinish() {
         mBufferingDetector.reset();
+        stopStallWatch();
     }
 
     @Override
     public void onEngineReleased() {
         mBufferingDetector.reset();
+        stopStallWatch();
     }
 
     private void runEngineErrorAction(int type, int rendererIndex, Throwable error) {
