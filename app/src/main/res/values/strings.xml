@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">JoKeys</string>
+    <string name="service_name">JoKeys knappar</string>
+    <string name="service_description">YouTube-knappen öppnar JoTube och Netflix-knappen öppnar Plex. Läser bara fjärrens knapptryck, inget annat.</string>
+</resources>
