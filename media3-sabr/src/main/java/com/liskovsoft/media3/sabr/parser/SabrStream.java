@@ -562,6 +562,11 @@ public class SabrStream {
     }
 
     private void setUrl(String url) {
+        // JoTube: the server sometimes redirects to an http:// URL; every request to it got 403 and the video stopped
+        // (device logs 2026-10-28 22:08 and 2026-10-29 17:15: 1 of 11 redirects was http, all 5 errors right after it)
+        if (url != null && url.startsWith("http://")) {
+            url = "https://" + url.substring("http://".length());
+        }
         Log.d(TAG, "New URL: %s", url);
         UrlQueryString newQueryString = UrlQueryStringFactory.parse(url);
         UrlQueryString oldQueryString = UrlQueryStringFactory.parse(this.url);
