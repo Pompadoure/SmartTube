@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android" android:drawable="@drawable/remote">
+    <target android:name="glow_jotube" android:animation="@animator/glow_pulse" />
+    <target android:name="glow_plex" android:animation="@animator/glow_pulse" />
+</animated-vector>

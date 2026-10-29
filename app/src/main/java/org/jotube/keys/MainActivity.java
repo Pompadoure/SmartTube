@@ -4,6 +4,9 @@ import android.app.Activity;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.drawable.Animatable;
+import android.graphics.drawable.Drawable;
+import android.widget.ImageView;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.text.TextUtils;
@@ -20,19 +23,35 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        int pad = (int) (48 * getResources().getDisplayMetrics().density);
+
+        LinearLayout screen = new LinearLayout(this);
+        screen.setOrientation(LinearLayout.HORIZONTAL);
+        screen.setGravity(Gravity.CENTER);
+        screen.setBackgroundColor(Color.rgb(0x0F, 0x12, 0x17));
+        screen.setPadding(pad, pad / 2, pad, pad / 2);
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
-        root.setBackgroundColor(Color.rgb(0x16, 0x1B, 0x22));
-        int pad = (int) (48 * getResources().getDisplayMetrics().density);
-        root.setPadding(pad, pad, pad, pad);
+        screen.addView(root, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f));
 
-        TextView title = new TextView(this);
-        title.setText("JoKeys");
-        title.setTextColor(Color.WHITE);
-        title.setTextSize(32);
-        title.setGravity(Gravity.CENTER);
-        root.addView(title);
+        // The remote (vector: sharp on every TV size); the two remapped buttons pulse softly
+        ImageView remote = new ImageView(this);
+        remote.setImageResource(R.drawable.remote_anim);
+        remote.setAdjustViewBounds(true);
+        remote.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        screen.addView(remote, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 0.8f));
+        Drawable d = remote.getDrawable();
+        if (d instanceof Animatable) {
+            ((Animatable) d).start();
+        }
+
+        ImageView logo = new ImageView(this);
+        logo.setImageResource(R.drawable.banner);
+        logo.setAdjustViewBounds(true);
+        root.addView(logo, new LinearLayout.LayoutParams((int) (280 * getResources().getDisplayMetrics().density), LinearLayout.LayoutParams.WRAP_CONTENT));
+
 
         TextView info = new TextView(this);
         info.setText("YouTube-knappen öppnar JoTube\nNetflix-knappen öppnar Plex");
@@ -59,7 +78,7 @@ public class MainActivity extends Activity {
         });
         root.addView(open);
 
-        setContentView(root);
+        setContentView(screen);
         open.requestFocus();
     }
 
