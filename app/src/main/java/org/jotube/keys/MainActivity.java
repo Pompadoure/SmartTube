@@ -156,12 +156,13 @@ public class MainActivity extends Activity {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setGravity(Gravity.CENTER_VERTICAL);
+        panel.setPadding(dp(6), dp(6), dp(6), dp(6));
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
         ImageView icon = new ImageView(this);
-        icon.setImageResource(R.drawable.icon);
+        icon.setImageResource(R.mipmap.launcher);
         header.addView(icon, new LinearLayout.LayoutParams(dp(56), dp(56)));
 
         LinearLayout titles = new LinearLayout(this);
@@ -222,8 +223,6 @@ public class MainActivity extends Activity {
         card.setFocusable(true);
         card.setClickable(true);
         card.setBackground(cardBackground(accent));
-        card.setOnFocusChangeListener((v, focused) -> v.animate().scaleX(focused ? 1.03f : 1f).scaleY(focused ? 1.03f : 1f)
-                .setDuration(140).start());
         card.setOnClickListener(v -> pick(index, title));
 
         FrameLayout badge = new FrameLayout(this);
@@ -232,7 +231,8 @@ public class MainActivity extends Activity {
         ring.setColor(accent);
         badge.setBackground(ring);
         ImageView appIcon = new ImageView(this);
-        appIcon.setPadding(dp(3), dp(3), dp(3), dp(3));
+        appIcon.setPadding(dp(9), dp(9), dp(9), dp(9));
+        appIcon.setScaleType(ImageView.ScaleType.FIT_CENTER);
         mAppIcons[index] = appIcon;
         badge.addView(appIcon, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         card.addView(badge, new LinearLayout.LayoutParams(dp(52), dp(52)));
@@ -280,7 +280,7 @@ public class MainActivity extends Activity {
                 }
             }
             mAppNames[i].setText(name);
-            mAppIcons[i].setImageDrawable(icon != null ? round(icon, dp(46)) : null);
+            mAppIcons[i].setImageDrawable(icon);
 
             boolean custom = !Mapping.isDefault(this, BUTTONS[i]) && icon != null;
             mOverlays[i].setImageDrawable(custom ? round(icon, dp(96)) : null);
@@ -468,8 +468,6 @@ public class MainActivity extends Activity {
         t.setFocusable(true);
         t.setClickable(true);
         t.setBackground(pillBackground(primary));
-        t.setOnFocusChangeListener((v, focused) -> v.animate().scaleX(focused ? 1.05f : 1f).scaleY(focused ? 1.05f : 1f)
-                .setDuration(120).start());
         return t;
     }
 
