@@ -595,6 +595,10 @@ public class ExoPlayerController implements Player.Listener {
         return mPlayer.getCurrentPosition();
     }
 
+    public long getBufferedPositionMs() {
+        return mPlayer != null ? mPlayer.getBufferedPosition() : -1;
+    }
+
     /**
      * NOTE: Pos gathered from content block data may slightly exceed video duration
      * (e.g. 302200 when duration is 302000).

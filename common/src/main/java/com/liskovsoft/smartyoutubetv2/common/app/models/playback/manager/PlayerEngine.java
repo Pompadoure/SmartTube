@@ -16,6 +16,11 @@ public interface PlayerEngine extends PlayerConstants {
     void openMerged(MediaItemFormatInfo formatInfo, String hlsPlaylistUrl);
     void openMerged(InputStream dashManifest, String hlsPlaylistUrl);
     long getPositionMs();
+
+    /** JoTube: how far the player has loaded (ms), for the load stall watchdog. */
+    default long getBufferedPositionMs() {
+        return -1;
+    }
     void setPositionMs(long positionMs);
     /** JoTube M3: start position for the next source (applied with setMediaSource, no seek after prepare). Call from onSourceChanged. */
     default void setStartPositionMs(long positionMs) {}
