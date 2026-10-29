@@ -18,10 +18,16 @@ public class KeyService extends AccessibilityService {
 
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
-        String target = targetFor(event.getKeyCode());
+        String button = buttonFor(event.getKeyCode());
 
-        if (target == null) {
+        if (button == null) {
             return false; // every other key goes on unchanged
+        }
+
+        String target = Mapping.get(this, button);
+
+        if (target.isEmpty()) {
+            return false; // set to "keep": the button opens its own app
         }
 
         if (event.getAction() == KeyEvent.ACTION_UP && event.getRepeatCount() == 0) {
@@ -31,12 +37,12 @@ public class KeyService extends AccessibilityService {
         return true; // down and up: consumed, so the system's own app isn't opened
     }
 
-    private static String targetFor(int keyCode) {
+    private static String buttonFor(int keyCode) {
         switch (keyCode) {
             case KeyEvent.KEYCODE_BUTTON_3: // YouTube
-                return JOTUBE;
+                return Mapping.YOUTUBE;
             case KeyEvent.KEYCODE_BUTTON_4: // Netflix
-                return PLEX;
+                return Mapping.NETFLIX;
             default:
                 return null;
         }

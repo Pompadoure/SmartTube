@@ -3,17 +3,24 @@
 
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
-    <!-- Android 11+: to see and launch JoTube and Plex -->
+    <!-- Android 11+: the launchable apps (the buttons can open any of them) -->
     <queries>
-        <package android:name="org.smarttube.johan.media3" />
-        <package android:name="com.plexapp.android" />
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
 
     <application
         android:label="@string/app_name"
         android:icon="@drawable/icon"
         android:banner="@drawable/banner"
-        android:allowBackup="false">
+        android:allowBackup="false"
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
 
         <activity
             android:name=".MainActivity"
