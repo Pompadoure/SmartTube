@@ -38,3 +38,22 @@ REJECTED
   seen on ours, wide change.
 - 1be2c8da (history toggle refactor): equivalent behaviour, no gain.
 - Translations, version bump 32.68, other chores: skipped.
+
+## 2026-10-30
+Checked: SmartTube up to 4b3f333e (2026-10-28), MSC up to 40fec843 (upstream pin; our pin is 1b43ec7).
+
+TAKEN
+- Nothing.
+
+REJECTED
+- 440c15b8 (+ MSC ba369250, 05feeb7e): live and past-live streams via SABR. Changes how existing live streams are played
+  (MSC 05feeb7e is marked "temporarily unlock for testing, DO NOT RELEASE"; ba369250 says some streams are still broken).
+- 380a2b79, a4f4b321, 404d1ad6 (DVR flag part): position restoring / seek rules for the new SABR live path only.
+- 404d1ad6 (sleep for the server backoff): rides on the live change; sleeping on the loader thread changes timing of the
+  normal VOD path and interacts with cancelling a load (403 risk). Backoff handling was rejected on 2026-10-16 too.
+- e7c66266 + MSC 40fec843 (DIAL casting, "show up in the YouTube cast list"): new feature with a new network service and
+  manifest changes, not an improvement to an existing one.
+- 4314570f (Preferred DNS moved to General/Network, SABR live option), 3d6aa161, 63d5fe43, a9e705fd (checkbox dialogs):
+  move settings and change UI that works today.
+- 79d4a447 (reverted by 168e4848), eadfe9e5 (refactor): no gain.
+- Translations (incl. 6cd95de6 Swedish), README, chores: skipped.
