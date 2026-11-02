@@ -36,6 +36,7 @@ public class CommentsPreferenceDialogFragment extends LeanbackPreferenceDialogFr
     private CommentGroup mCurrentGroup;
     private List<ChatItemMessage> mBackupMessages;
     private ChatItemMessage mFocusedMessage;
+    private android.view.ViewTreeObserver.OnPreDrawListener mInsetDrawListener;
 
     private static class CommentsBackup implements Backup {
         public CommentsBackup(List<ChatItemMessage> backupMessages, ChatItemMessage focusedMessage, CommentGroup currentGroup) {
@@ -78,7 +79,18 @@ public class CommentsPreferenceDialogFragment extends LeanbackPreferenceDialogFr
                 false);
 
         // Tell the player how much room the panel takes, so the video fits beside it
-        view.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> VideoEndInset.set(r - l));
+        // Measure where the panel's left edge really is on screen (its width isn't the visible width), and follow it while it slides in
+        final int[] pos = new int[2];
+        mInsetDrawListener = () -> {
+            if (!view.isAttachedToWindow()) {
+                return true;
+            }
+            view.getLocationOnScreen(pos);
+            int screenWidth = view.getRootView().getWidth();
+            VideoEndInset.set(Math.min(screenWidth, Math.max(0, screenWidth - pos[0])));
+            return true;
+        };
+        view.getViewTreeObserver().addOnPreDrawListener(mInsetDrawListener);
 
         final CharSequence title = mDialogTitle;
         if (!TextUtils.isEmpty(title)) {
@@ -232,6 +244,10 @@ public class CommentsPreferenceDialogFragment extends LeanbackPreferenceDialogFr
     @Override
     public void onDestroyView() {
         super.onDestroyView();
+        if (getView() != null && mInsetDrawListener != null && getView().getViewTreeObserver().isAlive()) {
+            getView().getViewTreeObserver().removeOnPreDrawListener(mInsetDrawListener);
+        }
+        mInsetDrawListener = null;
         VideoEndInset.set(0);
         backupMessages();
     }
