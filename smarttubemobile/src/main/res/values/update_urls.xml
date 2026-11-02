@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Overrides the library's list (which points at the original project): updates come from our own fork's release -->
+    <string-array name="update_urls">
+        <item>https://github.com/Pompadoure/SmartTube/releases/download/latest-mobile/jotube-mobile-update.json</item>
+    </string-array>
+</resources>
