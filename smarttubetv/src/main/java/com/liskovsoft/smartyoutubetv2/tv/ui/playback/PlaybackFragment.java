@@ -1717,6 +1717,8 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         if (params instanceof ViewGroup.MarginLayoutParams) {
             ((ViewGroup.MarginLayoutParams) params).rightMargin = px;
             mSurfaceRoot.setLayoutParams(params);
+            mSurfaceRoot.post(() -> android.util.Log.d("JoTubeInset", "video inset=" + px + " surface_root w=" + mSurfaceRoot.getWidth()
+                    + " h=" + mSurfaceRoot.getHeight() + " left=" + mSurfaceRoot.getLeft() + " parentW=" + ((View) mSurfaceRoot.getParent()).getWidth()));
         }
     }
 

@@ -88,6 +88,7 @@ public class CommentsPreferenceDialogFragment extends LeanbackPreferenceDialogFr
             view.getLocationOnScreen(pos);
             int screenWidth = view.getRootView().getWidth();
             VideoEndInset.set(Math.min(screenWidth, Math.max(0, screenWidth - pos[0])));
+            logInsetProbe(view, pos[0], screenWidth);
             return true;
         };
         view.getViewTreeObserver().addOnPreDrawListener(mInsetDrawListener);
@@ -258,6 +259,37 @@ public class CommentsPreferenceDialogFragment extends LeanbackPreferenceDialogFr
         if (mCommentsReceiver != null && mFocusedMessage != null) {
             mCommentsReceiver.onFinish(new CommentsBackup(mBackupMessages, mFocusedMessage, mCurrentGroup));
         }
+    }
+
+    private int mProbeKey;
+
+    /** Temporary probe: where the panel really is (logged only when something changes). */
+    private void logInsetProbe(View root, int left, int screenWidth) {
+        int key = left * 31 + root.getWidth() * 7 + screenWidth;
+        if (key == mProbeKey) {
+            return;
+        }
+        mProbeKey = key;
+        StringBuilder sb = new StringBuilder("root left=").append(left).append(" width=").append(root.getWidth())
+                .append(" tx=").append(root.getTranslationX()).append(" screen=").append(screenWidth);
+        int[] p = new int[2];
+        int[] ids = {R.id.decor_title_container, R.id.messagesList};
+        for (int id : ids) {
+            View v = root.findViewById(id);
+            if (v != null) {
+                v.getLocationOnScreen(p);
+                sb.append(" | ").append(root.getResources().getResourceEntryName(id)).append(" left=").append(p[0]).append(" w=").append(v.getWidth());
+            }
+        }
+        android.view.ViewParent parent = root.getParent();
+        int depth = 0;
+        while (parent instanceof View && depth++ < 6) {
+            View pv = (View) parent;
+            pv.getLocationOnScreen(p);
+            sb.append(" | ").append(pv.getClass().getSimpleName()).append(" left=").append(p[0]).append(" w=").append(pv.getWidth());
+            parent = pv.getParent();
+        }
+        android.util.Log.d("JoTubeInset", sb.toString());
     }
 
     private void backupMessages() {
