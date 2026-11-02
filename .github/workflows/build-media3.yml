@@ -161,6 +161,32 @@ jobs:
             echo "::notice::APK ${line}"
           done
 
+      - name: Update manifest (read by the in-app updater)
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          base="https://github.com/${{ github.repository }}/releases/download/latest-media3"
+          python3 - <<PY
+          import json, os
+          base = "$base"
+          name = "${{ steps.version.outputs.name }}"
+          code = 2000000 + ${{ github.run_number }}
+          msg = (os.environ.get("COMMIT_MSG") or "").strip().splitlines()
+          log = [l.strip() for l in msg if l.strip()][:8] or [name]
+          arm64 = base + "/JoTubeM3_arm64-v8a.apk"
+          v7a = base + "/JoTubeM3_armeabi-v7a.apk"
+          doc = {
+              "package": {
+                  "downloadUrl": arm64,
+                  "downloadUrlList_arm64-v8a": [arm64],
+                  "downloadUrlList_armeabi-v7a": [v7a],
+              },
+              name: {"versionCode": code, "changelog": log},
+          }
+          json.dump(doc, open("out/jotube-update.json", "w"), indent=2, ensure_ascii=False)
+          PY
+          cat out/jotube-update.json
+
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

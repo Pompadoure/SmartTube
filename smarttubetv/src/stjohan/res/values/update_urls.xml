@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Personal build: no auto-updates from the official channel (different package id) -->
+    <!-- Personal build: updates come from our own fork's release (manifest published by the build workflow) -->
     <string-array name="update_urls">
+        <item>https://github.com/Pompadoure/SmartTube/releases/download/latest-media3/jotube-update.json</item>
     </string-array>
 </resources>
