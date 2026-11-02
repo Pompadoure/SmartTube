@@ -56,6 +56,7 @@ import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ShortsQueue;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.manager.PlayerUI;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.ChatReceiver;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.SeekBarSegment;
+import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.VideoEndInset;
 import com.liskovsoft.smartyoutubetv2.common.app.presenters.PlaybackPresenter;
 import com.liskovsoft.smartyoutubetv2.common.app.views.PlaybackView;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ExoPlayerController;
@@ -256,6 +257,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         }
 
         mSelectedVideoId = savedInstanceState != null ? savedInstanceState.getString(SELECTED_VIDEO_ID, null) : null;
+        VideoEndInset.setListener(mVideoEndInsetListener);
         mVideoGroupAdapters = new HashMap<>();
         mBackgroundManager = getLeanbackActivity().getBackgroundManager();
         mBackgroundManager.setBackgroundColor(ContextCompat.getColor(getContext(), R.color.player_background));
@@ -1703,11 +1705,27 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         super.onDestroyView();
     }
 
+    private final VideoEndInset.Listener mVideoEndInsetListener = this::applyVideoEndInset;
+
+    /** Leaves room on the right for a side panel (comments) shown over the player. */
+    private void applyVideoEndInset(int px) {
+        if (mSurfaceRoot == null) {
+            return;
+        }
+
+        ViewGroup.LayoutParams params = mSurfaceRoot.getLayoutParams();
+        if (params instanceof ViewGroup.MarginLayoutParams) {
+            ((ViewGroup.MarginLayoutParams) params).rightMargin = px;
+            mSurfaceRoot.setLayoutParams(params);
+        }
+    }
+
     @Override
     public void onDestroy() {
         super.onDestroy();
 
         Log.d(TAG, "Destroying PlaybackFragment...");
+        VideoEndInset.removeListener(mVideoEndInsetListener);
 
         // Fix situations when engine didn't properly destroyed.
         // E.g. after closing dialogs.

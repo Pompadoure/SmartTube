@@ -14,6 +14,7 @@ import com.liskovsoft.mediaserviceinterfaces.data.CommentGroup;
 import com.liskovsoft.mediaserviceinterfaces.data.CommentItem;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.CommentsReceiver;
+import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.VideoEndInset;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.CommentsReceiver.Backup;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.CommentsReceiver.Callback;
 import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerTweaksData;
@@ -75,6 +76,9 @@ public class CommentsPreferenceDialogFragment extends LeanbackPreferenceDialogFr
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         final View view = inflater.inflate(R.layout.comments_preference_fragment, container,
                 false);
+
+        // Tell the player how much room the panel takes, so the video fits beside it
+        view.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> VideoEndInset.set(r - l));
 
         final CharSequence title = mDialogTitle;
         if (!TextUtils.isEmpty(title)) {
@@ -228,6 +232,7 @@ public class CommentsPreferenceDialogFragment extends LeanbackPreferenceDialogFr
     @Override
     public void onDestroyView() {
         super.onDestroyView();
+        VideoEndInset.set(0);
         backupMessages();
     }
 
