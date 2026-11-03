@@ -71,7 +71,9 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
     private static final int[] TAB_SECTION_IDS = {
             MediaGroup.TYPE_HOME, MediaGroup.TYPE_SHORTS, MediaGroup.TYPE_MUSIC, MediaGroup.TYPE_CHANNEL_UPLOADS, MediaGroup.TYPE_HISTORY
     };
-    private static final int[] TAB_ICONS = {R.drawable.ic_home, R.drawable.ic_shorts, R.drawable.ic_music, R.drawable.ic_subs, R.drawable.ic_you};
+    private static final int[] TAB_ICONS = {R.drawable.ic_home_outline, R.drawable.ic_shorts, R.drawable.ic_music, R.drawable.ic_subs_outline, R.drawable.ic_you_outline};
+    // YouTube: the tab you are on gets the filled icon
+    private static final int[] TAB_ICONS_SELECTED = {R.drawable.ic_home, R.drawable.ic_shorts, R.drawable.ic_music, R.drawable.ic_subs, R.drawable.ic_you_filled};
     private static final int[] TAB_TITLES = {R.string.tab_home, R.string.tab_shorts, R.string.tab_music, R.string.tab_subscriptions, R.string.tab_you};
 
     @Override
@@ -560,6 +562,7 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
             TextView tab = mTabs.get(i);
             int color = getColor(selected ? R.color.yt_text : R.color.yt_text_secondary);
             tab.setTextColor(color);
+            tab.setCompoundDrawablesWithIntrinsicBounds(0, selected ? TAB_ICONS_SELECTED[i] : TAB_ICONS[i], 0, 0);
             tab.setCompoundDrawableTintList(android.content.res.ColorStateList.valueOf(color));
         }
     }

@@ -301,6 +301,19 @@ public class AppDialogActivity extends MobileActivity implements AppDialogView {
         }
 
         mCommentsPanel = true;
+        if (!landscape && mSheet.getChildAt(0) != null && !(mSheet.getChildAt(0) instanceof android.widget.Space)) {
+            View handle = new View(this);
+            android.graphics.drawable.GradientDrawable pill = new android.graphics.drawable.GradientDrawable();
+            pill.setColor(0xFF717171);
+            pill.setCornerRadius(Ui.dp(this, 2));
+            handle.setBackground(pill);
+            LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(Ui.dp(this, 36), Ui.dp(this, 4));
+            handleParams.gravity = Gravity.CENTER_HORIZONTAL;
+            handleParams.topMargin = Ui.dp(this, 8);
+            mSheet.addView(handle, 0, handleParams);
+            mSheet.addView(new android.widget.Space(this), 0, new LinearLayout.LayoutParams(0, 0)); // marker: handle added
+        }
+        mSheet.setBackgroundColor(getColor(R.color.yt_bg));
         mTitleView.setText("Kommentarer");
         mTitleView.setVisibility(View.VISIBLE);
         mCloseButton.setVisibility(View.VISIBLE);
