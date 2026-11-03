@@ -62,6 +62,7 @@ public class MobileApplication extends MultiDexApplication {
         viewManager.register(SplashView.class, SplashActivity.class);
         viewManager.register(BrowseView.class, BrowseActivity.class);
         viewManager.register(PlaybackView.class, PlaybackActivity.class, BrowseActivity.class);
+        ViewManager.setDialogHostProvider(com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity::getDialogHost);
         viewManager.register(AppDialogView.class, AppDialogActivity.class, BrowseActivity.class);
         viewManager.register(SearchView.class, SearchActivity.class, BrowseActivity.class);
         viewManager.register(SignInView.class, SignInActivity.class, BrowseActivity.class);

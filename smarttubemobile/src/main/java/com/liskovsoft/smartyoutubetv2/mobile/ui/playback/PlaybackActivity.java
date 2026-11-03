@@ -137,6 +137,24 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         active.mPlayerBox.getLocationOnScreen(loc);
         return loc[1] + active.mPlayerBox.getHeight();
     }
+    private static boolean sResumed;
+    private static boolean sDialogOverPlayer;
+
+    /** The player's activity if a dialog should open on top of it (same task), else null. */
+    public static android.app.Activity getDialogHost() {
+        PlaybackActivity active = sActive != null ? sActive.get() : null;
+        if (active == null || active.isDestroyed() || active.isFinishing()) {
+            return null;
+        }
+        if (sResumed) {
+            sDialogOverPlayer = true;
+            return active;
+        }
+        if (sDialogOverPlayer && com.liskovsoft.smartyoutubetv2.common.app.presenters.AppDialogPresenter.instance(active).isDialogShown()) {
+            return active;
+        }
+        return null;
+    }
     private boolean mAudioMode;
     private boolean mFinishRequested;
     private Player.Listener mPlayerListener;
@@ -1312,6 +1330,8 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     @Override
     protected void onResume() {
         super.onResume();
+        sResumed = true;
+        sDialogOverPlayer = false;
         mPipSession = false; // opened again from the floating window
 
         if (Util.SDK_INT <= 23 || mPlayer == null) {
@@ -1325,6 +1345,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     @Override
     protected void onPause() {
         super.onPause();
+        sResumed = false;
 
         mPlaybackPresenter.onViewPaused();
 

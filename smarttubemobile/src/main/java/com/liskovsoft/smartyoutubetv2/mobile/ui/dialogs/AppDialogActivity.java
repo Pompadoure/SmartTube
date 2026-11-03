@@ -88,7 +88,7 @@ public class AppDialogActivity extends MobileActivity implements AppDialogView {
         titleRow.setGravity(Gravity.CENTER_VERTICAL);
         titleRow.addView(mTitleView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         mCloseButton = new ImageView(this);
-        mCloseButton.setImageResource(R.drawable.ic_close);
+        mCloseButton.setImageResource(R.drawable.ic_close_thin);
         mCloseButton.setColorFilter(0xFFF1F1F1);
         mCloseButton.setPadding(Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12));
         mCloseButton.setVisibility(View.GONE);
@@ -301,6 +301,9 @@ public class AppDialogActivity extends MobileActivity implements AppDialogView {
         }
 
         mCommentsPanel = true;
+        if (!landscape) {
+            mSheet.setBackgroundResource(R.drawable.bg_sheet_dark);
+        }
         if (!landscape && mSheet.getChildAt(0) != null && !(mSheet.getChildAt(0) instanceof android.widget.Space)) {
             View handle = new View(this);
             android.graphics.drawable.GradientDrawable pill = new android.graphics.drawable.GradientDrawable();
@@ -313,7 +316,6 @@ public class AppDialogActivity extends MobileActivity implements AppDialogView {
             mSheet.addView(handle, 0, handleParams);
             mSheet.addView(new android.widget.Space(this), 0, new LinearLayout.LayoutParams(0, 0)); // marker: handle added
         }
-        mSheet.setBackgroundColor(getColor(R.color.yt_bg));
         mTitleView.setText("Kommentarer");
         mTitleView.setVisibility(View.VISIBLE);
         mCloseButton.setVisibility(View.VISIBLE);
