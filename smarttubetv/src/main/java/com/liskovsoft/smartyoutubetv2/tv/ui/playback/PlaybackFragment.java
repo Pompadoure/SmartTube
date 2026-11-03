@@ -10,8 +10,10 @@ import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.FrameLayout;
 import android.view.ViewStub;
 
 import androidx.annotation.NonNull;
@@ -1714,11 +1716,24 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         }
 
         ViewGroup.LayoutParams params = mSurfaceRoot.getLayoutParams();
-        if (params instanceof ViewGroup.MarginLayoutParams) {
-            ((ViewGroup.MarginLayoutParams) params).rightMargin = px;
-            mSurfaceRoot.setLayoutParams(params);
-            mSurfaceRoot.post(() -> android.util.Log.d("JoTubeInset", "video inset=" + px + " surface_root w=" + mSurfaceRoot.getWidth()
-                    + " h=" + mSurfaceRoot.getHeight() + " left=" + mSurfaceRoot.getLeft() + " parentW=" + ((View) mSurfaceRoot.getParent()).getWidth()));
+        if (params instanceof FrameLayout.LayoutParams) {
+            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) params;
+            android.util.Log.d("JoTubeInset", "before: params w=" + lp.width + " h=" + lp.height + " margins l=" + lp.leftMargin
+                    + " t=" + lp.topMargin + " r=" + lp.rightMargin + " b=" + lp.bottomMargin + " gravity=" + lp.gravity
+                    + " view w=" + mSurfaceRoot.getWidth() + " h=" + mSurfaceRoot.getHeight() + " scale=" + mSurfaceRoot.getScaleX()
+                    + " tx=" + mSurfaceRoot.getTranslationX() + " ty=" + mSurfaceRoot.getTranslationY());
+            // Only the right margin is ours: the picture is fitted into what is left of the screen, centered
+            lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+            lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
+            lp.leftMargin = 0;
+            lp.topMargin = 0;
+            lp.bottomMargin = 0;
+            lp.rightMargin = px;
+            lp.gravity = Gravity.CENTER;
+            mSurfaceRoot.setLayoutParams(lp);
+            mSurfaceRoot.post(() -> android.util.Log.d("JoTubeInset", "after inset=" + px + " surface_root w=" + mSurfaceRoot.getWidth()
+                    + " h=" + mSurfaceRoot.getHeight() + " parentW=" + ((View) mSurfaceRoot.getParent()).getWidth()
+                    + " parentH=" + ((View) mSurfaceRoot.getParent()).getHeight()));
         }
     }
 
