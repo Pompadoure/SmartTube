@@ -185,11 +185,33 @@ public class ViewManager {
         startActivity(lastActivity);
     }
 
+    /** Phone: dialogs (comments, menus) must open in the task of the player, or the video isn't behind them. */
+    public interface DialogHostProvider {
+        Activity getHost();
+    }
+
+    private static DialogHostProvider sDialogHostProvider;
+
+    public static void setDialogHostProvider(DialogHostProvider provider) {
+        sDialogHostProvider = provider;
+    }
+
     private void startActivity(Class<?> activityClass) {
         Log.d(TAG, "Launching activity: " + activityClass.getSimpleName());
 
         mPendingActivityMs = System.currentTimeMillis();
         mPendingActivityClass = activityClass;
+
+        Activity host = null;
+        if (sDialogHostProvider != null && activityClass == mViewMapping.get(com.liskovsoft.smartyoutubetv2.common.app.views.AppDialogView.class)) {
+            host = sDialogHostProvider.getHost();
+        }
+
+        if (host != null) {
+            // from the player's own activity, no NEW_TASK: the dialog lands in the player's task, on top of the video
+            safeStartActivity(host, new Intent(host, activityClass));
+            return;
+        }
 
         Intent intent = new Intent(mContext, activityClass);
 
