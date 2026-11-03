@@ -119,6 +119,24 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
             active.mMusicView.refreshQueue();
         }
     }
+    /** Comments panel open beside the video (landscape): the video shrinks to the left part. */
+    public static void setCommentsInset(int px) {
+        PlaybackActivity active = sActive != null ? sActive.get() : null;
+        if (active != null && !active.isDestroyed() && active.mPlayerBox != null) {
+            active.mPlayerBox.setRightInset(px);
+        }
+    }
+
+    /** Bottom edge of the video on screen (portrait), or -1. */
+    public static int playerBottom() {
+        PlaybackActivity active = sActive != null ? sActive.get() : null;
+        if (active == null || active.isDestroyed() || active.mPlayerBox == null) {
+            return -1;
+        }
+        int[] loc = new int[2];
+        active.mPlayerBox.getLocationOnScreen(loc);
+        return loc[1] + active.mPlayerBox.getHeight();
+    }
     private boolean mAudioMode;
     private boolean mFinishRequested;
     private Player.Listener mPlayerListener;
