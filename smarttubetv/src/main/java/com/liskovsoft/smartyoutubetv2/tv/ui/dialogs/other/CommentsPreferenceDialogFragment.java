@@ -14,7 +14,6 @@ import com.liskovsoft.mediaserviceinterfaces.data.CommentGroup;
 import com.liskovsoft.mediaserviceinterfaces.data.CommentItem;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.CommentsReceiver;
-import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.VideoEndInset;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.CommentsReceiver.Backup;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.CommentsReceiver.Callback;
 import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerTweaksData;
@@ -36,7 +35,6 @@ public class CommentsPreferenceDialogFragment extends LeanbackPreferenceDialogFr
     private CommentGroup mCurrentGroup;
     private List<ChatItemMessage> mBackupMessages;
     private ChatItemMessage mFocusedMessage;
-    private android.view.ViewTreeObserver.OnPreDrawListener mInsetDrawListener;
 
     private static class CommentsBackup implements Backup {
         public CommentsBackup(List<ChatItemMessage> backupMessages, ChatItemMessage focusedMessage, CommentGroup currentGroup) {
@@ -77,21 +75,6 @@ public class CommentsPreferenceDialogFragment extends LeanbackPreferenceDialogFr
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         final View view = inflater.inflate(R.layout.comments_preference_fragment, container,
                 false);
-
-        // Tell the player how much room the panel takes, so the video fits beside it
-        // Measure where the panel's left edge really is on screen (its width isn't the visible width), and follow it while it slides in
-        final int[] pos = new int[2];
-        mInsetDrawListener = () -> {
-            if (!view.isAttachedToWindow()) {
-                return true;
-            }
-            view.getLocationOnScreen(pos);
-            int screenWidth = view.getRootView().getWidth();
-            VideoEndInset.set(Math.min(screenWidth, Math.max(0, screenWidth - pos[0])));
-            logInsetProbe(view, pos[0], screenWidth);
-            return true;
-        };
-        view.getViewTreeObserver().addOnPreDrawListener(mInsetDrawListener);
 
         final CharSequence title = mDialogTitle;
         if (!TextUtils.isEmpty(title)) {
@@ -245,11 +228,6 @@ public class CommentsPreferenceDialogFragment extends LeanbackPreferenceDialogFr
     @Override
     public void onDestroyView() {
         super.onDestroyView();
-        if (getView() != null && mInsetDrawListener != null && getView().getViewTreeObserver().isAlive()) {
-            getView().getViewTreeObserver().removeOnPreDrawListener(mInsetDrawListener);
-        }
-        mInsetDrawListener = null;
-        VideoEndInset.set(0);
         backupMessages();
     }
 
@@ -259,37 +237,6 @@ public class CommentsPreferenceDialogFragment extends LeanbackPreferenceDialogFr
         if (mCommentsReceiver != null && mFocusedMessage != null) {
             mCommentsReceiver.onFinish(new CommentsBackup(mBackupMessages, mFocusedMessage, mCurrentGroup));
         }
-    }
-
-    private int mProbeKey;
-
-    /** Temporary probe: where the panel really is (logged only when something changes). */
-    private void logInsetProbe(View root, int left, int screenWidth) {
-        int key = left * 31 + root.getWidth() * 7 + screenWidth;
-        if (key == mProbeKey) {
-            return;
-        }
-        mProbeKey = key;
-        StringBuilder sb = new StringBuilder("root left=").append(left).append(" width=").append(root.getWidth())
-                .append(" tx=").append(root.getTranslationX()).append(" screen=").append(screenWidth);
-        int[] p = new int[2];
-        int[] ids = {R.id.decor_title_container, R.id.messagesList};
-        for (int id : ids) {
-            View v = root.findViewById(id);
-            if (v != null) {
-                v.getLocationOnScreen(p);
-                sb.append(" | ").append(root.getResources().getResourceEntryName(id)).append(" left=").append(p[0]).append(" w=").append(v.getWidth());
-            }
-        }
-        android.view.ViewParent parent = root.getParent();
-        int depth = 0;
-        while (parent instanceof View && depth++ < 6) {
-            View pv = (View) parent;
-            pv.getLocationOnScreen(p);
-            sb.append(" | ").append(pv.getClass().getSimpleName()).append(" left=").append(p[0]).append(" w=").append(pv.getWidth());
-            parent = pv.getParent();
-        }
-        android.util.Log.d("JoTubeInset", sb.toString());
     }
 
     private void backupMessages() {
