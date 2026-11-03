@@ -121,7 +121,18 @@ public class AppDialogPresenter extends BasePresenter<AppDialogView> {
         showDialog(null, onFinish);
     }
 
+    private static long sLastLaunchMs;
+
+    /**
+     * True while a dialog is open or has just been asked for. The activity below it gets onUserLeaveHint for the launch
+     * (the phone player must not take that as the user leaving the app and float into a PiP window).
+     */
+    public static boolean isLaunchingDialog() {
+        return android.os.SystemClock.elapsedRealtime() - sLastLaunchMs < 2000;
+    }
+
     public void showDialog(CharSequence dialogTitle, Runnable onFinish) {
+        sLastLaunchMs = android.os.SystemClock.elapsedRealtime();
         mTitle = dialogTitle;
         mOnFinish.add(onFinish);
         
