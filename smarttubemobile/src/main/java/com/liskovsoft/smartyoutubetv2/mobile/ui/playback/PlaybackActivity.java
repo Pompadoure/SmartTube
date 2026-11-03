@@ -878,6 +878,12 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     protected void onUserLeaveHint() {
         super.onUserLeaveHint();
 
+        // Comments, menus and settings open as a dialog over the player: that is not the user leaving the app
+        if (com.liskovsoft.smartyoutubetv2.common.app.presenters.AppDialogPresenter.isLaunchingDialog()
+                || com.liskovsoft.smartyoutubetv2.common.app.presenters.AppDialogPresenter.instance(this).isDialogShown()) {
+            return;
+        }
+
         if (!mShortsMode && !mAudioMode && mPlayer != null && mPlayer.isPlaying() && android.os.Build.VERSION.SDK_INT >= 26) {
             enterPip();
         }
