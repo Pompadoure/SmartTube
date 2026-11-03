@@ -415,7 +415,7 @@ public class AppDialogActivity extends MobileActivity implements AppDialogView {
 
         TextView header = new TextView(this);
         header.setTextColor(getColor(R.color.yt_text_secondary));
-        header.setTextSize(12);
+        header.setTextSize(13);
         String date = item.getPublishedDate();
         header.setText((item.getAuthorName() != null ? item.getAuthorName() : "") + (date != null ? " • " + date : ""));
         texts.addView(header);
@@ -429,29 +429,38 @@ public class AppDialogActivity extends MobileActivity implements AppDialogView {
 
         LinearLayout footer = new LinearLayout(this);
         footer.setGravity(Gravity.CENTER_VERTICAL);
+        footer.setPadding(0, Ui.dp(this, 6), 0, 0);
         ImageView likeIcon = new ImageView(this);
         likeIcon.setImageResource(R.drawable.ic_like);
-        likeIcon.setColorFilter(item.isLiked() ? 0xFF3EA6FF : 0xFFAAAAAA);
-        footer.addView(likeIcon, new LinearLayout.LayoutParams(Ui.dp(this, 16), Ui.dp(this, 16)));
+        likeIcon.setColorFilter(item.isLiked() ? 0xFF3EA6FF : 0xFFF1F1F1);
+        footer.addView(likeIcon, new LinearLayout.LayoutParams(Ui.dp(this, 20), Ui.dp(this, 20)));
         TextView likes = new TextView(this);
         likes.setTextColor(getColor(R.color.yt_text_secondary));
         likes.setTextSize(12);
-        likes.setText(item.getLikeCount() != null ? " " + item.getLikeCount() : "");
+        likes.setText(item.getLikeCount() != null ? "  " + item.getLikeCount() : "");
         footer.addView(likes);
-        if (item.getReplyCount() != null && !item.getReplyCount().isEmpty()) {
-            ImageView replyIcon = new ImageView(this);
-            replyIcon.setImageResource(R.drawable.ic_comment);
-            replyIcon.setColorFilter(0xFFAAAAAA);
-            LinearLayout.LayoutParams replyParams = new LinearLayout.LayoutParams(Ui.dp(this, 16), Ui.dp(this, 16));
-            replyParams.setMarginStart(Ui.dp(this, 20));
-            footer.addView(replyIcon, replyParams);
-            TextView replies = new TextView(this);
-            replies.setTextColor(getColor(R.color.yt_text_secondary));
-            replies.setTextSize(12);
-            replies.setText(" " + item.getReplyCount());
-            footer.addView(replies);
-        }
+        ImageView dislikeIcon = new ImageView(this);
+        dislikeIcon.setImageResource(R.drawable.ic_dislike);
+        dislikeIcon.setColorFilter(0xFFF1F1F1);
+        LinearLayout.LayoutParams dislikeParams = new LinearLayout.LayoutParams(Ui.dp(this, 20), Ui.dp(this, 20));
+        dislikeParams.setMarginStart(Ui.dp(this, 24));
+        footer.addView(dislikeIcon, dislikeParams);
+        ImageView replyIcon = new ImageView(this);
+        replyIcon.setImageResource(R.drawable.ic_comment);
+        replyIcon.setColorFilter(0xFFF1F1F1);
+        LinearLayout.LayoutParams replyParams = new LinearLayout.LayoutParams(Ui.dp(this, 20), Ui.dp(this, 20));
+        replyParams.setMarginStart(Ui.dp(this, 24));
+        footer.addView(replyIcon, replyParams);
         texts.addView(footer);
+        if (item.getReplyCount() != null && !item.getReplyCount().isEmpty()) {
+            TextView replies = new TextView(this);
+            replies.setTextColor(0xFF3EA6FF);
+            replies.setTextSize(14);
+            replies.setTypeface(Typeface.DEFAULT_BOLD);
+            replies.setText(item.getReplyCount() + " svar  \u203A");
+            replies.setPadding(0, Ui.dp(this, 10), 0, 0);
+            texts.addView(replies);
+        }
 
         row.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
