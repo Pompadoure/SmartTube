@@ -46,15 +46,14 @@ public abstract class BasePlayerController implements PlayerEventListener {
         }
         FormatItem videoFormat = getPlayer().getVideoFormat();
         Format format = videoFormat != null && videoFormat.getTrack() != null ? videoFormat.getTrack().format : null;
-        if (format == null) {
-            return;
-        }
+        // JoTube: no format yet (e.g. an ad or a video that is still loading) must not leave the picture behind the dialog: assume 16:9
+        boolean knownFormat = format != null && format.width > 0 && format.height > 0;
         getPlayer().showControls(false);
         // Dialog takes up 37% of the screen space
         float dialogWidth = Helpers.isCutoutMode(getContext()) ? 33 : 37 * getMainUIData().getUIScale();
         float initialZoom = 100;
         float totalZoom = initialZoom - dialogWidth;
-        float ratio = format.width / (float) format.height;
+        float ratio = knownFormat ? format.width / (float) format.height : 16 / 9f;
         float targetRatio = 16/9f;
         float multiplier = targetRatio / ratio;
         if (multiplier > 1) { // skip cinema ratio

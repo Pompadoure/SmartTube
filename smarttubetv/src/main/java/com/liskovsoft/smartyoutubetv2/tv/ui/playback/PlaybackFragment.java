@@ -10,10 +10,8 @@ import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
-import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.FrameLayout;
 import android.view.ViewStub;
 
 import androidx.annotation.NonNull;
@@ -58,7 +56,6 @@ import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ShortsQueue;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.manager.PlayerUI;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.ChatReceiver;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.SeekBarSegment;
-import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.VideoEndInset;
 import com.liskovsoft.smartyoutubetv2.common.app.presenters.PlaybackPresenter;
 import com.liskovsoft.smartyoutubetv2.common.app.views.PlaybackView;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ExoPlayerController;
@@ -259,7 +256,6 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         }
 
         mSelectedVideoId = savedInstanceState != null ? savedInstanceState.getString(SELECTED_VIDEO_ID, null) : null;
-        VideoEndInset.setListener(mVideoEndInsetListener);
         mVideoGroupAdapters = new HashMap<>();
         mBackgroundManager = getLeanbackActivity().getBackgroundManager();
         mBackgroundManager.setBackgroundColor(ContextCompat.getColor(getContext(), R.color.player_background));
@@ -1707,42 +1703,11 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         super.onDestroyView();
     }
 
-    private final VideoEndInset.Listener mVideoEndInsetListener = this::applyVideoEndInset;
-
-    /** Leaves room on the right for a side panel (comments) shown over the player. */
-    private void applyVideoEndInset(int px) {
-        if (mSurfaceRoot == null) {
-            return;
-        }
-
-        ViewGroup.LayoutParams params = mSurfaceRoot.getLayoutParams();
-        if (params instanceof FrameLayout.LayoutParams) {
-            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) params;
-            android.util.Log.d("JoTubeInset", "before: params w=" + lp.width + " h=" + lp.height + " margins l=" + lp.leftMargin
-                    + " t=" + lp.topMargin + " r=" + lp.rightMargin + " b=" + lp.bottomMargin + " gravity=" + lp.gravity
-                    + " view w=" + mSurfaceRoot.getWidth() + " h=" + mSurfaceRoot.getHeight() + " scale=" + mSurfaceRoot.getScaleX()
-                    + " tx=" + mSurfaceRoot.getTranslationX() + " ty=" + mSurfaceRoot.getTranslationY());
-            // Only the right margin is ours: the picture is fitted into what is left of the screen, centered
-            lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
-            lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
-            lp.leftMargin = 0;
-            lp.topMargin = 0;
-            lp.bottomMargin = 0;
-            lp.rightMargin = px;
-            lp.gravity = Gravity.CENTER;
-            mSurfaceRoot.setLayoutParams(lp);
-            mSurfaceRoot.post(() -> android.util.Log.d("JoTubeInset", "after inset=" + px + " surface_root w=" + mSurfaceRoot.getWidth()
-                    + " h=" + mSurfaceRoot.getHeight() + " parentW=" + ((View) mSurfaceRoot.getParent()).getWidth()
-                    + " parentH=" + ((View) mSurfaceRoot.getParent()).getHeight()));
-        }
-    }
-
     @Override
     public void onDestroy() {
         super.onDestroy();
 
         Log.d(TAG, "Destroying PlaybackFragment...");
-        VideoEndInset.removeListener(mVideoEndInsetListener);
 
         // Fix situations when engine didn't properly destroyed.
         // E.g. after closing dialogs.
