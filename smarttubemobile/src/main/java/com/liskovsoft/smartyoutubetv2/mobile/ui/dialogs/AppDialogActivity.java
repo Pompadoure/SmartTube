@@ -50,6 +50,10 @@ public class AppDialogActivity extends MobileActivity implements AppDialogView {
     private final List<CommentGroup> mCommentGroups = new ArrayList<>();
     private TextView mCommentsStatus;
     private boolean mExpandable = true;
+    private MaxHeightHolder mHolder;
+    private LinearLayout mSheet;
+    private ImageView mCloseButton;
+    private boolean mCommentsPanel;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -74,12 +78,23 @@ public class AppDialogActivity extends MobileActivity implements AppDialogView {
         sheet.setOnClickListener(v -> {
         });
 
+        mSheet = sheet;
         mTitleView = new TextView(this);
         mTitleView.setTextColor(getColor(R.color.yt_text));
         mTitleView.setTextSize(18);
         mTitleView.setTypeface(Typeface.DEFAULT_BOLD);
         mTitleView.setPadding(Ui.dp(this, 20), Ui.dp(this, 18), Ui.dp(this, 20), Ui.dp(this, 10));
-        sheet.addView(mTitleView);
+        LinearLayout titleRow = new LinearLayout(this);
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+        titleRow.addView(mTitleView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        mCloseButton = new ImageView(this);
+        mCloseButton.setImageResource(R.drawable.ic_close);
+        mCloseButton.setColorFilter(0xFFF1F1F1);
+        mCloseButton.setPadding(Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12));
+        mCloseButton.setVisibility(View.GONE);
+        mCloseButton.setOnClickListener(v -> finish());
+        titleRow.addView(mCloseButton, new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48)));
+        sheet.addView(titleRow);
 
         ScrollView scroll = new ScrollView(this);
         mContent = new LinearLayout(this);
@@ -89,19 +104,25 @@ public class AppDialogActivity extends MobileActivity implements AppDialogView {
 
         int maxHeight = Math.round(getResources().getDisplayMetrics().heightPixels * 0.7f);
         FrameLayout.LayoutParams sheetParams = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
-        root.addView(new MaxHeightHolder(this, sheet, maxHeight), sheetParams);
+        mHolder = new MaxHeightHolder(this, sheet, maxHeight);
+        root.addView(mHolder, sheetParams);
 
         return root;
     }
 
     /** Wraps the sheet and limits its height. */
     private static class MaxHeightHolder extends FrameLayout {
-        private final int mMaxHeight;
+        private int mMaxHeight;
 
         MaxHeightHolder(android.content.Context context, View child, int maxHeight) {
             super(context);
             mMaxHeight = maxHeight;
             addView(child, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+
+        void setMaxHeight(int px) {
+            mMaxHeight = px;
+            requestLayout();
         }
 
         @Override
@@ -230,7 +251,67 @@ public class AppDialogActivity extends MobileActivity implements AppDialogView {
         }
     }
 
+    /**
+     * Comments as in the YouTube app: the video stays visible and playing. Portrait: the panel starts where the video
+     * ends. Landscape: a panel on the right, the video shrinks to the left part.
+     */
+    private void applyCommentsPanel() {
+        android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+        boolean landscape = getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+        android.view.Window window = getWindow();
+        android.view.WindowManager.LayoutParams lp = window.getAttributes();
+        lp.dimAmount = 0f;
+        lp.flags &= ~android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND;
+        lp.flags |= android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL;
+
+        if (landscape) {
+            int width = Math.round(dm.widthPixels * 0.36f);
+            lp.width = width;
+            lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
+            lp.gravity = Gravity.END | Gravity.TOP;
+            lp.x = 0;
+            lp.y = 0;
+            mSheet.setBackgroundColor(getColor(R.color.yt_bg));
+            mHolder.setMaxHeight(dm.heightPixels);
+            mSheet.setMinimumHeight(dm.heightPixels);
+            com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity.setCommentsInset(width);
+            getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        } else {
+            int top = com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity.playerBottom();
+            int videoHeight = Math.round(dm.widthPixels * 9f / 16f);
+            int statusBar = Math.max(0, top - videoHeight);
+            if (top < 0 || top > dm.heightPixels * 0.6f) {
+                top = -1; // audio / Shorts: no video strip to keep, the old bottom sheet
+            }
+            if (top > 0) {
+                lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+                lp.height = dm.heightPixels - top;
+                lp.gravity = Gravity.BOTTOM;
+                lp.x = 0;
+                lp.y = 0;
+                mHolder.setMaxHeight(dm.heightPixels - top);
+                mSheet.setMinimumHeight(dm.heightPixels - top);
+            } else {
+                mCommentsPanel = false;
+                window.setAttributes(lp);
+                return;
+            }
+        }
+
+        mCommentsPanel = true;
+        mTitleView.setText("Kommentarer");
+        mTitleView.setVisibility(View.VISIBLE);
+        mCloseButton.setVisibility(View.VISIBLE);
+        mRoot.setBackgroundColor(0);
+        mRoot.setOnClickListener(null);
+        mRoot.setClickable(false);
+        window.setAttributes(lp);
+    }
+
     private void startComments(CommentsReceiver receiver) {
+        applyCommentsPanel();
         mComments = receiver;
         mCommentGroups.clear();
         mCommentsStatus = new TextView(this);
@@ -334,7 +415,7 @@ public class AppDialogActivity extends MobileActivity implements AppDialogView {
 
         TextView header = new TextView(this);
         header.setTextColor(getColor(R.color.yt_text_secondary));
-        header.setTextSize(12);
+        header.setTextSize(13);
         String date = item.getPublishedDate();
         header.setText((item.getAuthorName() != null ? item.getAuthorName() : "") + (date != null ? " • " + date : ""));
         texts.addView(header);
@@ -348,29 +429,38 @@ public class AppDialogActivity extends MobileActivity implements AppDialogView {
 
         LinearLayout footer = new LinearLayout(this);
         footer.setGravity(Gravity.CENTER_VERTICAL);
+        footer.setPadding(0, Ui.dp(this, 6), 0, 0);
         ImageView likeIcon = new ImageView(this);
         likeIcon.setImageResource(R.drawable.ic_like);
-        likeIcon.setColorFilter(item.isLiked() ? 0xFF3EA6FF : 0xFFAAAAAA);
-        footer.addView(likeIcon, new LinearLayout.LayoutParams(Ui.dp(this, 16), Ui.dp(this, 16)));
+        likeIcon.setColorFilter(item.isLiked() ? 0xFF3EA6FF : 0xFFF1F1F1);
+        footer.addView(likeIcon, new LinearLayout.LayoutParams(Ui.dp(this, 20), Ui.dp(this, 20)));
         TextView likes = new TextView(this);
         likes.setTextColor(getColor(R.color.yt_text_secondary));
         likes.setTextSize(12);
-        likes.setText(item.getLikeCount() != null ? " " + item.getLikeCount() : "");
+        likes.setText(item.getLikeCount() != null ? "  " + item.getLikeCount() : "");
         footer.addView(likes);
-        if (item.getReplyCount() != null && !item.getReplyCount().isEmpty()) {
-            ImageView replyIcon = new ImageView(this);
-            replyIcon.setImageResource(R.drawable.ic_comment);
-            replyIcon.setColorFilter(0xFFAAAAAA);
-            LinearLayout.LayoutParams replyParams = new LinearLayout.LayoutParams(Ui.dp(this, 16), Ui.dp(this, 16));
-            replyParams.setMarginStart(Ui.dp(this, 20));
-            footer.addView(replyIcon, replyParams);
-            TextView replies = new TextView(this);
-            replies.setTextColor(getColor(R.color.yt_text_secondary));
-            replies.setTextSize(12);
-            replies.setText(" " + item.getReplyCount());
-            footer.addView(replies);
-        }
+        ImageView dislikeIcon = new ImageView(this);
+        dislikeIcon.setImageResource(R.drawable.ic_dislike);
+        dislikeIcon.setColorFilter(0xFFF1F1F1);
+        LinearLayout.LayoutParams dislikeParams = new LinearLayout.LayoutParams(Ui.dp(this, 20), Ui.dp(this, 20));
+        dislikeParams.setMarginStart(Ui.dp(this, 24));
+        footer.addView(dislikeIcon, dislikeParams);
+        ImageView replyIcon = new ImageView(this);
+        replyIcon.setImageResource(R.drawable.ic_comment);
+        replyIcon.setColorFilter(0xFFF1F1F1);
+        LinearLayout.LayoutParams replyParams = new LinearLayout.LayoutParams(Ui.dp(this, 20), Ui.dp(this, 20));
+        replyParams.setMarginStart(Ui.dp(this, 24));
+        footer.addView(replyIcon, replyParams);
         texts.addView(footer);
+        if (item.getReplyCount() != null && !item.getReplyCount().isEmpty()) {
+            TextView replies = new TextView(this);
+            replies.setTextColor(0xFF3EA6FF);
+            replies.setTextSize(14);
+            replies.setTypeface(Typeface.DEFAULT_BOLD);
+            replies.setText(item.getReplyCount() + " svar  \u203A");
+            replies.setPadding(0, Ui.dp(this, 10), 0, 0);
+            texts.addView(replies);
+        }
 
         row.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
@@ -422,6 +512,7 @@ public class AppDialogActivity extends MobileActivity implements AppDialogView {
     public void finish() {
         if (!mFinished) {
             mFinished = true;
+            com.liskovsoft.smartyoutubetv2.mobile.ui.playback.PlaybackActivity.setCommentsInset(0);
             if (mComments != null) {
                 mComments.onFinish(new CommentsBackup(mCommentGroups));
                 mComments = null;

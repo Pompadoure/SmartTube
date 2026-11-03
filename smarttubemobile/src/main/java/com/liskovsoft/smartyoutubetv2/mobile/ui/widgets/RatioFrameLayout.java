@@ -9,6 +9,7 @@ import android.widget.FrameLayout;
 public class RatioFrameLayout extends FrameLayout {
     private float mHeightPerWidth = 9f / 16f;
     private boolean mFullscreen;
+    private int mRightInset;
 
     public RatioFrameLayout(Context context) {
         super(context);
@@ -31,10 +32,18 @@ public class RatioFrameLayout extends FrameLayout {
         }
     }
 
+    /** Landscape with the comments panel open: the video keeps the left part, the panel takes the right. */
+    public void setRightInset(int px) {
+        if (px != mRightInset) {
+            mRightInset = px;
+            requestLayout();
+        }
+    }
+
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         if (mFullscreen) {
-            super.onMeasure(MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.EXACTLY),
+            super.onMeasure(MeasureSpec.makeMeasureSpec(Math.max(0, MeasureSpec.getSize(widthMeasureSpec) - mRightInset), MeasureSpec.EXACTLY),
                     MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(heightMeasureSpec), MeasureSpec.EXACTLY));
             return;
         }
