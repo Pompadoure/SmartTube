@@ -1,5 +1,6 @@
 package com.liskovsoft.smartyoutubetv2.tv.ui.playback.other;
 
+import static androidx.leanback.widget.PlaybackControlsRow.toBitmapDrawable;
 import android.content.Context;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
@@ -609,7 +610,7 @@ public class VideoPlayerGlue extends MaxControlsVideoPlayerGlue<PlayerAdapter> i
 
     private void disableAction(Action action) {
         Drawable icon = action.getIcon();
-        action.setIcon(ActionHelpers.createDrawable(getContext(), (BitmapDrawable) icon, ActionHelpers.getIconGrayedOutColor(getContext())));
+        action.setIcon(ActionHelpers.createDrawable(getContext(), toBitmapDrawable(getContext(), icon), ActionHelpers.getIconGrayedOutColor(getContext())));
         invalidateUi(action);
     }
 

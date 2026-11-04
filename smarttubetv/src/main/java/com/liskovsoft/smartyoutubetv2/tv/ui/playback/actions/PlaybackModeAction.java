@@ -1,5 +1,6 @@
 package com.liskovsoft.smartyoutubetv2.tv.ui.playback.actions;
 
+import static androidx.leanback.widget.PlaybackControlsRow.toBitmapDrawable;
 import android.content.Context;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
@@ -40,13 +41,13 @@ public class PlaybackModeAction extends MultiAction {
 
         mContext = context;
         Drawable[] drawables = new Drawable[7];
-        BitmapDrawable repeatNoneDrawable = (BitmapDrawable) ContextCompat.getDrawable(context, R.drawable.action_mode_none);
-        BitmapDrawable repeatOneDrawable = (BitmapDrawable) ContextCompat.getDrawable(context, R.drawable.action_mode_one);
-        BitmapDrawable repeatAllDrawable = (BitmapDrawable) ContextCompat.getDrawable(context, R.drawable.action_mode_all);
-        BitmapDrawable repeatPauseDrawable = (BitmapDrawable) ContextCompat.getDrawable(context, R.drawable.action_mode_pause);
-        BitmapDrawable repeatListDrawable = (BitmapDrawable) ContextCompat.getDrawable(context, R.drawable.action_mode_list);
-        BitmapDrawable repeatShuffleDrawable = (BitmapDrawable) ContextCompat.getDrawable(context, R.drawable.action_mode_shuffle);
-        BitmapDrawable reverseListDrawable = (BitmapDrawable) ContextCompat.getDrawable(context, R.drawable.action_mode_reverse_list);
+        BitmapDrawable repeatNoneDrawable = toBitmapDrawable(context, ContextCompat.getDrawable(context, R.drawable.action_mode_none));
+        BitmapDrawable repeatOneDrawable = toBitmapDrawable(context, ContextCompat.getDrawable(context, R.drawable.action_mode_one));
+        BitmapDrawable repeatAllDrawable = toBitmapDrawable(context, ContextCompat.getDrawable(context, R.drawable.action_mode_all));
+        BitmapDrawable repeatPauseDrawable = toBitmapDrawable(context, ContextCompat.getDrawable(context, R.drawable.action_mode_pause));
+        BitmapDrawable repeatListDrawable = toBitmapDrawable(context, ContextCompat.getDrawable(context, R.drawable.action_mode_list));
+        BitmapDrawable repeatShuffleDrawable = toBitmapDrawable(context, ContextCompat.getDrawable(context, R.drawable.action_mode_shuffle));
+        BitmapDrawable reverseListDrawable = toBitmapDrawable(context, ContextCompat.getDrawable(context, R.drawable.action_mode_reverse_list));
         drawables[INDEX_NONE] = ActionHelpers.createDrawable(context, repeatNoneDrawable, selectionColor);
         drawables[INDEX_ONE] = ActionHelpers.createDrawable(context, repeatOneDrawable, selectionColor);
         drawables[INDEX_ALL] = ActionHelpers.createDrawable(context, repeatAllDrawable, selectionColor);
