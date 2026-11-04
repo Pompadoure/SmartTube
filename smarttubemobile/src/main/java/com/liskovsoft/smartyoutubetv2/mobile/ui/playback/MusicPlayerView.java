@@ -172,8 +172,29 @@ public class MusicPlayerView extends FrameLayout {
     private ImageView mLikeIcon, mDislikeIcon;
     private TextView mLikeCount;
     private LinearLayout mQueueBar;
+    // the three-step queue drawer (like YouTube Music): 0 player, 1 song + queue, 2 the queue (mini player on top)
+    private FrameLayout mCover;
+    private LinearLayout mTitleRow;
+    private HorizontalScrollView mChipScroll;
+    private LinearLayout mControlsRow;
+    private LinearLayout mDrawer;
+    private TextView mDrawerTitle;
+    private ImageView mDrawerAdd;
+    private FrameLayout mDrawerBody;
+    private View mQueueContent;
+    private LinearLayout mMini;
+    private ImageView mMiniArt, mMiniPlay;
+    private TextView mMiniTitle, mMiniAuthor;
+    private int mState;
+    private float mDrawerY = Float.NaN;
+    private float mCoverFull, mCoverS1, mTitleH, mChipH, mY1;
+    private float mProgress1;
+    private android.animation.ValueAnimator mAnim;
+    private float mDownX, mDownY, mDragStartY, mDragStartTouch;
+    private boolean mDragging, mDownOnSeek, mDownInHeader;
+    private int mDragStartState;
+    private android.view.VelocityTracker mVelocity;
     private FrameLayout mSheet;
-    private boolean mQueueSheet;
     private boolean mSeeking;
     private Video mShown;
     private String mShownImage;
@@ -209,8 +230,9 @@ public class MusicPlayerView extends FrameLayout {
         scroll.setVerticalScrollBarEnabled(false);
         scroll.addView(createPage(), new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         mPage.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        mPage.addView(createQueueBar(), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         addView(mPage, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        addView(createMiniBar(), new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(activity, 72), Gravity.TOP));
+        addView(createDrawer(), new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         applyTint(mTint);
     }
 
@@ -221,6 +243,7 @@ public class MusicPlayerView extends FrameLayout {
 
         // the cover with the top bar on it
         FrameLayout cover = new FrameLayout(a);
+        mCover = cover;
         int width = a.getResources().getDisplayMetrics().widthPixels;
         int size = Math.min(width, (int) (a.getResources().getDisplayMetrics().heightPixels * 0.5f));
         mArt = new ImageView(a);
@@ -228,7 +251,7 @@ public class MusicPlayerView extends FrameLayout {
         cover.addView(mArt, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         mScrim = new View(a);
-        cover.addView(mScrim, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(a, 72), Gravity.BOTTOM));
+        cover.addView(mScrim, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(a, 190), Gravity.BOTTOM)); // the cover melts into the page color
         View topShade = new View(a);
         topShade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x66000000, 0x00000000}));
         cover.addView(topShade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(a, 88), Gravity.TOP));
@@ -269,10 +292,13 @@ public class MusicPlayerView extends FrameLayout {
         top.setPadding(Ui.dp(a, 4), 0, Ui.dp(a, 4), 0);
         cover.addView(top, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(a, 56), Gravity.TOP));
 
+        mCoverFull = size;
+        mCoverS1 = size * 0.86f;
         page.addView(cover, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, size));
 
         // title and artist under the cover, a chevron for the details
         LinearLayout titleRow = new LinearLayout(a);
+        mTitleRow = titleRow;
         titleRow.setGravity(Gravity.CENTER_VERTICAL);
         titleRow.setPadding(Ui.dp(a, 24), Ui.dp(a, 18), Ui.dp(a, 12), 0);
         LinearLayout titles = new LinearLayout(a);
@@ -299,6 +325,7 @@ public class MusicPlayerView extends FrameLayout {
 
         // pill buttons
         HorizontalScrollView chipScroll = new HorizontalScrollView(a);
+        mChipScroll = chipScroll;
         chipScroll.setHorizontalScrollBarEnabled(false);
         chipScroll.setClipToPadding(false);
         chipScroll.setPadding(Ui.dp(a, 20), Ui.dp(a, 16), Ui.dp(a, 20), Ui.dp(a, 4));
@@ -364,6 +391,7 @@ public class MusicPlayerView extends FrameLayout {
 
         // controls
         LinearLayout controls = new LinearLayout(a);
+        mControlsRow = controls;
         controls.setGravity(Gravity.CENTER_VERTICAL);
         controls.setPadding(Ui.dp(a, 12), Ui.dp(a, 14), Ui.dp(a, 12), Ui.dp(a, 20));
         if (mHost.isPodcast()) {
@@ -505,33 +533,402 @@ public class MusicPlayerView extends FrameLayout {
         }
     }
 
-    /** Always visible at the bottom: what plays (a mix, an album) or the next song; tap = the queue. */
-    private View createQueueBar() {
-        Activity a = mActivity;
-        mQueueBar = new LinearLayout(a);
-        mQueueBar.setOrientation(LinearLayout.VERTICAL);
-        mQueueBar.setGravity(Gravity.CENTER_HORIZONTAL);
-        mQueueBar.setPadding(Ui.dp(a, 24), Ui.dp(a, 8), Ui.dp(a, 24), Ui.dp(a, 16));
+    private static final int HEADER_DP = 84;
+    private static final int MINI_DP = 72;
 
+    /** The mini player that fades in on top when the queue is pulled all the way up. */
+    private View createMiniBar() {
+        Activity a = mActivity;
+        mMini = new LinearLayout(a);
+        mMini.setGravity(Gravity.CENTER_VERTICAL);
+        mMini.setPadding(Ui.dp(a, 16), 0, Ui.dp(a, 8), 0);
+        mMini.setAlpha(0f);
+        mMini.setVisibility(GONE);
+        mMini.setClickable(true);
+        mMini.setOnClickListener(v -> animateTo(1));
+        mMiniArt = new ImageView(a);
+        mMiniArt.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        Ui.makeRounded(mMiniArt, Ui.dp(a, 4));
+        mMini.addView(mMiniArt, new LinearLayout.LayoutParams(Ui.dp(a, 48), Ui.dp(a, 48)));
+        LinearLayout texts = new LinearLayout(a);
+        texts.setOrientation(LinearLayout.VERTICAL);
+        texts.setPadding(Ui.dp(a, 16), 0, Ui.dp(a, 8), 0);
+        mMiniTitle = text(17, Color.WHITE);
+        mMiniTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        mMiniTitle.setSingleLine(true);
+        mMiniTitle.setEllipsize(TextUtils.TruncateAt.END);
+        texts.addView(mMiniTitle);
+        mMiniAuthor = text(15, 0xB3FFFFFF);
+        mMiniAuthor.setSingleLine(true);
+        mMiniAuthor.setEllipsize(TextUtils.TruncateAt.END);
+        texts.addView(mMiniAuthor);
+        mMini.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        mMiniPlay = icon(R.drawable.ic_pause, 56, 14);
+        mMiniPlay.setOnClickListener(v -> {
+            mHost.togglePlay();
+            update();
+        });
+        mMini.addView(mMiniPlay);
+        return mMini;
+    }
+
+    /** The queue drawer: always there at the bottom (handle + what plays), pulled up in two steps. */
+    private View createDrawer() {
+        Activity a = mActivity;
+        mDrawer = new LinearLayout(a);
+        mDrawer.setOrientation(LinearLayout.VERTICAL);
+        mDrawer.setClickable(true);
+
+        FrameLayout header = new FrameLayout(a);
+        mQueueBar = null;
         View handle = new View(a);
         handle.setBackground(Ui.pill(a, 0x66FFFFFF));
-        mQueueBar.addView(handle, new LinearLayout.LayoutParams(Ui.dp(a, 36), Ui.dp(a, 4)));
+        header.addView(handle, new FrameLayout.LayoutParams(Ui.dp(a, 36), Ui.dp(a, 4), Gravity.TOP | Gravity.CENTER_HORIZONTAL));
+        ((FrameLayout.LayoutParams) handle.getLayoutParams()).topMargin = Ui.dp(a, 8);
 
         mQueueLabel = text(15, Color.WHITE);
         mQueueLabel.setTypeface(Typeface.DEFAULT_BOLD);
         mQueueLabel.setSingleLine(true);
         mQueueLabel.setEllipsize(TextUtils.TruncateAt.END);
         mQueueLabel.setGravity(Gravity.CENTER);
-        mQueueLabel.setPadding(0, Ui.dp(a, 14), 0, 0);
-        mQueueBar.addView(mQueueLabel, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        mQueueBar.setOnClickListener(v -> showQueue(true));
-        return mQueueBar;
+        FrameLayout.LayoutParams labelParams = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP);
+        labelParams.topMargin = Ui.dp(a, 30);
+        labelParams.leftMargin = Ui.dp(a, 24);
+        labelParams.rightMargin = Ui.dp(a, 24);
+        header.addView(mQueueLabel, labelParams);
+
+        LinearLayout titleRow = new LinearLayout(a);
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+        titleRow.setPadding(Ui.dp(a, 16), 0, Ui.dp(a, 8), 0);
+        mDrawerTitle = text(22, Color.WHITE);
+        mDrawerTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        mDrawerTitle.setSingleLine(true);
+        mDrawerTitle.setEllipsize(TextUtils.TruncateAt.END);
+        titleRow.addView(mDrawerTitle, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        mDrawerAdd = icon(R.drawable.ic_queue_add, 48, 11);
+        mDrawerAdd.setOnClickListener(v -> MusicMenu.addToPlaylist(a, mHost.video()));
+        titleRow.addView(mDrawerAdd);
+        titleRow.setAlpha(0f);
+        titleRow.setTag("drawerTitleRow");
+        FrameLayout.LayoutParams rowParams = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(a, 56), Gravity.TOP);
+        rowParams.topMargin = Ui.dp(a, 22);
+        header.addView(titleRow, rowParams);
+
+        header.setOnClickListener(v -> animateTo(mState == 0 ? 1 : mState == 1 ? 2 : 1));
+        mDrawer.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(a, HEADER_DP)));
+
+        mDrawerBody = new FrameLayout(a);
+        mDrawer.addView(mDrawerBody, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        return mDrawer;
+    }
+
+    private View drawerTitleRow() {
+        return ((ViewGroup) mDrawer.getChildAt(0)).getChildAt(2);
+    }
+
+    private void paintDrawer() {
+        if (mDrawer == null) {
+            return;
+        }
+        GradientDrawable bg = new GradientDrawable();
+        int base = blend(mTint, 0xFF0F0F0F, 0.30f);
+        bg.setColor((base & 0x00FFFFFF) | 0xF2000000); // slightly see-through
+        float r = Ui.dp(mActivity, 16);
+        bg.setCornerRadii(new float[]{r, r, r, r, 0, 0, 0, 0});
+        mDrawer.setBackground(bg);
+        if (mMini != null) {
+            mMini.setBackgroundColor(blend(mTint, 0xFF000000, 0.35f));
+        }
+    }
+
+    ///////////////////// the drawer positions and gestures
+
+    private float y0() {
+        return getHeight() - Ui.dp(mActivity, HEADER_DP);
+    }
+
+    private float y1() {
+        return mY1 > 0 ? mY1 : getHeight() * 0.58f;
+    }
+
+    private float y2() {
+        return Ui.dp(mActivity, MINI_DP);
+    }
+
+    private float stateY(int state) {
+        return state == 0 ? y0() : state == 1 ? y1() : y2();
+    }
+
+    @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        if (h > 0) {
+            ViewGroup.LayoutParams lp = mDrawer.getLayoutParams();
+            lp.height = h - Ui.dp(mActivity, MINI_DP); // so the end of the list is reachable when it is pulled all the way up
+            mDrawer.setLayoutParams(lp);
+            setDrawerY(stateY(mState));
+        }
+    }
+
+    private static float clamp01(float v) {
+        return Math.max(0f, Math.min(1f, v));
+    }
+
+    private void setDrawerY(float y) {
+        if (mDrawer == null || getHeight() == 0) {
+            return;
+        }
+        float top = y2();
+        float bottom = y0();
+        y = Math.max(top, Math.min(bottom, y));
+        mDrawerY = y;
+        mDrawer.setTranslationY(y);
+
+        float p1 = clamp01((bottom - y) / Math.max(1f, bottom - y1()));
+        float p2 = y < y1() ? clamp01((y1() - y) / Math.max(1f, y1() - top)) : 0f;
+        applyCompress(p1);
+
+        mQueueLabel.setAlpha(1f - clamp01(p1 * 2f));
+        drawerTitleRow().setAlpha(clamp01(p1 * 2f - 0.6f));
+        mPage.setAlpha(1f - p2);
+        mPage.setVisibility(p2 >= 1f ? INVISIBLE : VISIBLE);
+        mMini.setAlpha(p2);
+        mMini.setVisibility(p2 > 0f ? VISIBLE : GONE);
+    }
+
+    /** Step 0 to 1: the cover gets lower with the title on it, the pill row goes away. */
+    private void applyCompress(float p) {
+        if (mCover == null || Math.abs(p - mProgress1) < 0.002f && p != 0f && p != 1f) {
+            return;
+        }
+        mProgress1 = p;
+        if (mTitleH <= 0) {
+            mTitleH = Ui.dp(mActivity, 76);
+        }
+        if (mChipH <= 0) {
+            mChipH = Ui.dp(mActivity, 76);
+        }
+        LinearLayout.LayoutParams cover = (LinearLayout.LayoutParams) mCover.getLayoutParams();
+        cover.height = Math.round(mCoverFull + (mCoverS1 - mCoverFull) * p);
+        mCover.setLayoutParams(cover);
+        LinearLayout.LayoutParams title = (LinearLayout.LayoutParams) mTitleRow.getLayoutParams();
+        title.topMargin = Math.round(-(mTitleH + Ui.dp(mActivity, 14)) * p);
+        mTitleRow.setLayoutParams(title);
+        ViewGroup.LayoutParams chips = mChipScroll.getLayoutParams();
+        chips.height = p <= 0f ? ViewGroup.LayoutParams.WRAP_CONTENT : Math.round(mChipH * (1f - p));
+        mChipScroll.setLayoutParams(chips);
+        mChipScroll.setAlpha(1f - clamp01(p * 1.6f));
+        mChipScroll.setVisibility(p >= 1f ? INVISIBLE : VISIBLE);
+    }
+
+    private void measureStepOne() {
+        // right under the controls when the page is compressed
+        if (mControlsRow != null && mProgress1 >= 0.99f && mControlsRow.getHeight() > 0) {
+            int[] c = new int[2];
+            int[] me = new int[2];
+            mControlsRow.getLocationOnScreen(c);
+            getLocationOnScreen(me);
+            float bottom = c[1] - me[1] + mControlsRow.getHeight();
+            if (Math.abs(bottom - mY1) > 2f) {
+                mY1 = bottom;
+                if (mState == 1 && mAnim == null && !mDragging) {
+                    setDrawerY(y1());
+                }
+            }
+        }
+        if (mTitleRow != null && mTitleRow.getHeight() > 0 && mProgress1 == 0f) {
+            mTitleH = mTitleRow.getHeight();
+        }
+        if (mChipScroll != null && mChipScroll.getHeight() > 0 && mProgress1 == 0f) {
+            mChipH = mChipScroll.getHeight();
+        }
+    }
+
+    @Override
+    protected void onLayout(boolean changed, int l, int t, int r, int b) {
+        super.onLayout(changed, l, t, r, b);
+        measureStepOne();
+    }
+
+    public void animateTo(int state) {
+        if (getHeight() == 0) {
+            mState = state;
+            return;
+        }
+        if (state != 0) {
+            applyCompress(1f); // measure the compressed page once so the drawer sits right under the controls
+        }
+        mState = state;
+        if (mAnim != null) {
+            mAnim.cancel();
+        }
+        float from = Float.isNaN(mDrawerY) ? y0() : mDrawerY;
+        float to = stateY(state);
+        mAnim = android.animation.ValueAnimator.ofFloat(from, to);
+        mAnim.setDuration(240);
+        mAnim.setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f));
+        mAnim.addUpdateListener(an -> setDrawerY((float) an.getAnimatedValue()));
+        mAnim.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(android.animation.Animator animation) {
+                mAnim = null;
+                setDrawerY(stateY(mState));
+                post(MusicPlayerView.this::measureStepOne);
+            }
+        });
+        mAnim.start();
+    }
+
+    private View findScrollable(View v) {
+        if (v == null) {
+            return null;
+        }
+        if (v instanceof androidx.recyclerview.widget.RecyclerView || v instanceof ScrollView || v instanceof android.widget.ListView) {
+            return v;
+        }
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                View found = findScrollable(g.getChildAt(i));
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean queueAtTop() {
+        View scrollable = findScrollable(mQueueContent);
+        return scrollable == null || !scrollable.canScrollVertically(-1);
+    }
+
+    private boolean inside(View v, float x, float y) {
+        int[] loc = new int[2];
+        int[] me = new int[2];
+        v.getLocationOnScreen(loc);
+        getLocationOnScreen(me);
+        float left = loc[0] - me[0];
+        float top = loc[1] - me[1];
+        return x >= left && x <= left + v.getWidth() && y >= top && y <= top + v.getHeight();
+    }
+
+    @Override
+    public boolean onInterceptTouchEvent(android.view.MotionEvent ev) {
+        if (mSheet != null || mDrawer == null) {
+            return false;
+        }
+        switch (ev.getActionMasked()) {
+            case android.view.MotionEvent.ACTION_DOWN:
+                mDownX = ev.getX();
+                mDownY = ev.getY();
+                mDragging = false;
+                mDownOnSeek = mSeek != null && inside(mSeek, ev.getX(), ev.getY());
+                mDownInHeader = ev.getY() >= mDrawerY && ev.getY() <= mDrawerY + Ui.dp(mActivity, HEADER_DP);
+                if (mVelocity != null) {
+                    mVelocity.recycle();
+                }
+                mVelocity = android.view.VelocityTracker.obtain();
+                mVelocity.addMovement(ev);
+                return false;
+            case android.view.MotionEvent.ACTION_MOVE: {
+                if (mVelocity != null) {
+                    mVelocity.addMovement(ev);
+                }
+                if (mDragging) {
+                    return true;
+                }
+                float dy = ev.getY() - mDownY;
+                float dx = ev.getX() - mDownX;
+                int slop = android.view.ViewConfiguration.get(mActivity).getScaledTouchSlop();
+                if (Math.abs(dy) < slop || Math.abs(dy) < Math.abs(dx) * 1.5f || mDownOnSeek) {
+                    return false;
+                }
+                boolean take;
+                if (mState == 0) {
+                    take = dy < 0;
+                } else if (mState == 1) {
+                    take = true;
+                } else {
+                    take = dy > 0 && (mDownInHeader || queueAtTop());
+                }
+                if (take) {
+                    mDragging = true;
+                    if (mAnim != null) {
+                        mAnim.cancel();
+                        mAnim = null;
+                    }
+                    mDragStartState = mState;
+                    mDragStartY = Float.isNaN(mDrawerY) ? y0() : mDrawerY;
+                    mDragStartTouch = ev.getY();
+                    return true;
+                }
+                return false;
+            }
+            default:
+                return false;
+        }
+    }
+
+    @Override
+    public boolean onTouchEvent(android.view.MotionEvent ev) {
+        if (mVelocity != null) {
+            mVelocity.addMovement(ev);
+        }
+        switch (ev.getActionMasked()) {
+            case android.view.MotionEvent.ACTION_MOVE:
+                if (mDragging) {
+                    setDrawerY(mDragStartY + (ev.getY() - mDragStartTouch));
+                    // measure the compressed page as soon as it is there so the middle stop is exact
+                    if (mProgress1 >= 0.99f) {
+                        measureStepOne();
+                    }
+                }
+                return true;
+            case android.view.MotionEvent.ACTION_UP:
+            case android.view.MotionEvent.ACTION_CANCEL:
+                if (mDragging) {
+                    mDragging = false;
+                    float vy = 0f;
+                    if (mVelocity != null) {
+                        mVelocity.computeCurrentVelocity(1000);
+                        vy = mVelocity.getYVelocity();
+                    }
+                    int target;
+                    if (vy < -900f) {
+                        target = Math.min(2, mDragStartState + 1);
+                    } else if (vy > 900f) {
+                        target = Math.max(0, mDragStartState - 1);
+                    } else {
+                        float y = mDrawerY;
+                        target = 0;
+                        float best = Math.abs(y - y0());
+                        if (Math.abs(y - y1()) < best) {
+                            best = Math.abs(y - y1());
+                            target = 1;
+                        }
+                        if (Math.abs(y - y2()) < best) {
+                            target = 2;
+                        }
+                    }
+                    animateTo(target);
+                }
+                if (mVelocity != null) {
+                    mVelocity.recycle();
+                    mVelocity = null;
+                }
+                return true;
+            default:
+                return true;
+        }
     }
 
     private void updateQueueBar() {
         if (mQueueLabel == null) {
             return;
         }
+        String drawerTitle = mHost.queueTitle();
+        mDrawerTitle.setText(drawerTitle != null && !drawerTitle.isEmpty() ? drawerTitle : (mHost.isPodcast() ? "Kö" : "Upp härnäst"));
         String title = mHost.queueTitle();
         if (title != null && !title.isEmpty()) {
             mQueueLabel.setText(title);
@@ -663,6 +1060,7 @@ public class MusicPlayerView extends FrameLayout {
         }
         mShownImage = image;
         Glide.with(mArt).load(image).into(mArt);
+        Glide.with(mMiniArt).load(image).into(mMiniArt);
         Glide.with(mArt).asBitmap().load(image).override(48, 48).disallowHardwareConfig().into(new CustomTarget<Bitmap>() {
             @Override
             public void onResourceReady(@NonNull Bitmap bitmap, @Nullable Transition<? super Bitmap> transition) {
@@ -707,7 +1105,8 @@ public class MusicPlayerView extends FrameLayout {
         mTint = tint;
         int bottom = blend(tint, 0xFF0F0F0F, 0.55f);
         mPage.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{tint, bottom}));
-        mScrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{tint & 0x00FFFFFF, tint}));
+        mScrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{tint & 0x00FFFFFF, (tint & 0x00FFFFFF) | 0x99000000, (tint & 0x00FFFFFF) | 0xE6000000, tint}));
+        paintDrawer();
         if (mSheet != null) {
             mSheet.setBackgroundColor(blend(tint, 0xFF0F0F0F, 0.35f));
         }
@@ -757,7 +1156,6 @@ public class MusicPlayerView extends FrameLayout {
             removeView(mSheet);
             mSheet = null;
         }
-        mQueueSheet = false;
         mLyricsLines = null;
         mLyricsScroll = null;
         mLyricsCurrent = -1;
@@ -765,19 +1163,19 @@ public class MusicPlayerView extends FrameLayout {
 
     public void showQueue(boolean show) {
         if (!show) {
-            closeSheet();
+            if (mSheet != null) {
+                closeSheet();
+            } else if (mState != 0) {
+                animateTo(0);
+            }
             return;
         }
-        if (mSheet == null || !mQueueSheet) {
-            openSheet(null);
-            mQueueSheet = true;
-        }
-        refreshQueue();
+        animateTo(2);
     }
 
-    /** A queue or lyrics page is shown (back closes it). */
+    /** The queue drawer is pulled up or a lyrics page is shown (back closes it). */
     public boolean isQueueShown() {
-        return mSheet != null;
+        return mSheet != null || mState != 0;
     }
 
     /** Only the "Nästa: ..." line at the bottom. */
@@ -788,19 +1186,20 @@ public class MusicPlayerView extends FrameLayout {
     /** The queue changed (song added, moved or the next song started). */
     public void refreshQueue() {
         updateQueueBar();
-        if (mSheet == null || !mQueueSheet) {
+        if (mDrawerBody == null) {
             return;
         }
 
-        mSheet.removeAllViews();
-        String title = mHost.queueTitle();
-        LinearLayout column = sheetColumn(title != null ? title : (mHost.isPodcast() ? "Kö" : "Upp härnäst"));
-        View queue = mHost.createQueue(mActivity, this::closeSheet);
+        mDrawerBody.removeAllViews();
+        View queue = mHost.createQueue(mActivity, () -> animateTo(0));
         if (queue == null) {
             queue = QueueView.create(mActivity, mHost.video(), mHost.queued(), mHost.rest(), mHost.queueListener());
+            if (queue instanceof ViewGroup && ((ViewGroup) queue).getChildCount() > 1 && ((ViewGroup) queue).getChildAt(0) instanceof TextView) {
+                ((ViewGroup) queue).removeViewAt(0); // "Spelas just nu": the drawer has its own title
+            }
         }
-        column.addView(queue, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        mSheet.addView(column, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        mQueueContent = queue;
+        mDrawerBody.addView(queue, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
     private void showLyrics() {
@@ -932,13 +1331,15 @@ public class MusicPlayerView extends FrameLayout {
         mAuthor.setText(video.getAuthor() != null ? video.getAuthor() : "");
         if (changed) {
             refreshButtons();
-            if (mSheet != null && !mQueueSheet) {
+            if (mSheet != null) {
                 closeSheet(); // the lyrics were the last song's
             }
         }
-        if (mSheet != null && mQueueSheet && changed) {
+        if (changed || mQueueContent == null) {
             refreshQueue(); // not for metadata updates of the same song (it would end a drag)
         }
+        mMiniTitle.setText(video.getTitle());
+        mMiniAuthor.setText(video.getAuthor() != null ? video.getAuthor() : "");
     }
 
     private void update() {
@@ -952,6 +1353,7 @@ public class MusicPlayerView extends FrameLayout {
         }
         mDuration.setText(known ? format(duration) : "");
         mPlay.setImageResource(mHost.isPlaying() ? R.drawable.ic_pause : R.drawable.ic_play);
+        mMiniPlay.setImageResource(mHost.isPlaying() ? R.drawable.ic_pause : R.drawable.ic_play);
         updateLyrics(position);
     }
 
