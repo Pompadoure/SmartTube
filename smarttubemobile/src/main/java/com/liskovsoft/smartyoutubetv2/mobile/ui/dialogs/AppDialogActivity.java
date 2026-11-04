@@ -446,8 +446,8 @@ public class AppDialogActivity extends MobileActivity implements AppDialogView {
         footer.setGravity(Gravity.CENTER_VERTICAL);
         footer.setPadding(0, Ui.dp(this, 6), 0, 0);
         ImageView likeIcon = new ImageView(this);
-        likeIcon.setImageResource(R.drawable.ic_like);
-        likeIcon.setColorFilter(item.isLiked() ? 0xFF3EA6FF : 0xFFF1F1F1);
+        likeIcon.setImageResource(item.isLiked() ? R.drawable.ic_like_fill : R.drawable.ic_like);
+        likeIcon.setColorFilter(0xFFF1F1F1);
         footer.addView(likeIcon, new LinearLayout.LayoutParams(Ui.dp(this, 20), Ui.dp(this, 20)));
         TextView likes = new TextView(this);
         likes.setTextColor(getColor(R.color.yt_text_secondary));

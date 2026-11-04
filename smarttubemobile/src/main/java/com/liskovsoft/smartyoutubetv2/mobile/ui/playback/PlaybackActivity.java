@@ -656,7 +656,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         mLandscapeAudioButton = icon(R.drawable.ic_headphones, 48, 12);
         mLandscapeAudioButton.setOnClickListener(v -> setAudioMode(!mAudioMode));
         actions.addView(mLandscapeAudioButton);
-        ImageView more = icon(R.drawable.ic_more, 48, 12);
+        ImageView more = icon(R.drawable.ic_more_vert, 48, 12);
         more.setOnClickListener(v -> mPlaybackPresenter.onButtonLongClicked(com.liskovsoft.smartyoutubetv2.common.R.id.lb_control_high_quality, 0));
         actions.addView(more);
         mControlsActions = actions;
@@ -1064,7 +1064,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         ImageView shortsSearch = icon(R.drawable.ic_search, 48, 12);
         shortsSearch.setOnClickListener(v -> com.liskovsoft.smartyoutubetv2.common.app.presenters.SearchPresenter.instance(this).startSearch(null));
         shortsTop.addView(shortsSearch);
-        ImageView shortsMore = icon(R.drawable.ic_more, 48, 12);
+        ImageView shortsMore = icon(R.drawable.ic_more_vert, 48, 12);
         shortsMore.setOnClickListener(v -> mPlaybackPresenter.onButtonLongClicked(com.liskovsoft.smartyoutubetv2.common.R.id.lb_control_high_quality, 0));
         shortsTop.addView(shortsMore);
         layer.addView(shortsTop, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
@@ -1220,6 +1220,9 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         setChipLabel(mLikeChip, likes);
         setChipActive(mLikeChip, liked);
         setChipActive(mDislikeChip, disliked);
+        ((ImageView) mLikeChip.getChildAt(0)).setImageResource(liked ? R.drawable.ic_like_fill : R.drawable.ic_like);
+        ((ImageView) mDislikeChip.getChildAt(0)).setImageResource(disliked ? R.drawable.ic_dislike_fill : R.drawable.ic_dislike);
+        mShortLikeIcon.setImageResource(liked ? R.drawable.ic_heart_fill : R.drawable.ic_heart);
         mShortLikeLabel.setText(likes);
         mShortLikeLabel.setVisibility(likes.isEmpty() ? View.GONE : View.VISIBLE);
         mShortLikeIcon.setColorFilter(liked ? 0xFFFF4E45 : 0xFFFFFFFF);
