@@ -258,7 +258,7 @@ public class MusicPlayerView extends FrameLayout {
             close.setOnClickListener(v -> mHost.close());
             right.addView(close);
         }
-        ImageView more = icon(R.drawable.ic_more, 48, 12);
+        ImageView more = icon(R.drawable.ic_more_vert, 48, 12);
         more.setOnClickListener(v -> {
             if (!mHost.more()) {
                 MusicMenu.show(a, mHost.video(), null, null);
@@ -485,8 +485,10 @@ public class MusicPlayerView extends FrameLayout {
     public void refreshButtons() {
         if (mLikeIcon != null) {
             int state = mHost.likeState();
-            mLikeIcon.setImageTintList(ColorStateList.valueOf(state > 0 ? 0xFF3EA6FF : Color.WHITE));
-            mDislikeIcon.setImageTintList(ColorStateList.valueOf(state < 0 ? 0xFF3EA6FF : Color.WHITE));
+            mLikeIcon.setImageResource(state > 0 ? R.drawable.ic_like_fill : R.drawable.ic_like);
+            mDislikeIcon.setImageResource(state < 0 ? R.drawable.ic_dislike_fill : R.drawable.ic_dislike);
+            mLikeIcon.setImageTintList(ColorStateList.valueOf(Color.WHITE));
+            mDislikeIcon.setImageTintList(ColorStateList.valueOf(Color.WHITE));
             String count = mHost.likeCount();
             mLikeCount.setText(count != null ? count : "");
             mLikeCount.setVisibility(count != null && !count.isEmpty() ? VISIBLE : GONE);
