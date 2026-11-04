@@ -251,7 +251,7 @@ public class MusicPlayerView extends FrameLayout {
         cover.addView(mArt, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         mScrim = new View(a);
-        cover.addView(mScrim, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(a, 190), Gravity.BOTTOM)); // the cover melts into the page color
+        cover.addView(mScrim, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(a, 280), Gravity.BOTTOM)); // the cover melts into the page color
         View topShade = new View(a);
         topShade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x66000000, 0x00000000}));
         cover.addView(topShade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(a, 88), Gravity.TOP));
@@ -321,7 +321,9 @@ public class MusicPlayerView extends FrameLayout {
         details.setOnClickListener(v -> showDetails());
         titleRow.addView(details);
         titleRow.setOnClickListener(v -> showDetails());
-        page.addView(titleRow);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        titleParams.topMargin = -Ui.dp(a, TITLE_OVERLAP_DP); // the title sits on the faded end of the cover, like YouTube Music
+        page.addView(titleRow, titleParams);
 
         // pill buttons
         HorizontalScrollView chipScroll = new HorizontalScrollView(a);
@@ -533,6 +535,7 @@ public class MusicPlayerView extends FrameLayout {
         }
     }
 
+    private static final int TITLE_OVERLAP_DP = 64;
     private static final int HEADER_DP = 84;
     private static final int MINI_DP = 72;
 
@@ -712,7 +715,8 @@ public class MusicPlayerView extends FrameLayout {
         cover.height = Math.round(mCoverFull + (mCoverS1 - mCoverFull) * p);
         mCover.setLayoutParams(cover);
         LinearLayout.LayoutParams title = (LinearLayout.LayoutParams) mTitleRow.getLayoutParams();
-        title.topMargin = Math.round(-(mTitleH + Ui.dp(mActivity, 14)) * p);
+        float over = -Ui.dp(mActivity, TITLE_OVERLAP_DP);
+        title.topMargin = Math.round(over + (-(mTitleH + Ui.dp(mActivity, 14)) - over) * p);
         mTitleRow.setLayoutParams(title);
         ViewGroup.LayoutParams chips = mChipScroll.getLayoutParams();
         chips.height = p <= 0f ? ViewGroup.LayoutParams.WRAP_CONTENT : Math.round(mChipH * (1f - p));
@@ -1104,8 +1108,11 @@ public class MusicPlayerView extends FrameLayout {
     private void applyTint(int tint) {
         mTint = tint;
         int bottom = blend(tint, 0xFF0F0F0F, 0.55f);
-        mPage.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{tint, bottom}));
-        mScrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{tint & 0x00FFFFFF, (tint & 0x00FFFFFF) | 0x99000000, (tint & 0x00FFFFFF) | 0xE6000000, tint}));
+        // one flat page color, so the end of the cover's fade is exactly the color under it (no seam)
+        mPage.setBackgroundColor(tint);
+        int clear = tint & 0x00FFFFFF;
+        mScrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{
+                clear, clear | 0x1A000000, clear | 0x4D000000, clear | 0x88000000, clear | 0xC4000000, clear | 0xEB000000, clear | 0xFF000000}));
         paintDrawer();
         if (mSheet != null) {
             mSheet.setBackgroundColor(blend(tint, 0xFF0F0F0F, 0.35f));
