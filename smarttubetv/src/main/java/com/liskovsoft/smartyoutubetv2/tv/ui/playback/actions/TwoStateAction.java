@@ -1,5 +1,6 @@
 package com.liskovsoft.smartyoutubetv2.tv.ui.playback.actions;
 
+import static androidx.leanback.widget.PlaybackControlsRow.toBitmapDrawable;
 import android.content.Context;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
@@ -45,7 +46,7 @@ public class TwoStateAction extends MultiAction {
 
         mContext = context;
         Drawable[] drawables = new Drawable[2];
-        BitmapDrawable offDrawable = (BitmapDrawable) ContextCompat.getDrawable(context, offIconResId);
+        BitmapDrawable offDrawable = toBitmapDrawable(context, ContextCompat.getDrawable(context, offIconResId));
         drawables[INDEX_OFF] = offDrawable;
         drawables[INDEX_ON] = offDrawable == null ? null
                 : new BitmapDrawable(context.getResources(),
