@@ -98,6 +98,9 @@ public class ExoPlayerInitializer {
         // Media3 would also call Surface.setFrameRate on API 30+ (double mode switch, even with AFR switched off).
         player.setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF);
 
+        // JoTube: pause when the audio route becomes noisy (Bluetooth/headphones disconnected). Connecting does nothing.
+        player.setHandleAudioBecomingNoisy(true);
+
         // New initializer
         //ExoPlayer player = ExoPlayerFactory.newSimpleInstance(
         //        context, renderersFactory, trackSelector, loadControl,
