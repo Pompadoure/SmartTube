@@ -38,3 +38,42 @@ REJECTED
   seen on ours, wide change.
 - 1be2c8da (history toggle refactor): equivalent behaviour, no gain.
 - Translations, version bump 32.68, other chores: skipped.
+
+## 2026-10-30
+Checked: SmartTube up to 4b3f333e (2026-10-28), MSC up to 40fec843 (upstream pin; our pin is 1b43ec7).
+
+TAKEN
+- Nothing.
+
+REJECTED
+- 440c15b8 (+ MSC ba369250, 05feeb7e): live and past-live streams via SABR. Changes how existing live streams are played
+  (MSC 05feeb7e is marked "temporarily unlock for testing, DO NOT RELEASE"; ba369250 says some streams are still broken).
+- 380a2b79, a4f4b321, 404d1ad6 (DVR flag part): position restoring / seek rules for the new SABR live path only.
+- 404d1ad6 (sleep for the server backoff): rides on the live change; sleeping on the loader thread changes timing of the
+  normal VOD path and interacts with cancelling a load (403 risk). Backoff handling was rejected on 2026-10-16 too.
+- e7c66266 + MSC 40fec843 (DIAL casting, "show up in the YouTube cast list"): new feature with a new network service and
+  manifest changes, not an improvement to an existing one.
+- 4314570f (Preferred DNS moved to General/Network, SABR live option), 3d6aa161, 63d5fe43, a9e705fd (checkbox dialogs):
+  move settings and change UI that works today.
+- 79d4a447 (reverted by 168e4848), eadfe9e5 (refactor): no gain.
+- Translations (incl. 6cd95de6 Swedish), README, chores: skipped.
+
+## 2026-11-06
+Checked: SmartTube up to 0b421183 (2026-11-05), MSC up to 347d43c9 (upstream pin; our pin is 1b43ec7).
+
+TAKEN
+- Nothing.
+
+REJECTED
+- 348cbe28 (History keeps a remote "100% watched" instead of the older local position): the condition in VideoGroup.add()
+  decides the progress bar and the "hide watched" filter for every list. Videos finished elsewhere but with an older
+  local position would show as watched/hidden where they show a partial bar today; a video rewatched here while the
+  remote value is still stale would also flip. Changes existing behaviour, so left out.
+- b74dd217 (add_to_queue intent extra): new feature (new share target for a third-party app), not an improvement.
+- c8873b53 (Keep up with live option): new setting and rewrite of live handling in VideoStateController; live was
+  rejected earlier.
+- 64d72fab, 4557e4c3 (PoToken errors to ErrorFixerController, SabrPropagationError base class) and 10bc15af (reverted
+  again upstream): net effect is zero upstream; PoToken changes conflict with our patches 0001/0005/0006.
+- 0b421183 (Player/Network engine settings moved): moves settings UI that works today.
+- MediaServiceCore pin bumps (089ddf64, 54377a52, 10bc15af): follow the rejected changes.
+- Translations, version bumps 32.69/32.70, remote-control string fixes: skipped.
