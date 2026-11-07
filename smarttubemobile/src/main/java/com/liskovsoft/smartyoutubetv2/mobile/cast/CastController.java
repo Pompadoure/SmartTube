@@ -228,7 +228,13 @@ public final class CastController {
             metadata.addImage(new WebImage(Uri.parse(image)));
         }
 
-        MediaInfo.Builder builder = new MediaInfo.Builder(pick[0])
+        // YouTube's URLs are tied to this phone: the receiver would get 403, so the phone relays the stream to it
+        String receiverUrl = pick[1].startsWith("application/") ? pick[0] : com.liskovsoft.smartyoutubetv2.common.misc.CastRelay.serve(pick[0], pick[1]);
+        if (receiverUrl == null) {
+            receiverUrl = pick[0];
+        }
+
+        MediaInfo.Builder builder = new MediaInfo.Builder(receiverUrl)
                 .setContentType(pick[1])
                 .setStreamType(info.isLive() ? MediaInfo.STREAM_TYPE_LIVE : MediaInfo.STREAM_TYPE_BUFFERED)
                 .setMetadata(metadata);
@@ -240,7 +246,6 @@ public final class CastController {
         } catch (Exception ignored) {
         }
 
-        probe(pick[0]);
         sLoadedPositionMs = host.positionMs();
         host.pauseLocal();
         remote.unregisterCallback(sRemoteCallback);
@@ -261,32 +266,6 @@ public final class CastController {
     }
 
     private static Context sAppContext;
-
-    /** Diagnostics: can the phone itself fetch the URL, and what does it tie the URL to (IP, token)? */
-    private static void probe(String url) {
-        new Thread(() -> {
-            try {
-                Uri uri = Uri.parse(url);
-                String ip = uri.getQueryParameter("ip");
-                StringBuilder keys = new StringBuilder();
-                for (String key : uri.getQueryParameterNames()) {
-                    keys.append(key).append(',');
-                }
-                Log.d(TAG, "Probe: host=" + uri.getHost() + " ip=" + (ip == null ? "none" : ip.contains(":") ? "IPv6 " + ip : "IPv4 " + ip)
-                        + " pot=" + (uri.getQueryParameter("pot") != null) + " mime=" + uri.getQueryParameter("mime")
-                        + " itag=" + uri.getQueryParameter("itag") + " keys=" + keys);
-                java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
-                c.setRequestProperty("Range", "bytes=0-1");
-                c.setConnectTimeout(8000);
-                c.setReadTimeout(8000);
-                Log.d(TAG, "Probe: plain fetch from the phone -> HTTP " + c.getResponseCode() + " type=" + c.getContentType()
-                        + " len=" + c.getContentLength());
-                c.disconnect();
-            } catch (Throwable e) {
-                Log.d(TAG, "Probe failed: " + e);
-            }
-        }).start();
-    }
 
     /** {url, mime} of the best stream the receiver can fetch itself, or null. Music prefers audio only. */
     static String[] pickSource(MediaItemFormatInfo info, boolean audioOnly) {
@@ -371,6 +350,7 @@ public final class CastController {
         }
 
         @Override public void onSessionEnded(CastSession session, int error) {
+            com.liskovsoft.smartyoutubetv2.common.misc.CastRelay.stop();
             Host host = sHost;
             if (host != null) {
                 host.resumeLocal(sLoadedPositionMs);
