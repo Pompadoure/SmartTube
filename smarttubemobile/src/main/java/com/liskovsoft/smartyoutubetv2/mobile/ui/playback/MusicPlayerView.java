@@ -275,6 +275,9 @@ public class MusicPlayerView extends FrameLayout {
         }
 
         LinearLayout right = new LinearLayout(a);
+        ImageView cast = icon(R.drawable.ic_cast, 48, 12); // like YouTube Music: top right
+        cast.setOnClickListener(v -> com.liskovsoft.smartyoutubetv2.mobile.cast.CastController.showPicker(a));
+        right.addView(cast);
         if (mHost.closable()) {
             ImageView close = icon(R.drawable.ic_close_thin, 48, 13);
             close.setImageTintList(ColorStateList.valueOf(0xDDFFFFFF));
@@ -340,7 +343,6 @@ public class MusicPlayerView extends FrameLayout {
             chips.addView(chip(R.drawable.ic_save, "Spara", v -> MusicMenu.addToPlaylist(a, mHost.video())));
         }
         chips.addView(chip(R.drawable.ic_share, "Dela", v -> mHost.share()));
-        chips.addView(chip(R.drawable.ic_cast, "Casta", v -> com.liskovsoft.smartyoutubetv2.mobile.cast.CastController.showPicker(a)));
         if (!mHost.isPodcast()) {
             chips.addView(chip(R.drawable.ic_radio, "Radio", v -> mHost.startRadio()));
         }

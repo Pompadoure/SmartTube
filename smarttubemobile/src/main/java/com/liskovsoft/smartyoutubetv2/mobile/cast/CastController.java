@@ -5,9 +5,11 @@ import android.content.Context;
 import android.net.Uri;
 import android.util.Log;
 import android.widget.Toast;
-import androidx.mediarouter.app.MediaRouteChooserDialog;
-import androidx.mediarouter.app.MediaRouteControllerDialog;
+import android.app.AlertDialog;
+import android.os.Handler;
+import android.os.Looper;
 import androidx.mediarouter.media.MediaRouteSelector;
+import androidx.mediarouter.media.MediaRouter;
 import com.google.android.gms.cast.MediaInfo;
 import com.google.android.gms.cast.MediaLoadRequestData;
 import com.google.android.gms.cast.MediaMetadata;
@@ -21,6 +23,7 @@ import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
 import com.liskovsoft.smartyoutubetv2.common.misc.CastSource;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -64,6 +67,7 @@ public final class CastController {
         }
         try {
             sAppContext = context.getApplicationContext();
+            CastSource.setListener(() -> new Handler(Looper.getMainLooper()).post(CastController::onNewSource));
             sContext = CastContext.getSharedInstance(sAppContext);
             if (!sListening) {
                 sContext.getSessionManager().addSessionManagerListener(LISTENER, CastSession.class);
@@ -76,27 +80,91 @@ public final class CastController {
         }
     }
 
-    /** The cast button: the device list, or the controls (with Disconnect) while connected. */
+    /** The cast button: the device list, or the controls (pause, disconnect) while connected. */
     public static void showPicker(Activity activity) {
-        if (!ensureInit(activity)) {
-            Toast.makeText(activity, "Cast fungerar inte på den här enheten", Toast.LENGTH_LONG).show();
-            return;
-        }
+        try {
+            if (!ensureInit(activity)) {
+                Toast.makeText(activity, "Cast fungerar inte på den här enheten", Toast.LENGTH_LONG).show();
+                return;
+            }
 
-        CastSession session = sContext.getSessionManager().getCurrentCastSession();
-        if (session != null && session.isConnected()) {
-            new MediaRouteControllerDialog(activity).show();
-            return;
+            CastSession session = sContext.getSessionManager().getCurrentCastSession();
+            if (session != null && session.isConnected()) {
+                showControls(activity, session);
+            } else {
+                showChooser(activity);
+            }
+        } catch (Throwable e) {
+            Log.e(TAG, "Cast picker failed: " + e, e);
+            Toast.makeText(activity, "Cast fungerade inte: " + e.getClass().getSimpleName(), Toast.LENGTH_LONG).show();
         }
+    }
 
+    // The app theme is android's Material, not AppCompat, so the stock MediaRouter dialogs would crash. Own simple list.
+    private static void showChooser(Activity activity) {
         MediaRouteSelector selector = sContext.getMergedSelector();
         if (selector == null) {
             Toast.makeText(activity, "Cast är inte redo än", Toast.LENGTH_SHORT).show();
             return;
         }
-        MediaRouteChooserDialog dialog = new MediaRouteChooserDialog(activity);
-        dialog.setRouteSelector(selector);
+
+        final MediaRouter router = MediaRouter.getInstance(activity);
+        final List<MediaRouter.RouteInfo> routes = new ArrayList<>();
+        final List<String> names = new ArrayList<>();
+        final android.widget.ArrayAdapter<String> adapter =
+                new android.widget.ArrayAdapter<>(activity, android.R.layout.simple_list_item_1, names);
+        final Runnable refresh = () -> {
+            routes.clear();
+            names.clear();
+            for (MediaRouter.RouteInfo route : router.getRoutes()) {
+                if (!route.isDefaultOrBluetooth() && route.isEnabled() && route.matchesSelector(selector)) {
+                    routes.add(route);
+                    names.add(route.getName());
+                }
+            }
+            if (names.isEmpty()) {
+                names.add("Söker efter enheter…");
+            }
+            adapter.notifyDataSetChanged();
+        };
+        final MediaRouter.Callback callback = new MediaRouter.Callback() {
+            @Override public void onRouteAdded(MediaRouter r, MediaRouter.RouteInfo route) { refresh.run(); }
+            @Override public void onRouteRemoved(MediaRouter r, MediaRouter.RouteInfo route) { refresh.run(); }
+            @Override public void onRouteChanged(MediaRouter r, MediaRouter.RouteInfo route) { refresh.run(); }
+        };
+        router.addCallback(selector, callback,
+                MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY | MediaRouter.CALLBACK_FLAG_PERFORM_ACTIVE_SCAN);
+        refresh.run();
+
+        AlertDialog dialog = new AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Casta till")
+                .setAdapter(adapter, (d, which) -> {
+                    if (which < routes.size()) {
+                        routes.get(which).select();
+                    }
+                })
+                .setNegativeButton("Avbryt", null)
+                .create();
+        dialog.setOnDismissListener(d -> router.removeCallback(callback));
         dialog.show();
+    }
+
+    private static void showControls(Activity activity, CastSession session) {
+        String device = session.getCastDevice() != null ? session.getCastDevice().getFriendlyName() : "Cast";
+        new AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Castar till " + device)
+                .setItems(new String[]{"Spela / pausa", "Koppla från"}, (d, which) -> {
+                    if (which == 0) {
+                        RemoteMediaClient remote = session.getRemoteMediaClient();
+                        if (remote != null) {
+                            remote.togglePlayback();
+                        }
+                    } else {
+                        sContext.getSessionManager().endCurrentSession(true);
+                    }
+                })
+                .setNegativeButton("Stäng", null)
+                .show();
     }
 
     public static boolean isCasting() {
@@ -105,6 +173,23 @@ public final class CastController {
         }
         CastSession session = sContext.getSessionManager().getCurrentCastSession();
         return session != null && session.isConnected();
+    }
+
+    /** A new video was opened while connected: send it to the receiver too and keep the phone quiet. */
+    private static void onNewSource() {
+        if (sContext == null || sHost == null) {
+            return;
+        }
+        CastSession session = sContext.getSessionManager().getCurrentCastSession();
+        if (session != null && session.isConnected()) {
+            loadOnReceiver(session);
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                Host host = sHost;
+                if (host != null && isCasting()) {
+                    host.pauseLocal();
+                }
+            }, 1500);
+        }
     }
 
     private static void loadOnReceiver(CastSession session) {

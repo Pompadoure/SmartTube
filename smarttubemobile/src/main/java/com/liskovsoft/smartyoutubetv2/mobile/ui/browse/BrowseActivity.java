@@ -234,6 +234,12 @@ public class BrowseActivity extends MobileActivity implements BrowseView {
         logo.setTypeface(Typeface.DEFAULT_BOLD);
         bar.addView(logo, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
+        ImageView cast = new ImageView(this); // like YouTube: left of the other icons in the top bar
+        cast.setImageResource(R.drawable.ic_cast);
+        cast.setPadding(Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12));
+        cast.setOnClickListener(v -> com.liskovsoft.smartyoutubetv2.mobile.cast.CastController.showPicker(this));
+        bar.addView(cast, new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48)));
+
         ImageView settings = new ImageView(this);
         settings.setImageResource(R.drawable.ic_settings);
         settings.setPadding(Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12));
