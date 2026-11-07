@@ -209,6 +209,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         FrameLayout frame = new FrameLayout(this);
         frame.addView(createContent(), new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         mMusicView = createMusicView();
+        com.liskovsoft.smartyoutubetv2.mobile.cast.CastController.attach(this, mCastHost);
         mMusicView.setVisibility(View.GONE);
         frame.addView(mMusicView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         setContentView(frame);
@@ -452,6 +453,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         mLikeChip = addAction(R.drawable.ic_like, "", ID_LIKE);
         mDislikeChip = addAction(R.drawable.ic_dislike, "", ID_DISLIKE);
         addActionWith(R.drawable.ic_share, "Dela", v -> shareVideo());
+        addActionWith(R.drawable.ic_cast, "Casta", v -> com.liskovsoft.smartyoutubetv2.mobile.cast.CastController.showPicker(this));
         addAction(R.drawable.ic_save, "Spara", ID_SAVE);
         android.widget.HorizontalScrollView actionScroll = new android.widget.HorizontalScrollView(this);
         actionScroll.setHorizontalScrollBarEnabled(false);
@@ -477,6 +479,37 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         return box;
     }
 
+
+    /** JoTube: what the Cast code needs from the player screen. */
+    private final com.liskovsoft.smartyoutubetv2.mobile.cast.CastController.Host mCastHost =
+            new com.liskovsoft.smartyoutubetv2.mobile.cast.CastController.Host() {
+                @Override public Video video() {
+                    return getVideo();
+                }
+
+                @Override public long positionMs() {
+                    return mExoPlayerController != null ? mExoPlayerController.getPositionMs() : 0;
+                }
+
+                @Override public boolean audioOnly() {
+                    return mAudioMode && !mShortsMode;
+                }
+
+                @Override public void pauseLocal() {
+                    if (mExoPlayerController != null) {
+                        mExoPlayerController.setPlayWhenReady(false);
+                    }
+                }
+
+                @Override public void resumeLocal(long positionMs) {
+                    if (mExoPlayerController != null) {
+                        if (positionMs > 0) {
+                            mExoPlayerController.setPositionMs(positionMs);
+                        }
+                        mExoPlayerController.setPlayWhenReady(true);
+                    }
+                }
+            };
 
     private ImageView icon(int res, int sizeDp, int padDp) {
         ImageView view = new ImageView(this);
@@ -653,6 +686,9 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         ImageView share = icon(R.drawable.ic_share, 48, 12);
         share.setOnClickListener(v -> shareVideo());
         actions.addView(share);
+        ImageView cast = icon(R.drawable.ic_cast, 48, 12);
+        cast.setOnClickListener(v -> com.liskovsoft.smartyoutubetv2.mobile.cast.CastController.showPicker(this));
+        actions.addView(cast);
         mLandscapeAudioButton = icon(R.drawable.ic_headphones, 48, 12);
         mLandscapeAudioButton.setOnClickListener(v -> setAudioMode(!mAudioMode));
         actions.addView(mLandscapeAudioButton);
@@ -1397,6 +1433,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        com.liskovsoft.smartyoutubetv2.mobile.cast.CastController.detach(mCastHost);
 
         mHandler.removeCallbacks(mShortsTick);
         mHandler.removeCallbacks(mHideControls);

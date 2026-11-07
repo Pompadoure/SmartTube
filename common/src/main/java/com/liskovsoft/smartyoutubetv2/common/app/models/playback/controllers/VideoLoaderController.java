@@ -553,6 +553,7 @@ public class VideoLoaderController extends BasePlayerController {
         String bgImageUrl = null;
 
         getVideo().sync(formatInfo);
+        com.liskovsoft.smartyoutubetv2.common.misc.CastSource.set(getVideo().videoId, formatInfo); // JoTube: for Cast
         ShortsTransitionState.setLive(getVideo().isLive || formatInfo.isLive());
 
         // Fix stretched video for a couple milliseconds (before the onVideoSizeChanged gets called)

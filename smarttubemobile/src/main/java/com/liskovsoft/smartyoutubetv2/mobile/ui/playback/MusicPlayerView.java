@@ -340,6 +340,7 @@ public class MusicPlayerView extends FrameLayout {
             chips.addView(chip(R.drawable.ic_save, "Spara", v -> MusicMenu.addToPlaylist(a, mHost.video())));
         }
         chips.addView(chip(R.drawable.ic_share, "Dela", v -> mHost.share()));
+        chips.addView(chip(R.drawable.ic_cast, "Casta", v -> com.liskovsoft.smartyoutubetv2.mobile.cast.CastController.showPicker(a)));
         if (!mHost.isPodcast()) {
             chips.addView(chip(R.drawable.ic_radio, "Radio", v -> mHost.startRadio()));
         }

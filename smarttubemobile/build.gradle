@@ -102,6 +102,8 @@ dependencies {
     implementation "androidx.media3:media3-exoplayer-dash:$m3Media3Version"
     implementation "androidx.media3:media3-ui:$m3Media3Version"
     implementation "androidx.media3:media3-session:$m3Media3Version"
+    implementation 'com.google.android.gms:play-services-cast-framework:22.0.0' // JoTube: Cast
+    implementation 'androidx.mediarouter:mediarouter:1.7.0'
 
     implementation project(':fragment-1.1.0')
     implementation project(':common')
