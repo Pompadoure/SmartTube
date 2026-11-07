@@ -206,7 +206,10 @@ public final class CastController {
             return;
         }
 
-        boolean audio = host.audioOnly();
+        // a speaker (no screen) can only play audio; the music player is audio anyway
+        boolean noScreen = session.getCastDevice() != null
+                && !session.getCastDevice().hasCapability(com.google.android.gms.cast.CastDevice.CAPABILITY_VIDEO_OUT);
+        boolean audio = host.audioOnly() || noScreen;
         String[] pick = pickSource(info, audio);
         if (pick == null) {
             Log.e(TAG, "No directly playable stream for " + video.videoId + " (sabr=" + info.containsSabrFormats()
@@ -239,12 +242,21 @@ public final class CastController {
 
         sLoadedPositionMs = host.positionMs();
         host.pauseLocal();
+        remote.unregisterCallback(sRemoteCallback);
+        remote.registerCallback(sRemoteCallback);
         remote.load(new MediaLoadRequestData.Builder()
                 .setMediaInfo(builder.build())
                 .setAutoplay(true)
                 .setCurrentTime(info.isLive() ? 0 : sLoadedPositionMs)
-                .build());
-        Log.d(TAG, "Casting " + video.videoId + " as " + pick[1] + " from " + sLoadedPositionMs + " ms");
+                .build()).setResultCallback(result -> {
+            Log.d(TAG, "Receiver load result: code=" + result.getStatus().getStatusCode() + " ok=" + result.getStatus().isSuccess());
+            if (!result.getStatus().isSuccess()) {
+                Toast.makeText(sAppContext, "Mottagaren kunde inte ta emot strömmen (kod "
+                        + result.getStatus().getStatusCode() + ")", Toast.LENGTH_LONG).show();
+            }
+        });
+        Log.d(TAG, "Casting " + video.videoId + " as " + pick[1] + " from " + sLoadedPositionMs + " ms, audio=" + audio
+                + ", screen=" + !noScreen + ", url=" + pick[0].replaceAll("\\?.*", "?…"));
     }
 
     private static Context sAppContext;
@@ -291,6 +303,27 @@ public final class CastController {
 
         return null;
     }
+
+    /** Tells why the receiver stopped (a rejected stream ends as IDLE with an error). */
+    private static final RemoteMediaClient.Callback sRemoteCallback = new RemoteMediaClient.Callback() {
+        private int mLastState = -1;
+
+        @Override
+        public void onStatusUpdated() {
+            RemoteMediaClient remote = sContext != null && sContext.getSessionManager().getCurrentCastSession() != null
+                    ? sContext.getSessionManager().getCurrentCastSession().getRemoteMediaClient() : null;
+            com.google.android.gms.cast.MediaStatus status = remote != null ? remote.getMediaStatus() : null;
+            if (status == null || status.getPlayerState() == mLastState) {
+                return;
+            }
+            mLastState = status.getPlayerState();
+            Log.d(TAG, "Receiver state=" + status.getPlayerState() + " idleReason=" + status.getIdleReason());
+            if (status.getPlayerState() == com.google.android.gms.cast.MediaStatus.PLAYER_STATE_IDLE
+                    && status.getIdleReason() == com.google.android.gms.cast.MediaStatus.IDLE_REASON_ERROR) {
+                Toast.makeText(sAppContext, "Mottagaren kunde inte spela strömmen", Toast.LENGTH_LONG).show();
+            }
+        }
+    };
 
     private static final SessionManagerListener<CastSession> LISTENER = new SessionManagerListener<CastSession>() {
         @Override public void onSessionStarting(CastSession session) {}
