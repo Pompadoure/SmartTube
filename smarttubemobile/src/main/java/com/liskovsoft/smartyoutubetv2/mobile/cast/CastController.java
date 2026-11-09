@@ -44,6 +44,7 @@ public final class CastController {
     }
 
     private static CastContext sContext;
+    private static Context sAppContext;
     private static Host sHost;
     private static boolean sListening;
     private static long sLoadedPositionMs;
