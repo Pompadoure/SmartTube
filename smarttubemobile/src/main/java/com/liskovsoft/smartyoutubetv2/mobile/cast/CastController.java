@@ -18,9 +18,9 @@ import com.google.android.gms.cast.framework.CastSession;
 import com.google.android.gms.cast.framework.SessionManagerListener;
 import com.google.android.gms.cast.framework.media.RemoteMediaClient;
 import com.google.android.gms.common.images.WebImage;
-import com.liskovsoft.mediaserviceinterfaces.data.MediaFormat;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
+import com.liskovsoft.smartyoutubetv2.common.misc.CastAudioStream;
 import com.liskovsoft.smartyoutubetv2.common.misc.CastSource;
 
 import java.util.ArrayList;
@@ -206,54 +206,50 @@ public final class CastController {
             return;
         }
 
-        // a speaker (no screen) can only play audio; the music player is audio anyway
-        boolean noScreen = session.getCastDevice() != null
-                && !session.getCastDevice().hasCapability(com.google.android.gms.cast.CastDevice.CAPABILITY_VIDEO_OUT);
-        boolean audio = host.audioOnly() || noScreen;
-        String[] pick = pickSource(info, audio);
-        if (pick == null) {
-            Log.e(TAG, "No directly playable stream for " + video.videoId + " (sabr=" + info.containsSabrFormats()
-                    + " url=" + info.containsUrlFormats() + " hls=" + info.containsHlsUrl() + ")");
-            Toast.makeText(sAppContext, "Den här videon går inte att casta (ingen direkt ström)", Toast.LENGTH_LONG).show();
+        long durationMs = 0;
+        try {
+            durationMs = Long.parseLong(info.getLengthSeconds()) * 1000;
+        } catch (Exception ignored) {
+        }
+        if (info.isLive() || durationMs <= 0 || !(info.containsSabrFormats() || info.containsDashFormats())) {
+            Log.e(TAG, "Not castable: live=" + info.isLive() + " duration=" + durationMs + " sabr=" + info.containsSabrFormats()
+                    + " dash=" + info.containsDashFormats());
+            Toast.makeText(sAppContext, "Den här videon går inte att casta (livesändning eller okänt format)", Toast.LENGTH_LONG).show();
             return;
         }
 
-        MediaMetadata metadata = new MediaMetadata(audio ? MediaMetadata.MEDIA_TYPE_MUSIC_TRACK : MediaMetadata.MEDIA_TYPE_MOVIE);
+        // The receiver gets the sound as a stream from this phone (the app plays the track with its own engine)
+        sLoadedPositionMs = host.positionMs();
+        String receiverUrl = CastAudioStream.start(sAppContext, info, sLoadedPositionMs, durationMs);
+        if (receiverUrl == null) {
+            Toast.makeText(sAppContext, "Kunde inte starta ljudströmmen för casting", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        MediaMetadata metadata = new MediaMetadata(MediaMetadata.MEDIA_TYPE_MUSIC_TRACK);
         metadata.putString(MediaMetadata.KEY_TITLE, video.getTitle() != null ? video.getTitle() : "");
         if (video.getAuthor() != null) {
-            metadata.putString(audio ? MediaMetadata.KEY_ARTIST : MediaMetadata.KEY_SUBTITLE, video.getAuthor());
+            metadata.putString(MediaMetadata.KEY_ARTIST, video.getAuthor());
         }
         String image = video.getCardImageUrl();
         if (image != null) {
             metadata.addImage(new WebImage(Uri.parse(image)));
         }
 
-        // YouTube's URLs are tied to this phone: the receiver would get 403, so the phone relays the stream to it
-        String receiverUrl = pick[1].startsWith("application/") ? pick[0] : com.liskovsoft.smartyoutubetv2.common.misc.CastRelay.serve(pick[0], pick[1]);
-        if (receiverUrl == null) {
-            receiverUrl = pick[0];
-        }
+        MediaInfo mediaInfo = new MediaInfo.Builder(receiverUrl)
+                .setContentType("audio/wav")
+                .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
+                .setStreamDuration(durationMs)
+                .setMetadata(metadata)
+                .build();
 
-        MediaInfo.Builder builder = new MediaInfo.Builder(receiverUrl)
-                .setContentType(pick[1])
-                .setStreamType(info.isLive() ? MediaInfo.STREAM_TYPE_LIVE : MediaInfo.STREAM_TYPE_BUFFERED)
-                .setMetadata(metadata);
-        try {
-            long seconds = Long.parseLong(info.getLengthSeconds());
-            if (seconds > 0 && !info.isLive()) {
-                builder.setStreamDuration(seconds * 1000);
-            }
-        } catch (Exception ignored) {
-        }
-
-        sLoadedPositionMs = host.positionMs();
         host.pauseLocal();
         remote.unregisterCallback(sRemoteCallback);
         remote.registerCallback(sRemoteCallback);
         remote.load(new MediaLoadRequestData.Builder()
-                .setMediaInfo(builder.build())
+                .setMediaInfo(mediaInfo)
                 .setAutoplay(true)
-                .setCurrentTime(info.isLive() ? 0 : sLoadedPositionMs)
+                .setCurrentTime(sLoadedPositionMs)
                 .build()).setResultCallback(result -> {
             Log.d(TAG, "Receiver load result: code=" + result.getStatus().getStatusCode() + " ok=" + result.getStatus().isSuccess());
             if (!result.getStatus().isSuccess()) {
@@ -261,53 +257,7 @@ public final class CastController {
                         + result.getStatus().getStatusCode() + ")", Toast.LENGTH_LONG).show();
             }
         });
-        Log.d(TAG, "Casting " + video.videoId + " as " + pick[1] + " from " + sLoadedPositionMs + " ms, audio=" + audio
-                + ", screen=" + !noScreen + ", url=" + pick[0].replaceAll("\\?.*", "?…"));
-    }
-
-    private static Context sAppContext;
-
-    /** {url, mime} of the best stream the receiver can fetch itself, or null. Music prefers audio only. */
-    static String[] pickSource(MediaItemFormatInfo info, boolean audioOnly) {
-        if (audioOnly) {
-            String bestUrl = null;
-            int bestBitrate = -1;
-            List<MediaFormat> adaptive = info.getAdaptiveFormats();
-            if (adaptive != null) {
-                for (MediaFormat format : adaptive) {
-                    String mime = format.getMimeType();
-                    String url = format.getUrl();
-                    if (mime == null || url == null || url.isEmpty() || !mime.startsWith("audio/mp4")) {
-                        continue;
-                    }
-                    int bitrate = 0;
-                    try {
-                        bitrate = Integer.parseInt(format.getBitrate());
-                    } catch (Exception ignored) {
-                    }
-                    if (bitrate > bestBitrate) {
-                        bestBitrate = bitrate;
-                        bestUrl = url;
-                    }
-                }
-            }
-            if (bestUrl != null) {
-                return new String[]{bestUrl, "audio/mp4"};
-            }
-        }
-
-        if (info.containsUrlFormats()) {
-            List<String> urls = info.createUrlList();
-            if (urls != null && !urls.isEmpty() && urls.get(0) != null) {
-                return new String[]{urls.get(0), "video/mp4"};
-            }
-        }
-
-        if (info.containsHlsUrl() && info.getHlsManifestUrl() != null) {
-            return new String[]{info.getHlsManifestUrl(), "application/x-mpegURL"};
-        }
-
-        return null;
+        Log.d(TAG, "Casting " + video.videoId + " from " + sLoadedPositionMs + " ms");
     }
 
     /** Tells why the receiver stopped (a rejected stream ends as IDLE with an error). */
@@ -350,7 +300,7 @@ public final class CastController {
         }
 
         @Override public void onSessionEnded(CastSession session, int error) {
-            com.liskovsoft.smartyoutubetv2.common.misc.CastRelay.stop();
+            CastAudioStream.stop();
             Host host = sHost;
             if (host != null) {
                 host.resumeLocal(sLoadedPositionMs);
