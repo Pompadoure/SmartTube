@@ -59,6 +59,7 @@ public final class CastController {
     private static boolean sLastPlaying;
     private static long sIgnoreReceiverUntil;
     private static boolean sTicking;
+    private static long sLoadGraceUntil;   // after a new track: the phone not playing yet is not a pause
 
     private CastController() {}
 
@@ -250,7 +251,9 @@ public final class CastController {
                 .setMetadata(metadata)
                 .build();
 
-        boolean playing = host.isPlaying();
+        // a new track starts on the receiver at once, the phone's player is still opening it
+        boolean playing = newTrack ? (sLastPlaying || host.isPlaying()) : host.isPlaying();
+        sLoadGraceUntil = newTrack ? SystemClock.elapsedRealtime() + 6000 : 0;
         sLoadedId = video.videoId;
         sLastPos = positionMs;
         sLastTick = SystemClock.elapsedRealtime();
@@ -322,6 +325,9 @@ public final class CastController {
         sLastPos = pos;
         sLastTick = now;
 
+        if (!playing && now < sLoadGraceUntil) {
+            return;
+        }
         if (playing != sLastPlaying) {
             sLastPlaying = playing;
             sIgnoreReceiverUntil = now + ECHO_MS;
