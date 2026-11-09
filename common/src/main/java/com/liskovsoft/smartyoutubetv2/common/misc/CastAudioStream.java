@@ -1,22 +1,7 @@
 package com.liskovsoft.smartyoutubetv2.common.misc;
 
-import android.content.Context;
-import android.os.Handler;
-import android.os.Looper;
 import android.util.Log;
-import androidx.media3.common.C;
-import androidx.media3.common.PlaybackException;
-import androidx.media3.common.Player;
-import androidx.media3.common.audio.AudioProcessor;
-import androidx.media3.common.audio.BaseAudioProcessor;
 import androidx.media3.common.util.UnstableApi;
-import androidx.media3.exoplayer.DefaultRenderersFactory;
-import androidx.media3.exoplayer.ExoPlayer;
-import androidx.media3.exoplayer.audio.AudioSink;
-import androidx.media3.exoplayer.audio.DefaultAudioSink;
-import androidx.media3.exoplayer.source.MediaSource;
-import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo;
-import com.liskovsoft.smartyoutubetv2.common.exoplayer.ExoMediaSourceFactory;
 
 import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
@@ -38,127 +23,86 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * JoTube: audio for Cast. YouTube's own stream URLs can't be handed to a Cast receiver (they only work inside the player
- * that got them), so the app plays the track with its own SABR engine in a hidden second player (muted on the phone),
- * catches the decoded audio and serves it to the receiver as a WAV stream on the local network.
- *
- * Byte offset and time are tied together (constant PCM rate), so the receiver can seek with range requests.
+ * that got them), so the phone's own player stays the master: the decoded audio is caught (CastAudioTap) and served to
+ * the receiver as a WAV stream on the local network. The stream is live: it carries whatever the phone plays right now.
+ * Length and byte offsets follow the track time (constant PCM rate), so the receiver sees a normal file.
  */
 @UnstableApi
-public final class CastAudioStream {
+public final class CastAudioStream implements CastAudioTap.Sink {
     private static final String TAG = "JoTubeCast";
     private static final int HEADER_SIZE = 44;
-    private static final int TAIL_GUARD = 1 << 20; // a request this close to the end is a probe, not a seek
-    private static final Object LOCK = new Object();
+    private static final int TAIL_GUARD = 1 << 20; // a request this close to the end is a probe, not the music
     private static CastAudioStream sCurrent;
 
-    private final Handler mMain = new Handler(Looper.getMainLooper());
-    private final ArrayBlockingQueue<Chunk> mQueue = new ArrayBlockingQueue<>(600); // ~ 10 s of stereo audio
-    private final CaptureProcessor mProcessor = new CaptureProcessor();
-    private final long mDurationMs;
-    private final long mInitialStartMs;
-
-    private ExoPlayer mPlayer;
+    private final ArrayBlockingQueue<byte[]> mQueue = new ArrayBlockingQueue<>(400); // newest audio wins
+    private final CastAudioTap mTap = CastAudioTap.instance();
     private ServerSocket mServer;
+    private String mHost;
     private volatile boolean mReleased;
-    private volatile boolean mFormatReady;
     private volatile boolean mEnded;
-    private volatile int mRate;
-    private volatile int mChannels;
-    private volatile int mEpoch;      // changes whenever the player jumps (seek), older audio is stale
     private volatile int mActiveRequest;
-    private boolean mServedOnce;
-    private long mEpochStartMs;       // track time of the first byte read in the current epoch
-    private long mReadBytes;          // PCM bytes handed to the receiver in the current epoch
+    private volatile int mGeneration;
+    private volatile long mDurationMs;
 
-    private static final class Chunk {
-        final byte[] data;
-        final int epoch;
-
-        Chunk(byte[] data, int epoch) {
-            this.data = data;
-            this.epoch = epoch;
-        }
-    }
-
-    private CastAudioStream(long durationMs, long startMs) {
-        mDurationMs = durationMs;
-        mInitialStartMs = startMs;
-        mEpochStartMs = startMs;
-    }
-
-    /** Plays the track in the hidden player, starts serving, and returns the URL for the receiver (or null). Main thread. */
-    public static String start(Context context, MediaItemFormatInfo info, long startMs, long durationMs) {
-        synchronized (LOCK) {
-            stop();
-            try {
+    /**
+     * Starts (or re-aims) the server for a track and returns the URL for the receiver (or null). Call again for a new
+     * track or after a seek: the URL changes, so the receiver opens a new connection. Main thread.
+     */
+    public static synchronized String prepare(long durationMs, boolean newTrack) {
+        try {
+            if (sCurrent == null) {
                 String host = findLocalAddress();
                 if (host == null) {
                     Log.e(TAG, "No Wi-Fi address to serve from");
                     return null;
                 }
-
-                CastAudioStream stream = new CastAudioStream(durationMs, Math.max(startMs, 0));
-                MediaSource source = info.containsDashFormats()
-                        ? new ExoMediaSourceFactory(context).fromDashFormatInfo(info)
-                        : new ExoMediaSourceFactory(context).fromSabrFormatInfo(info);
-                stream.openPlayer(context, source);
+                CastAudioStream stream = new CastAudioStream();
+                stream.mHost = host;
                 stream.openServer();
                 sCurrent = stream;
-                String url = "http://" + host + ":" + stream.mServer.getLocalPort() + "/audio.wav";
-                Log.d(TAG, "Serving " + url + " from " + stream.mInitialStartMs + " ms");
-                return url;
-            } catch (Throwable e) {
-                Log.e(TAG, "Could not start the audio stream: " + e, e);
-                stop();
-                return null;
             }
+            CastAudioStream stream = sCurrent;
+            stream.mDurationMs = durationMs;
+            stream.mEnded = false;
+            stream.mQueue.clear();
+            if (newTrack) {
+                stream.mTap.invalidateFormat();
+            }
+            stream.mTap.setSink(stream, true); // the phone itself is silent from now on
+            int generation = ++stream.mGeneration;
+            return "http://" + stream.mHost + ":" + stream.mServer.getLocalPort() + "/audio.wav?n=" + generation;
+        } catch (Throwable e) {
+            Log.e(TAG, "Could not start the audio stream: " + e, e);
+            stop();
+            return null;
         }
     }
 
-    public static void stop() {
-        synchronized (LOCK) {
-            if (sCurrent != null) {
-                sCurrent.release();
-                sCurrent = null;
-            }
+    /** Ends casting: the phone is audible again. */
+    public static synchronized void stop() {
+        CastAudioTap.instance().setSink(null, false);
+        if (sCurrent != null) {
+            sCurrent.release();
+            sCurrent = null;
         }
     }
 
-    private void openPlayer(Context context, MediaSource source) {
-        DefaultRenderersFactory renderers = new DefaultRenderersFactory(context) {
-            @Override
-            protected AudioSink buildAudioSink(Context c, boolean enableFloatOutput, boolean enableAudioOutputPlaybackParameters) {
-                return new DefaultAudioSink.Builder(c)
-                        .setEnableFloatOutput(false)
-                        .setAudioProcessors(new AudioProcessor[]{mProcessor})
-                        .build();
-            }
-        };
-        mPlayer = new ExoPlayer.Builder(context, renderers).build();
-        mPlayer.setTrackSelectionParameters(mPlayer.getTrackSelectionParameters().buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true)
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                .build());
-        mPlayer.setVolume(0f); // the sound goes to the receiver, not the phone
-        mPlayer.addListener(new Player.Listener() {
-            @Override
-            public void onPositionDiscontinuity(Player.PositionInfo oldPosition, Player.PositionInfo newPosition, int reason) {
-                mEpoch++;
-            }
+    @Override
+    public void onAudio(byte[] pcm) {
+        while (!mQueue.offer(pcm)) {
+            mQueue.poll(); // nobody is listening fast enough: drop the oldest
+        }
+    }
 
-            @Override
-            public void onPlaybackStateChanged(int state) {
-                mEnded = state == Player.STATE_ENDED;
-            }
+    @Override
+    public void onFlush() {
+        mQueue.clear(); // a seek or a new track: older audio is stale
+        mEnded = false;
+    }
 
-            @Override
-            public void onPlayerError(PlaybackException error) {
-                Log.e(TAG, "Audio stream player error: " + error);
-            }
-        });
-        mPlayer.setMediaSource(source, mInitialStartMs);
-        mPlayer.prepare();
-        mPlayer.setPlayWhenReady(true);
+    @Override
+    public void onEnd() {
+        mEnded = true;
     }
 
     private void openServer() throws IOException {
@@ -188,12 +132,6 @@ public final class CastAudioStream {
             }
         } catch (IOException ignored) {
         }
-        mMain.post(() -> {
-            if (mPlayer != null) {
-                mPlayer.release();
-                mPlayer = null;
-            }
-        });
     }
 
     // --- HTTP ---------------------------------------------------------------------------------------------------
@@ -221,14 +159,15 @@ public final class CastAudioStream {
                 return;
             }
 
-            int id = ++mActiveRequest; // a newer request takes over from older ones
             if (!waitForFormat()) {
                 writeHead(out, "503 Service Unavailable", null, 0);
                 return;
             }
 
-            final int bytesPerSec = mRate * mChannels * 2;
-            final int frame = mChannels * 2;
+            final int rate = mTap.getRate();
+            final int channels = mTap.getChannels();
+            final int bytesPerSec = rate * channels * 2;
+            final int frame = channels * 2;
             long dataLen = mDurationMs * bytesPerSec / 1000;
             dataLen -= dataLen % frame;
             final long total = HEADER_SIZE + dataLen;
@@ -247,7 +186,7 @@ public final class CastAudioStream {
 
             long remaining = total - start;
             if (start < HEADER_SIZE) {
-                byte[] header = wavHeader(dataLen, mRate, mChannels);
+                byte[] header = wavHeader(dataLen, rate, channels);
                 out.write(header, (int) start, HEADER_SIZE - (int) start);
                 remaining -= HEADER_SIZE - start;
             }
@@ -257,29 +196,20 @@ public final class CastAudioStream {
                 return;
             }
 
-            long dataStartMs = start < HEADER_SIZE ? (mServedOnce ? 0 : mInitialStartMs)
-                    : (start - HEADER_SIZE) * 1000 / bytesPerSec;
-            if (!positionAt(dataStartMs, bytesPerSec)) {
-                return;
-            }
-            mServedOnce = true;
-
+            final int id = ++mActiveRequest; // the newest connection takes over from older ones
+            mQueue.clear(); // only audio from now on
             while (remaining > 0 && id == mActiveRequest && !mReleased) {
-                Chunk chunk = mQueue.poll(500, TimeUnit.MILLISECONDS);
+                byte[] chunk = mQueue.poll(500, TimeUnit.MILLISECONDS);
                 if (chunk == null) {
-                    if (mEnded && mQueue.isEmpty()) {
+                    if (mEnded) {
                         writeSilence(out, remaining); // the length is rounded to seconds: pad the last bit
                         return;
                     }
                     continue;
                 }
-                if (chunk.epoch != mEpoch) {
-                    continue; // from before a seek
-                }
-                int n = (int) Math.min(chunk.data.length, remaining);
-                out.write(chunk.data, 0, n);
+                int n = (int) Math.min(chunk.length, remaining);
+                out.write(chunk, 0, n);
                 remaining -= n;
-                mReadBytes += n;
             }
             out.flush();
         } catch (IOException | InterruptedException e) {
@@ -289,34 +219,14 @@ public final class CastAudioStream {
         }
     }
 
-    /** Makes the next byte read be the audio at this track time, seeking the hidden player when needed. */
-    private boolean positionAt(long timeMs, int bytesPerSec) throws InterruptedException {
-        long nextMs = mEpochStartMs + mReadBytes * 1000 / bytesPerSec;
-        if (Math.abs(timeMs - nextMs) <= 700) {
-            return true;
-        }
-
-        final int before = mEpoch;
-        mMain.post(() -> {
-            if (mPlayer != null) {
-                mPlayer.seekTo(timeMs);
-            }
-        });
-        for (int i = 0; i < 100 && mEpoch == before && !mReleased; i++) {
-            Thread.sleep(50);
-        }
-        mQueue.clear();
-        mEpochStartMs = timeMs;
-        mReadBytes = 0;
-        Log.d(TAG, "Receiver seeked to " + timeMs + " ms");
-        return !mReleased;
-    }
-
     private boolean waitForFormat() throws InterruptedException {
-        for (int i = 0; i < 400 && !mFormatReady && !mReleased; i++) {
+        for (int i = 0; i < 60 && !mTap.isFormatFresh() && !mReleased; i++) {
+            Thread.sleep(50); // a new track reports its format a moment after it was opened
+        }
+        for (int i = 0; i < 400 && mTap.getRate() == 0 && !mReleased; i++) {
             Thread.sleep(50);
         }
-        return mFormatReady && !mReleased;
+        return mTap.getRate() > 0 && !mReleased;
     }
 
     private static long parseRangeStart(String value) {
@@ -400,46 +310,5 @@ public final class CastAudioStream {
             }
         }
         return fallback;
-    }
-
-    // --- the audio catcher ----------------------------------------------------------------------------------------
-
-    /** Passes the audio on unchanged and keeps a copy for the receiver. Runs on the hidden player's playback thread. */
-    private final class CaptureProcessor extends BaseAudioProcessor {
-        @Override
-        protected AudioFormat onConfigure(AudioFormat inputAudioFormat) throws UnhandledAudioFormatException {
-            if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT) {
-                throw new UnhandledAudioFormatException(inputAudioFormat);
-            }
-            mRate = inputAudioFormat.sampleRate;
-            mChannels = inputAudioFormat.channelCount;
-            mFormatReady = true;
-            return inputAudioFormat;
-        }
-
-        @Override
-        public void queueInput(ByteBuffer inputBuffer) {
-            int n = inputBuffer.remaining();
-            if (n == 0) {
-                return;
-            }
-            byte[] copy = new byte[n];
-            inputBuffer.get(copy);
-            ByteBuffer out = replaceOutputBuffer(n);
-            out.put(copy);
-            out.flip();
-
-            Chunk chunk = new Chunk(copy, mEpoch);
-            try {
-                // blocks while the receiver is paused or behind: the hidden player simply waits
-                while (!mReleased && !mQueue.offer(chunk, 250, TimeUnit.MILLISECONDS)) {
-                    if (chunk.epoch != mEpoch) {
-                        return; // stale after a seek
-                    }
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
     }
 }

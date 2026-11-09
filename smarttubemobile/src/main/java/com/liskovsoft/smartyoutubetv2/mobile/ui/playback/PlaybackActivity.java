@@ -490,22 +490,13 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
                     return mExoPlayerController != null ? mExoPlayerController.getPositionMs() : 0;
                 }
 
-                @Override public boolean audioOnly() {
-                    return mAudioMode && !mShortsMode;
+                @Override public boolean isPlaying() {
+                    return mExoPlayerController != null && mExoPlayerController.isPlaying();
                 }
 
-                @Override public void pauseLocal() {
+                @Override public void setPlaying(boolean play) {
                     if (mExoPlayerController != null) {
-                        mExoPlayerController.setPlayWhenReady(false);
-                    }
-                }
-
-                @Override public void resumeLocal(long positionMs) {
-                    if (mExoPlayerController != null) {
-                        if (positionMs > 0) {
-                            mExoPlayerController.setPositionMs(positionMs);
-                        }
-                        mExoPlayerController.setPlayWhenReady(true);
+                        mExoPlayerController.setPlayWhenReady(play);
                     }
                 }
             };

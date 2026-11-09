@@ -4,7 +4,10 @@ import android.content.Context;
 import android.os.Handler;
 import androidx.media3.exoplayer.Renderer;
 import androidx.media3.exoplayer.audio.AudioRendererEventListener;
+import androidx.media3.common.audio.AudioProcessor;
 import androidx.media3.exoplayer.audio.AudioSink;
+import androidx.media3.exoplayer.audio.DefaultAudioSink;
+import com.liskovsoft.smartyoutubetv2.common.misc.CastAudioTap;
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
 import androidx.media3.exoplayer.video.VideoRendererEventListener;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.versions.selector.BlacklistMediaCodecSelector;
@@ -40,6 +43,20 @@ public class CustomOverridesRenderersFactory extends CustomRenderersFactoryBase 
         }
 
         // M3: AmazonQuirks (disableSnappingToVsync, skipProfileLevelCheck) has no Media3 counterpart: dropped.
+    }
+
+    @Override
+    protected AudioSink buildAudioSink(Context context, boolean enableFloatOutput, boolean enableAudioOutputPlaybackParameters) {
+        if (!CastAudioTap.isEnabled()) {
+            return super.buildAudioSink(context, enableFloatOutput, enableAudioOutputPlaybackParameters);
+        }
+
+        // JoTube mobile: the Cast code taps the decoded audio here (PCM16 only, so no float output)
+        return new DefaultAudioSink.Builder(context)
+                .setEnableFloatOutput(false)
+                .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParameters)
+                .setAudioProcessors(new AudioProcessor[]{CastAudioTap.instance()})
+                .build();
     }
 
     @Override

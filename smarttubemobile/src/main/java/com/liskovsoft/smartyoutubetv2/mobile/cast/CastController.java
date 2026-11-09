@@ -8,11 +8,13 @@ import android.widget.Toast;
 import android.app.AlertDialog;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import androidx.mediarouter.media.MediaRouteSelector;
 import androidx.mediarouter.media.MediaRouter;
 import com.google.android.gms.cast.MediaInfo;
 import com.google.android.gms.cast.MediaLoadRequestData;
 import com.google.android.gms.cast.MediaMetadata;
+import com.google.android.gms.cast.MediaStatus;
 import com.google.android.gms.cast.framework.CastContext;
 import com.google.android.gms.cast.framework.CastSession;
 import com.google.android.gms.cast.framework.SessionManagerListener;
@@ -27,27 +29,36 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * JoTube: Cast from the phone. The device picker is the stock MediaRouter dialog. When a Cast device is picked, the
- * stream URL of the current video (or only its audio in the music player) is sent to the Default Media Receiver and
- * the phone's own playback pauses. When the session ends the phone continues from where the receiver was.
+ * JoTube: Cast from the phone. The phone's player stays the master: it keeps playing (silently, see CastAudioTap) and the
+ * receiver gets its sound as a stream. Pause, play and seek in the app are mirrored to the receiver, a new track (also
+ * the next one when a track ends) is loaded on the receiver, and pause/play on the receiver is mirrored back.
  */
 public final class CastController {
     private static final String TAG = "JoTubeCast";
+    private static final long TICK_MS = 400;
+    private static final long SEEK_JUMP_MS = 1500;   // the position moved more than playing explains: a seek
+    private static final long ECHO_MS = 1500;        // receiver status changes this soon after our own command are echoes
 
     /** What the player screen offers to the cast code. */
     public interface Host {
         Video video();
         long positionMs();
-        boolean audioOnly();
-        void pauseLocal();
-        void resumeLocal(long positionMs);
+        boolean isPlaying();
+        void setPlaying(boolean play);
     }
+
+    private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
     private static CastContext sContext;
     private static Context sAppContext;
     private static Host sHost;
     private static boolean sListening;
-    private static long sLoadedPositionMs;
+    private static String sLoadedId;       // the video the receiver has
+    private static long sLastPos;
+    private static long sLastTick;
+    private static boolean sLastPlaying;
+    private static long sIgnoreReceiverUntil;
+    private static boolean sTicking;
 
     private CastController() {}
 
@@ -68,7 +79,7 @@ public final class CastController {
         }
         try {
             sAppContext = context.getApplicationContext();
-            CastSource.setListener(() -> new Handler(Looper.getMainLooper()).post(CastController::onNewSource));
+            CastSource.setListener(() -> MAIN.post(CastController::onNewSource));
             sContext = CastContext.getSharedInstance(sAppContext);
             if (!sListening) {
                 sContext.getSessionManager().addSessionManagerListener(LISTENER, CastSession.class);
@@ -156,9 +167,9 @@ public final class CastController {
                 .setTitle("Castar till " + device)
                 .setItems(new String[]{"Spela / pausa", "Koppla från"}, (d, which) -> {
                     if (which == 0) {
-                        RemoteMediaClient remote = session.getRemoteMediaClient();
-                        if (remote != null) {
-                            remote.togglePlayback();
+                        Host host = sHost;
+                        if (host != null) {
+                            host.setPlaying(!host.isPlaying());
                         }
                     } else {
                         sContext.getSessionManager().endCurrentSession(true);
@@ -176,30 +187,27 @@ public final class CastController {
         return session != null && session.isConnected();
     }
 
-    /** A new video was opened while connected: send it to the receiver too and keep the phone quiet. */
+    /** A new video was opened while connected: the receiver gets it too (the phone stays silent). */
     private static void onNewSource() {
-        if (sContext == null || sHost == null) {
-            return;
-        }
-        CastSession session = sContext.getSessionManager().getCurrentCastSession();
-        if (session != null && session.isConnected()) {
-            loadOnReceiver(session);
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                Host host = sHost;
-                if (host != null && isCasting()) {
-                    host.pauseLocal();
-                }
-            }, 1500);
+        CastSession session = connectedSession();
+        if (session != null) {
+            loadOnReceiver(session, true, -1);
         }
     }
 
-    private static void loadOnReceiver(CastSession session) {
-        Host host = sHost;
-        if (host == null || session == null) {
-            return;
+    private static CastSession connectedSession() {
+        if (sContext == null || sHost == null) {
+            return null;
         }
-        RemoteMediaClient remote = session.getRemoteMediaClient();
-        Video video = host.video();
+        CastSession session = sContext.getSessionManager().getCurrentCastSession();
+        return session != null && session.isConnected() ? session : null;
+    }
+
+    /** Sends the current track to the receiver, from the phone's position (or from atMs after a seek). */
+    private static void loadOnReceiver(CastSession session, boolean newTrack, long atMs) {
+        Host host = sHost;
+        RemoteMediaClient remote = session != null ? session.getRemoteMediaClient() : null;
+        Video video = host != null ? host.video() : null;
         MediaItemFormatInfo info = CastSource.getFormatInfo();
         if (remote == null || video == null || info == null || video.videoId == null
                 || !video.videoId.equals(CastSource.getVideoId())) {
@@ -212,16 +220,14 @@ public final class CastController {
             durationMs = Long.parseLong(info.getLengthSeconds()) * 1000;
         } catch (Exception ignored) {
         }
-        if (info.isLive() || durationMs <= 0 || !(info.containsSabrFormats() || info.containsDashFormats())) {
-            Log.e(TAG, "Not castable: live=" + info.isLive() + " duration=" + durationMs + " sabr=" + info.containsSabrFormats()
-                    + " dash=" + info.containsDashFormats());
-            Toast.makeText(sAppContext, "Den här videon går inte att casta (livesändning eller okänt format)", Toast.LENGTH_LONG).show();
+        if (info.isLive() || durationMs <= 0) {
+            Log.e(TAG, "Not castable: live=" + info.isLive() + " duration=" + durationMs);
+            Toast.makeText(sAppContext, "Den här videon går inte att casta (livesändning eller okänd längd)", Toast.LENGTH_LONG).show();
             return;
         }
 
-        // The receiver gets the sound as a stream from this phone (the app plays the track with its own engine)
-        sLoadedPositionMs = host.positionMs();
-        String receiverUrl = CastAudioStream.start(sAppContext, info, sLoadedPositionMs, durationMs);
+        long positionMs = atMs >= 0 ? atMs : host.positionMs();
+        String receiverUrl = CastAudioStream.prepare(durationMs, newTrack);
         if (receiverUrl == null) {
             Toast.makeText(sAppContext, "Kunde inte starta ljudströmmen för casting", Toast.LENGTH_LONG).show();
             return;
@@ -244,13 +250,19 @@ public final class CastController {
                 .setMetadata(metadata)
                 .build();
 
-        host.pauseLocal();
+        boolean playing = host.isPlaying();
+        sLoadedId = video.videoId;
+        sLastPos = positionMs;
+        sLastTick = SystemClock.elapsedRealtime();
+        sLastPlaying = playing;
+        sIgnoreReceiverUntil = sLastTick + 4000; // the receiver reports loading / buffering for a while
+
         remote.unregisterCallback(sRemoteCallback);
         remote.registerCallback(sRemoteCallback);
         remote.load(new MediaLoadRequestData.Builder()
                 .setMediaInfo(mediaInfo)
-                .setAutoplay(true)
-                .setCurrentTime(sLoadedPositionMs)
+                .setAutoplay(playing)
+                .setCurrentTime(positionMs)
                 .build()).setResultCallback(result -> {
             Log.d(TAG, "Receiver load result: code=" + result.getStatus().getStatusCode() + " ok=" + result.getStatus().isSuccess());
             if (!result.getStatus().isSuccess()) {
@@ -258,26 +270,99 @@ public final class CastController {
                         + result.getStatus().getStatusCode() + ")", Toast.LENGTH_LONG).show();
             }
         });
-        Log.d(TAG, "Casting " + video.videoId + " from " + sLoadedPositionMs + " ms");
+        Log.d(TAG, "Casting " + video.videoId + " from " + positionMs + " ms, playing=" + playing);
+        startTicking();
     }
 
-    /** Tells why the receiver stopped (a rejected stream ends as IDLE with an error). */
+    // --- keeping the receiver in step with the phone's player ---------------------------------------------------------
+
+    private static void startTicking() {
+        if (!sTicking) {
+            sTicking = true;
+            MAIN.postDelayed(CastController::tick, TICK_MS);
+        }
+    }
+
+    private static final Runnable sReload = () -> {
+        CastSession session = connectedSession();
+        if (session != null && sHost != null) {
+            Log.d(TAG, "Seek: reload at " + sLastPos + " ms");
+            loadOnReceiver(session, false, sLastPos);
+        }
+    };
+
+    private static void tick() {
+        CastSession session = connectedSession();
+        Host host = sHost;
+        if (session == null || host == null) {
+            sTicking = false;
+            return;
+        }
+        MAIN.postDelayed(CastController::tick, TICK_MS);
+
+        Video video = host.video();
+        RemoteMediaClient remote = session.getRemoteMediaClient();
+        if (video == null || remote == null || video.videoId == null || !video.videoId.equals(sLoadedId)) {
+            return; // a new track is on its way (onNewSource loads it)
+        }
+
+        long now = SystemClock.elapsedRealtime();
+        long pos = host.positionMs();
+        boolean playing = host.isPlaying();
+
+        long expected = sLastPos + (sLastPlaying ? now - sLastTick : 0);
+        if (Math.abs(pos - expected) > SEEK_JUMP_MS) {
+            // The app seeked: the receiver is reloaded at the new place once the seeking has settled
+            sLastPos = pos;
+            sLastTick = now;
+            MAIN.removeCallbacks(sReload);
+            MAIN.postDelayed(sReload, 600);
+            return;
+        }
+        sLastPos = pos;
+        sLastTick = now;
+
+        if (playing != sLastPlaying) {
+            sLastPlaying = playing;
+            sIgnoreReceiverUntil = now + ECHO_MS;
+            if (playing) {
+                remote.play();
+            } else {
+                remote.pause();
+            }
+        }
+    }
+
+    /** Pause / play on the receiver itself (Google Home, remote) is carried back to the phone's player. */
     private static final RemoteMediaClient.Callback sRemoteCallback = new RemoteMediaClient.Callback() {
         private int mLastState = -1;
 
         @Override
         public void onStatusUpdated() {
-            RemoteMediaClient remote = sContext != null && sContext.getSessionManager().getCurrentCastSession() != null
-                    ? sContext.getSessionManager().getCurrentCastSession().getRemoteMediaClient() : null;
-            com.google.android.gms.cast.MediaStatus status = remote != null ? remote.getMediaStatus() : null;
+            CastSession session = sContext != null ? sContext.getSessionManager().getCurrentCastSession() : null;
+            RemoteMediaClient remote = session != null ? session.getRemoteMediaClient() : null;
+            MediaStatus status = remote != null ? remote.getMediaStatus() : null;
             if (status == null || status.getPlayerState() == mLastState) {
                 return;
             }
             mLastState = status.getPlayerState();
-            Log.d(TAG, "Receiver state=" + status.getPlayerState() + " idleReason=" + status.getIdleReason());
-            if (status.getPlayerState() == com.google.android.gms.cast.MediaStatus.PLAYER_STATE_IDLE
-                    && status.getIdleReason() == com.google.android.gms.cast.MediaStatus.IDLE_REASON_ERROR) {
+            Log.d(TAG, "Receiver state=" + mLastState + " idleReason=" + status.getIdleReason());
+
+            if (mLastState == MediaStatus.PLAYER_STATE_IDLE && status.getIdleReason() == MediaStatus.IDLE_REASON_ERROR) {
                 Toast.makeText(sAppContext, "Mottagaren kunde inte spela strömmen", Toast.LENGTH_LONG).show();
+                return;
+            }
+
+            Host host = sHost;
+            if (host == null || SystemClock.elapsedRealtime() < sIgnoreReceiverUntil) {
+                return;
+            }
+            if (mLastState == MediaStatus.PLAYER_STATE_PAUSED && sLastPlaying) {
+                sLastPlaying = false;
+                host.setPlaying(false);
+            } else if (mLastState == MediaStatus.PLAYER_STATE_PLAYING && !sLastPlaying) {
+                sLastPlaying = true;
+                host.setPlaying(true);
             }
         }
     };
@@ -286,26 +371,20 @@ public final class CastController {
         @Override public void onSessionStarting(CastSession session) {}
 
         @Override public void onSessionStarted(CastSession session, String sessionId) {
-            loadOnReceiver(session);
+            loadOnReceiver(session, false, -1);
         }
 
         @Override public void onSessionStartFailed(CastSession session, int error) {
             Log.e(TAG, "Session start failed: " + error);
         }
 
-        @Override public void onSessionEnding(CastSession session) {
-            RemoteMediaClient remote = session != null ? session.getRemoteMediaClient() : null;
-            if (remote != null && remote.hasMediaSession()) {
-                sLoadedPositionMs = remote.getApproximateStreamPosition();
-            }
-        }
+        @Override public void onSessionEnding(CastSession session) {}
 
         @Override public void onSessionEnded(CastSession session, int error) {
+            // The phone's player has been running all along: it just gets its sound back
+            MAIN.removeCallbacks(sReload);
             CastAudioStream.stop();
-            Host host = sHost;
-            if (host != null) {
-                host.resumeLocal(sLoadedPositionMs);
-            }
+            sLoadedId = null;
         }
 
         @Override public void onSessionResuming(CastSession session, String sessionId) {}

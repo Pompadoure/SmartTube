@@ -36,6 +36,7 @@ public class MobileApplication extends MultiDexApplication {
     @Override
     public void onCreate() {
         super.onCreate();
+        com.liskovsoft.smartyoutubetv2.common.misc.CastAudioTap.enable(); // before any player is built
 
         Provider conscryptProvider = null;
         try {
