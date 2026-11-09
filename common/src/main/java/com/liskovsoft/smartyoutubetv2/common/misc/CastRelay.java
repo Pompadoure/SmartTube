@@ -142,17 +142,39 @@ public final class CastRelay {
                 return;
             }
 
-            Request.Builder builder = new Request.Builder().url(upstream)
-                    .header("User-Agent", DefaultHeaders.APP_USER_AGENT);
-            if (range != null) {
-                builder.header("Range", range);
-            }
-            if ("HEAD".equals(method)) {
-                builder.head();
-            }
             OkHttpClient client = OkHttpManager.instance().getClient();
-            try (Response response = client.newCall(builder.build()).execute()) {
-                Log.d(TAG, "Relay: " + method + " range=" + range + " -> upstream HTTP " + response.code());
+            // YouTube ties a URL to the client that got it: try the app's own identity first, then the usual ones
+            String[][] identities = {
+                    {DefaultHeaders.APP_USER_AGENT, null},
+                    {"com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip", null},
+                    {"com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)", null},
+                    {"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36", "https://www.youtube.com"},
+            };
+            Response response = null;
+            for (int i = 0; i < identities.length; i++) {
+                Request.Builder builder = new Request.Builder().url(upstream).header("User-Agent", identities[i][0]);
+                if (identities[i][1] != null) {
+                    builder.header("Origin", identities[i][1]).header("Referer", identities[i][1] + "/");
+                }
+                if (range != null) {
+                    builder.header("Range", range);
+                }
+                if ("HEAD".equals(method)) {
+                    builder.head();
+                }
+                if (response != null) {
+                    response.close();
+                }
+                response = client.newCall(builder.build()).execute();
+                Log.d(TAG, "Relay: " + method + " range=" + range + " identity#" + i + " -> upstream HTTP " + response.code());
+                if (response.isSuccessful()) {
+                    break;
+                }
+            }
+            if (!response.isSuccessful()) {
+                logWhy(client, upstream);
+            }
+            try (Response ignored = response) {
                 ResponseBody body = response.body();
                 String status = response.code() == 206 ? "206 Partial Content" : response.code() == 200 ? "200 OK"
                         : response.code() + " Error";
@@ -172,6 +194,33 @@ public final class CastRelay {
             // the receiver closes the connection when it seeks or stops: normal
         } catch (Throwable e) {
             Log.e(TAG, "Relay error: " + e);
+        }
+    }
+
+    private static void logWhy(OkHttpClient client, String upstream) {
+        try {
+            android.net.Uri uri = android.net.Uri.parse(upstream);
+            String viaApp = "?";
+            try (Response r = client.newCall(new Request.Builder().url("https://api64.ipify.org").build()).execute()) {
+                viaApp = r.body() != null ? r.body().string() : "-";
+            } catch (Throwable e) {
+                viaApp = "err " + e;
+            }
+            String viaPlain = "?";
+            try {
+                java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL("https://api64.ipify.org").openConnection();
+                c.setConnectTimeout(6000);
+                c.setReadTimeout(6000);
+                viaPlain = new java.util.Scanner(c.getInputStream()).useDelimiter("\\A").next();
+                c.disconnect();
+            } catch (Throwable e) {
+                viaPlain = "err " + e;
+            }
+            Log.d(TAG, "Relay 403: url ip=" + uri.getQueryParameter("ip") + " c=" + uri.getQueryParameter("c")
+                    + " pot=" + (uri.getQueryParameter("pot") != null) + " | the app's HTTP client leaves from " + viaApp
+                    + " | plain phone network leaves from " + viaPlain);
+        } catch (Throwable e) {
+            Log.d(TAG, "Relay 403 diagnostics failed: " + e);
         }
     }
 
