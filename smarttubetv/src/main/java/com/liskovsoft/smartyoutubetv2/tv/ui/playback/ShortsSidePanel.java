@@ -61,10 +61,12 @@ public class ShortsSidePanel {
     private static final int RIGHT_MARGIN_DP = 20;
     // The frame around the video: white when the video gets the focus, then it fades to grey (like the official app)
     private static final int FRAME_MARGIN_DP = 16; // above and below the 9:16 frame (room for the border)
-    private static final int FRAME_VERTICAL_MARGIN_DP = 6; // JoTube: the border (5 dp outside the frame) stays on the screen, the video nearly fills it
+    private static final int FRAME_VERTICAL_MARGIN_DP = 6; // JoTube: the border (outside the frame) stays on the screen, the video nearly fills it
     private static final int BORDER_DP = 3;
-    private static final int BORDER_OUTSET_DP = 5;
-    private static final int BORDER_RADIUS_DP = 14;
+    // The border sits right on the edge of the picture (no gap). The radius is small enough for the stroke to cover
+    // the square corners of the video (a surface can't be clipped round).
+    private static final int BORDER_OUTSET_DP = BORDER_DP;
+    private static final int BORDER_RADIUS_DP = 8;
     private static final int BORDER_HOLD_MS = 1500;
     private static final int BORDER_FADE_MS = 700;
     private static final int BORDER_WHITE = Color.WHITE;
@@ -75,6 +77,9 @@ public class ShortsSidePanel {
     private final Runnable mFocusTimeout = () -> setFocus(ITEM_NONE);
     private final Runnable mUpdatePosition = this::updatePosition;
     private final Runnable mFadeBorder = this::fadeBorder;
+    private boolean mBorderReturning;
+    private int mBorderReturnMs;
+    private final Runnable mBorderReturn = this::returnBorder;
     private View mBorder;
     private View mCard; // black, behind the video: the frame keeps its size whatever the video's shape
     private GradientDrawable mBorderDrawable;
@@ -575,6 +580,14 @@ public class ShortsSidePanel {
         mBorderAnimator.start();
     }
 
+    private void returnBorder() {
+        if (mBorder != null) {
+            mBorderReturning = true;
+            mBorder.animate().cancel();
+            mBorder.animate().alpha(1f).setDuration(mBorderReturnMs).start();
+        }
+    }
+
     private void dimBorder() {
         if (mBorderDrawable == null) {
             return;
@@ -673,10 +686,26 @@ public class ShortsSidePanel {
      * window standing still around them; it comes back with the new video (the border fades in).
      */
     public void setSlideAside(boolean aside) {
+        setSlideAside(aside, 0);
+    }
+
+    /**
+     * @param slideMs the length of a slide whose incoming picture is already playing (live switch): the border comes
+     *                back while that picture settles, so it is there when the video is, not after it. 0: comes back at the end.
+     */
+    public void setSlideAside(boolean aside, int slideMs) {
+        mHandler.removeCallbacks(mBorderReturn);
         if (mBorder != null) {
-            mBorder.animate().cancel();
-            // soft both ways (no pop)
-            mBorder.animate().alpha(aside ? 0f : 1f).setDuration(aside ? 120 : 220).start();
+            if (aside || mBorder.getAlpha() == 0f || !mBorderReturning) {
+                mBorder.animate().cancel();
+                // soft both ways (no pop)
+                mBorder.animate().alpha(aside ? 0f : 1f).setDuration(aside ? 120 : 220).start();
+            }
+            mBorderReturning = false;
+            if (aside && slideMs > 0) {
+                mHandler.postDelayed(mBorderReturn, slideMs * 55 / 100);
+                mBorderReturnMs = slideMs * 45 / 100;
+            }
         }
         if (mCard != null) {
             mCard.setAlpha(aside ? 0f : 1f);

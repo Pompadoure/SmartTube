@@ -34,7 +34,7 @@ import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerTweaksData;
 final class ShortsLiveSwitch {
     private static final String TAG = "ShortsLive";
     // Moving video, not a still: a touch longer than the picture slide; the strong deceleration keeps it calm at the end
-    static final int SLIDE_MS = 420;
+    static final int SLIDE_MS = 500; // a little longer: reads as a sweep (the incoming Short is already playing, nothing waits for it)
     private static final int GAP_DP = 24;
     private static final long OPEN_TIMEOUT_MS = 8_000; // the core didn't open the Short (format info): give up
     private static final long HAND_OVER_TIMEOUT_MS = 700; // no first frame on the main surface: uncover anyway
@@ -252,7 +252,7 @@ final class ShortsLiveSwitch {
         incoming.setTranslationY(distance);
 
         mHost.onLivePage(next);
-        panel.setSlideAside(true);
+        panel.setSlideAside(true, SLIDE_MS);
 
         mState = State.SLIDING;
         Log.d(TAG, "Live switch to %s: slide starts (incoming at %s ms, buffered to %s ms, state %s)", next.videoId,
