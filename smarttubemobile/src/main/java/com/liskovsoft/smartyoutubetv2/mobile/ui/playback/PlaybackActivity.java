@@ -875,14 +875,63 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
         // Music: the sound goes on without this screen and a mini player sits at the bottom of the music part; a tap
         // on it brings the song back in full screen.
-        showMainTask();
-        if (!MediaPlaybackService.isActive()) {
+        slideOutThen(() -> {
+            showMainTask();
+            mMinimized = MediaPlaybackService.isActive();
             finish();
+            overridePendingTransition(0, 0); // the page already slid away
+        });
+    }
+
+    // --- music: the page slides down to minimize (chevron, back, or a swipe down), the app shows behind it ---------------
+
+    private boolean mSeeThrough;
+    private boolean mSlidingOut;
+
+    private View slideRoot() {
+        return findViewById(android.R.id.content);
+    }
+
+    private void setSeeThrough(boolean on) {
+        if (mSeeThrough == on) {
             return;
         }
+        mSeeThrough = on;
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            try {
+                setTranslucent(on);
+            } catch (RuntimeException e) {
+                Log.e(TAG, "setTranslucent: " + e);
+            }
+        }
+        getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(on ? 0 : getColor(R.color.yt_bg)));
+    }
 
-        mMinimized = true;
-        finish();
+    private void dismissDrag(float dy) {
+        if (mSlidingOut) {
+            return;
+        }
+        setSeeThrough(true);
+        slideRoot().setTranslationY(dy);
+    }
+
+    private void dismissEnd(boolean minimize) {
+        if (minimize) {
+            enterMiniPlayer();
+        } else if (!mSlidingOut) {
+            slideRoot().animate().translationY(0f).setDuration(180).withEndAction(() -> setSeeThrough(false)).start();
+        }
+    }
+
+    private void slideOutThen(Runnable end) {
+        if (mSlidingOut) {
+            return;
+        }
+        mSlidingOut = true;
+        setSeeThrough(true);
+        View root = slideRoot();
+        root.animate().translationY(root.getHeight()).setDuration(220)
+                .setInterpolator(new android.view.animation.AccelerateInterpolator(1.4f)).withEndAction(end).start();
     }
 
     // The player lives in its own task (for the floating window). These two keep that invisible for music.
@@ -2054,6 +2103,16 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
             @Override
             public void minimize() {
                 enterMiniPlayer();
+            }
+
+            @Override
+            public void dismissDrag(float dy) {
+                PlaybackActivity.this.dismissDrag(dy);
+            }
+
+            @Override
+            public void dismissEnd(boolean minimize) {
+                PlaybackActivity.this.dismissEnd(minimize);
             }
 
             @Override

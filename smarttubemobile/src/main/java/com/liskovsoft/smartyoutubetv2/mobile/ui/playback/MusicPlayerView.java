@@ -70,6 +70,17 @@ public class MusicPlayerView extends FrameLayout {
 
         void minimize();
 
+        /** The page is pulled down by this many pixels (swipe down to minimize). */
+        default void dismissDrag(float dy) {
+        }
+
+        /** The pull ended: minimize, or back in place. */
+        default void dismissEnd(boolean minimize) {
+            if (minimize) {
+                minimize();
+            }
+        }
+
         void showVideo();
 
         void share();
@@ -820,6 +831,8 @@ public class MusicPlayerView extends FrameLayout {
         return x >= left && x <= left + v.getWidth() && y >= top && y <= top + v.getHeight();
     }
 
+    private boolean mDismissDrag;
+
     @Override
     public boolean onInterceptTouchEvent(android.view.MotionEvent ev) {
         if (mSheet != null || mDrawer == null) {
@@ -852,6 +865,17 @@ public class MusicPlayerView extends FrameLayout {
                     return false;
                 }
                 boolean take;
+                if (mState == 0 && dy > 0) {
+                    // swipe down on the player itself: minimize (unless something on the page is scrolled)
+                    View scrollable = findScrollable(this);
+                    if (scrollable != null && scrollable.canScrollVertically(-1)) {
+                        return false;
+                    }
+                    mDragging = true;
+                    mDismissDrag = true;
+                    mDragStartTouch = ev.getRawY();
+                    return true;
+                }
                 if (mState == 0) {
                     take = dy < 0;
                 } else if (mState == 1) {
@@ -884,6 +908,10 @@ public class MusicPlayerView extends FrameLayout {
         }
         switch (ev.getActionMasked()) {
             case android.view.MotionEvent.ACTION_MOVE:
+                if (mDragging && mDismissDrag) {
+                    mHost.dismissDrag(Math.max(0f, ev.getRawY() - mDragStartTouch)); // raw: the page moves under the finger
+                    return true;
+                }
                 if (mDragging) {
                     setDrawerY(mDragStartY + (ev.getY() - mDragStartTouch));
                     // measure the compressed page as soon as it is there so the middle stop is exact
@@ -894,7 +922,18 @@ public class MusicPlayerView extends FrameLayout {
                 return true;
             case android.view.MotionEvent.ACTION_UP:
             case android.view.MotionEvent.ACTION_CANCEL:
-                if (mDragging) {
+                if (mDragging && mDismissDrag) {
+                    mDragging = false;
+                    mDismissDrag = false;
+                    float v = 0f;
+                    if (mVelocity != null) {
+                        mVelocity.computeCurrentVelocity(1000);
+                        v = mVelocity.getYVelocity();
+                    }
+                    float moved = ev.getRawY() - mDragStartTouch;
+                    mHost.dismissEnd(ev.getActionMasked() == android.view.MotionEvent.ACTION_UP
+                            && (v > 900f || moved > getHeight() * 0.25f));
+                } else if (mDragging) {
                     mDragging = false;
                     float vy = 0f;
                     if (mVelocity != null) {
