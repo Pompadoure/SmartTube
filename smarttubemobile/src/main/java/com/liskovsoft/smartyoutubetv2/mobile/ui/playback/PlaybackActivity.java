@@ -714,6 +714,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     /** Audio mode: no video track (saves data and battery), the cover is shown, the controls stay. */
     private void applyAudioMode() {
         boolean audio = mAudioMode && !mShortsMode;
+        setInRecents(!audio); // music: one card in the recents list (the app), the player is reached through the mini player
         com.liskovsoft.smartyoutubetv2.common.app.models.playback.controllers.SuggestionsController.sMusicOnly = audio;
         if (mSuggestionsAdapter != null) {
             rebuildSuggestions();
@@ -874,6 +875,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
         // Music: the sound goes on without this screen and a mini player sits at the bottom of the music part; a tap
         // on it brings the song back in full screen.
+        showMainTask();
         if (!MediaPlaybackService.isActive()) {
             finish();
             return;
@@ -881,6 +883,55 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
         mMinimized = true;
         finish();
+    }
+
+    // The player lives in its own task (for the floating window). These two keep that invisible for music.
+
+    private static int taskIdOf(android.app.ActivityManager.AppTask task) {
+        android.app.ActivityManager.RecentTaskInfo info = task.getTaskInfo();
+        return android.os.Build.VERSION.SDK_INT >= 29 ? info.taskId : info.id;
+    }
+
+    private void setInRecents(boolean show) {
+        try {
+            for (android.app.ActivityManager.AppTask task : ((android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE)).getAppTasks()) {
+                if (taskIdOf(task) == getTaskId()) {
+                    task.setExcludeFromRecents(!show);
+                }
+            }
+        } catch (RuntimeException e) {
+            Log.e(TAG, "setInRecents: " + e);
+        }
+    }
+
+    /** Closing the music screen lands in the app (with the mini player), not on the phone's home screen. */
+    private void showMainTask() {
+        try {
+            for (android.app.ActivityManager.AppTask task : ((android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE)).getAppTasks()) {
+                if (taskIdOf(task) != getTaskId()) {
+                    task.moveToFront();
+                    return;
+                }
+            }
+            android.content.Intent launch = getPackageManager().getLaunchIntentForPackage(getPackageName());
+            if (launch != null) {
+                startActivity(launch);
+            }
+        } catch (RuntimeException e) {
+            Log.e(TAG, "showMainTask: " + e);
+        }
+    }
+
+    /** The app was swiped away from the recents list: the sound stops and the player goes away. */
+    public static void stopEverything() {
+        closeOrphan();
+        PlaybackActivity active = sActive != null ? sActive.get() : null;
+        if (active != null && !active.isFinishing() && !active.isDestroyed()) {
+            if (active.mPlayer != null) {
+                active.mPlayer.setPlayWhenReady(false);
+            }
+            active.finishAndRemoveTask();
+        }
     }
 
     /**

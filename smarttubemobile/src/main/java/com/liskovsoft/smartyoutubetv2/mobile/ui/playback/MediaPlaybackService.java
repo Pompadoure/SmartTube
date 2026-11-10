@@ -218,6 +218,16 @@ public class MediaPlaybackService extends MediaSessionService {
     }
 
     @Override
+    public void onTaskRemoved(@Nullable Intent rootIntent) {
+        // Swiped away from the recents list: that means stop, also for the sound without a screen
+        if (sPodcastPlayer != null) {
+            sPodcastPlayer.pause();
+        }
+        PlaybackActivity.stopEverything();
+        super.onTaskRemoved(rootIntent);
+    }
+
+    @Override
     public void onDestroy() {
         sService = null;
         super.onDestroy();
