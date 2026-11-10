@@ -2,6 +2,9 @@ package com.liskovsoft.smartyoutubetv2.common.app.presenters.dialogs;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
 import com.liskovsoft.appupdatechecker2.AppUpdateChecker;
 import com.liskovsoft.appupdatechecker2.AppUpdateCheckerListener;
 import com.liskovsoft.sharedutils.helpers.MessageHelpers;
@@ -26,10 +29,40 @@ public class AppUpdatePresenter extends BasePresenter<Void> implements AppUpdate
     private final AppDialogPresenter mSettingsPresenter;
     private final String[] mUpdateManifestUrls;
     private boolean mIsForceCheck;
+    // JoTube: one check at a time. The checker drops a second request without any answer (the spinner never stopped),
+    // and two instances would download into the same file.
+    private static final long FORCE_CHECK_TIMEOUT_MS = 5 * 60 * 1_000;
+    private final Handler mHandler = new Handler(Looper.getMainLooper());
+    private boolean mBusy;
+    private boolean mDownloading;
+    private final Runnable mTimeout = () -> {
+        mBusy = false;
+        mDownloading = false;
+        if (mIsForceCheck) {
+            LoadingManager.showLoading(getContext(), false);
+            MessageHelpers.showMessage(getContext(), getContext().getString(R.string.update_error));
+        }
+    };
+    private final Runnable mDownloadNotice = () -> {
+        if (mDownloading && mIsForceCheck) {
+            MessageHelpers.showLongMessage(getContext(), "Ny version hittad, laddar ner…");
+        }
+    };
 
     public AppUpdatePresenter(Context context) {
         super(context);
-        mUpdateChecker = new AppUpdateChecker(context, this);
+        mUpdateChecker = new AppUpdateChecker(context, this) {
+            @Override
+            public void onChangelogReceived(boolean isLatestVersion, String latestVersionName, int latestVersionNumber,
+                                            List<String> changelog, Uri[] downloadUris) {
+                if (!isLatestVersion && downloadUris != null) {
+                    // the whole apk is fetched before the dialog can show: tell the user what the wait is for
+                    mDownloading = true;
+                    mHandler.postDelayed(mDownloadNotice, 1_500);
+                }
+                super.onChangelogReceived(isLatestVersion, latestVersionName, latestVersionNumber, changelog, downloadUris);
+            }
+        };
         mSettingsPresenter = AppDialogPresenter.instance(context);
         mUpdateManifestUrls = context.getResources().getStringArray(R.array.update_urls);
     }
@@ -45,11 +78,29 @@ public class AppUpdatePresenter extends BasePresenter<Void> implements AppUpdate
     }
 
     public static void unhold() {
+        if (sInstance != null && sInstance.mBusy) {
+            return; // a check or download is running: its answer still has to arrive here
+        }
         sInstance = null;
     }
 
     public void start(boolean forceCheck) {
+        if (mBusy) {
+            // already checking or downloading (e.g. the check at app start): wait for that answer
+            if (forceCheck) {
+                mIsForceCheck = true;
+                LoadingManager.showLoading(getContext(), true);
+                mHandler.removeCallbacks(mTimeout);
+                mHandler.postDelayed(mTimeout, FORCE_CHECK_TIMEOUT_MS);
+                mHandler.post(mDownloadNotice);
+            }
+            return;
+        }
+
         mIsForceCheck = forceCheck;
+        mBusy = true;
+        mHandler.removeCallbacks(mTimeout);
+        mHandler.postDelayed(mTimeout, FORCE_CHECK_TIMEOUT_MS);
 
         if (forceCheck) {
             LoadingManager.showLoading(getContext(), true);
@@ -61,6 +112,7 @@ public class AppUpdatePresenter extends BasePresenter<Void> implements AppUpdate
 
     @Override
     public void onUpdateFound(String versionName, List<String> changelog, String apkPath) {
+        finishCheck();
         if (mIsForceCheck) {
             LoadingManager.showLoading(getContext(), false);
             showUpdateDialog(versionName, changelog, apkPath);
@@ -73,6 +125,7 @@ public class AppUpdatePresenter extends BasePresenter<Void> implements AppUpdate
 
     @Override
     public void onUpdateError(Exception error) {
+        finishCheck();
         if (mIsForceCheck) {
             LoadingManager.showLoading(getContext(), false);
 
@@ -85,6 +138,13 @@ public class AppUpdatePresenter extends BasePresenter<Void> implements AppUpdate
         }
 
         onFinish();
+    }
+
+    private void finishCheck() {
+        mBusy = false;
+        mDownloading = false;
+        mHandler.removeCallbacks(mTimeout);
+        mHandler.removeCallbacks(mDownloadNotice);
     }
 
     private void showUpdateDialog(String versionName, List<String> changelog, String apkPath) {

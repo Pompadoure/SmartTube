@@ -154,11 +154,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete latest-mobile --cleanup-tag --yes || true
-          sleep 10
-          # A pre-release, not marked latest: the daily JoTube release stays the latest one
-          gh release create latest-mobile out/* --prerelease --latest=false \
-            --target "${{ github.sha }}" \
-            --title "JoTube Mobile ${{ steps.version.outputs.name }}" \
-            --notes "Phone app test build from ${{ github.sha }} (package org.smarttube.johan.mobile)."
-          gh release edit latest-mobile --draft=false
+          title="JoTube Mobile ${{ steps.version.outputs.name }}"
+          notes="Phone app test build from ${{ github.sha }} (package org.smarttube.johan.mobile)."
+          if gh release view latest-mobile >/dev/null 2>&1; then
+            # The release is kept (deleting it made the in-app updater get 404 for a while): the tag moves, the apks
+            # are replaced, and the manifest goes last so the app never sees a version whose apk isn't there yet.
+            gh api -X PATCH "repos/${{ github.repository }}/git/refs/tags/latest-mobile" -f sha="${{ github.sha }}" -F force=true
+            gh release upload latest-mobile out/*.apk out/SHA256SUMS.txt --clobber
+            gh release upload latest-mobile out/jotube-mobile-update.json --clobber
+            gh release edit latest-mobile --title "$title" --notes "$notes" --prerelease --latest=false --draft=false
+          else
+            # A pre-release, not marked latest: the daily JoTube release stays the latest one
+            gh release create latest-mobile out/* --prerelease --latest=false \
+              --target "${{ github.sha }}" --title "$title" --notes "$notes"
+            gh release edit latest-mobile --draft=false
+          fi
