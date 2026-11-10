@@ -275,6 +275,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
     /** A screen that was closed while the music kept playing is thrown away when something else starts. */
     private void destroyOrphan() {
+        com.liskovsoft.smartyoutubetv2.mobile.cast.CastController.detach(mCastHost);
         releasePlayer();
         if (mPlaybackPresenter.getView() == this) {
             mPlaybackPresenter.onViewDestroyed();
@@ -1423,7 +1424,6 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        com.liskovsoft.smartyoutubetv2.mobile.cast.CastController.detach(mCastHost);
 
         mHandler.removeCallbacks(mShortsTick);
         mHandler.removeCallbacks(mHideControls);
@@ -1431,10 +1431,11 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         // The app was swiped away (or the music screen closed) while playing: the sound goes on, the engine lives on
         // as an "orphan" until the user comes back through the notification or starts something else.
         if (((keepPlayingInBackground() && !mInPip && (!mFinishRequested || mAudioMode)) || (mMinimized && keepForMini())) && !mInPip) {
-            sOrphan = this;
+            sOrphan = this; // casting still follows this player, so the cast host stays
             return;
         }
 
+        com.liskovsoft.smartyoutubetv2.mobile.cast.CastController.detach(mCastHost);
         releasePlayer();
 
         if (mPlaybackPresenter.getView() == this) {

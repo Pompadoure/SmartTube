@@ -224,6 +224,7 @@ public final class CastController {
         if (info.isLive() || durationMs <= 0) {
             Log.e(TAG, "Not castable: live=" + info.isLive() + " duration=" + durationMs);
             Toast.makeText(sAppContext, "Den här videon går inte att casta (livesändning eller okänd längd)", Toast.LENGTH_LONG).show();
+            stopStream(remote); // the phone plays it itself
             return;
         }
 
@@ -277,6 +278,16 @@ public final class CastController {
         startTicking();
     }
 
+    /** The current track is not (or no longer) cast: the phone is audible again, the session stays for the next track. */
+    private static void stopStream(RemoteMediaClient remote) {
+        MAIN.removeCallbacks(sReload);
+        CastAudioStream.stop();
+        sLoadedId = null;
+        if (remote != null && remote.hasMediaSession()) {
+            remote.stop();
+        }
+    }
+
     // --- keeping the receiver in step with the phone's player ---------------------------------------------------------
 
     private static void startTicking() {
@@ -313,6 +324,13 @@ public final class CastController {
         long pos = host.positionMs();
         boolean playing = host.isPlaying();
 
+        if (!playing && now < sLoadGraceUntil) {
+            // a new track that the phone is still opening: neither a pause nor a seek
+            sLastPos = pos;
+            sLastTick = now;
+            return;
+        }
+
         long expected = sLastPos + (sLastPlaying ? now - sLastTick : 0);
         if (Math.abs(pos - expected) > SEEK_JUMP_MS) {
             // The app seeked: the receiver is reloaded at the new place once the seeking has settled
@@ -325,9 +343,6 @@ public final class CastController {
         sLastPos = pos;
         sLastTick = now;
 
-        if (!playing && now < sLoadGraceUntil) {
-            return;
-        }
         if (playing != sLastPlaying) {
             sLastPlaying = playing;
             sIgnoreReceiverUntil = now + ECHO_MS;
@@ -356,6 +371,7 @@ public final class CastController {
 
             if (mLastState == MediaStatus.PLAYER_STATE_IDLE && status.getIdleReason() == MediaStatus.IDLE_REASON_ERROR) {
                 Toast.makeText(sAppContext, "Mottagaren kunde inte spela strömmen", Toast.LENGTH_LONG).show();
+                stopStream(null); // nothing sounds on the receiver: the phone gets its sound back
                 return;
             }
 

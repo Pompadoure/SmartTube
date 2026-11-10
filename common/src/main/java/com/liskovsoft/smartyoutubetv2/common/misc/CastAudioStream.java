@@ -20,6 +20,7 @@ import java.util.Collections;
 import java.util.Locale;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * JoTube: audio for Cast. YouTube's own stream URLs can't be handed to a Cast receiver (they only work inside the player
@@ -40,7 +41,7 @@ public final class CastAudioStream implements CastAudioTap.Sink {
     private String mHost;
     private volatile boolean mReleased;
     private volatile boolean mEnded;
-    private volatile int mActiveRequest;
+    private final AtomicInteger mActiveRequest = new AtomicInteger();
     private volatile int mGeneration;
     private volatile long mDurationMs;
 
@@ -196,9 +197,9 @@ public final class CastAudioStream implements CastAudioTap.Sink {
                 return;
             }
 
-            final int id = ++mActiveRequest; // the newest connection takes over from older ones
+            final int id = mActiveRequest.incrementAndGet(); // the newest connection takes over from older ones
             mQueue.clear(); // only audio from now on
-            while (remaining > 0 && id == mActiveRequest && !mReleased) {
+            while (remaining > 0 && id == mActiveRequest.get() && !mReleased) {
                 byte[] chunk = mQueue.poll(500, TimeUnit.MILLISECONDS);
                 if (chunk == null) {
                     if (mEnded) {
