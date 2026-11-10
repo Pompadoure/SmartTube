@@ -22,7 +22,9 @@ public class FastStartLoadControl implements LoadControl {
     private static final long SHORTS_START_BUFFER_US = 500_000; // 0.5 s
     // Ahead of the playback position, across the current and the queued Shorts
     private static final long SHORTS_MIN_BUFFER_US = 10_000_000; // always (like prioritizeTimeOverSizeThresholds)
-    private static final long SHORTS_MAX_BUFFER_US = 180_000_000; // 3 min
+    // 30 s like regular videos. With 3 min a long Short was downloaded whole in the first seconds (device log
+    // 2026-11-10: 134 s buffered at 7 s), on top of the preloads, and most Shorts are swiped away long before that.
+    private static final long SHORTS_MAX_BUFFER_US = 30_000_000;
     private static final int SHORTS_MAX_BUFFER_BYTES = 128 * 1024 * 1024; // current + 2 played + preloaded
     private static final long SHORTS_BACK_BUFFER_US = 10 * 60 * 1_000_000L; // keep played Shorts (instant "previous")
     private static final long VOD_MIN_BUFFER_US = 30_000_000; // 30 s

@@ -51,8 +51,6 @@ public abstract class SabrExtractorAdapter implements Extractor {
     @Override
     public void seek(long position, long timeUs) {
         seekCount++;
-        Log.e(DIAG_TAG, "extractor seek: " + getClass().getSimpleName() + "@" + System.identityHashCode(this)
-                + " position=" + position + " timeUs=" + timeUs + " seekCount=" + seekCount);
         delegate.seek(position, timeUs);
     }
 
@@ -91,7 +89,7 @@ public abstract class SabrExtractorAdapter implements Extractor {
                 sinceSeek = 0;
             }
             boolean backward = lastTimeUs != C.TIME_UNSET && timeUs < lastTimeUs;
-            if (sinceSeek < 3 || backward) {
+            if (backward) { // the anomaly itself; the regular samples are not logged
                 Log.e(DIAG_TAG, "sample: ext=" + System.identityHashCode(SabrExtractorAdapter.this)
                         + " trackType=" + trackType + " timeUs=" + timeUs + " prevUs=" + lastTimeUs
                         + (backward ? " BACKWARD" : "") + " sinceSeek=" + sinceSeek + " seekCount=" + seekCount);
