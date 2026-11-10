@@ -231,8 +231,14 @@ public class ExoMediaSourceFactory {
             // uri; the parser ignores the bytes and builds it then (its direct UTC timing is the device time at load end).
             // No refresh is needed: without a timeline Media3 moves the window itself (simulated refresh), the segments
             // are computed from the wall clock.
+            // The initialization load of a live format returns a whole segment from the live edge: only its formats
+            // are used (LiveInitChunkExtractorFactory), or every start plays that segment and then jumps back.
+            DataSource.Factory liveDataSourceFactory = TextUtils.isEmpty(visitorCookie) ? getMediaDataSourceFactory() :
+                    new ResolvingDataSource.Factory(getMediaDataSourceFactory(), dataSpec -> isSubtitleRequest(dataSpec) ?
+                            dataSpec.withAdditionalHeaders(Collections.singletonMap("Cookie", visitorCookie)) : dataSpec);
             dashSource = new DashMediaSource.Factory(
-                    chunkSourceFactory,
+                    new DefaultDashChunkSource.Factory(new com.liskovsoft.smartyoutubetv2.common.exoplayer.dash.LiveInitChunkExtractorFactory(),
+                            liveDataSourceFactory, MAX_SEGMENTS_PER_LOAD),
                     getMediaDataSourceFactory()
             )
                     .setManifestParser((uri, inputStream) -> getManifest(formatInfo))
