@@ -48,6 +48,7 @@ import java.util.Set;
 public class SabrStream {
     private static final String TAG = SabrStream.class.getSimpleName();
     private static final boolean VERBOSE = false; // JoTube: hundreds of lines a second during playback (CPU on weak boxes)
+    private static final java.util.Set<Integer> loggedUnknownParts = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final int[] KNOWN_PARTS = {
             UMPPartId.MEDIA_HEADER,
             UMPPartId.MEDIA,
@@ -541,7 +542,9 @@ public class SabrStream {
                     throw new IllegalStateException(msg);
                 }
 
-                Log.e(TAG, msg);
+                if (loggedUnknownParts.add(part.partId)) { // once per part id, not for every response
+                    Log.e(TAG, msg);
+                }
                 part.skip(); // an essential part to continue reading
             }
 
