@@ -878,6 +878,9 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         slideOutThen(() -> {
             showMainTask();
             mMinimized = MediaPlaybackService.isActive();
+            if (android.os.Build.VERSION.SDK_INT >= 34) {
+                overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, 0, 0); // Android 14+ ignores the old call below
+            }
             finish();
             overridePendingTransition(0, 0); // the page already slid away
         });
