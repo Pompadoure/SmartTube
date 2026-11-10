@@ -941,6 +941,14 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         return android.os.Build.VERSION.SDK_INT >= 29 ? info.taskId : info.id;
     }
 
+    private static boolean isTaskVisible(android.app.ActivityManager.AppTask task) {
+        try { // TaskInfo.isVisible: Android 13+
+            return Boolean.TRUE.equals(android.app.TaskInfo.class.getField("isVisible").get(task.getTaskInfo()));
+        } catch (Throwable e) {
+            return false;
+        }
+    }
+
     private void setInRecents(boolean show) {
         try {
             for (android.app.ActivityManager.AppTask task : ((android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE)).getAppTasks()) {
@@ -958,7 +966,11 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         try {
             for (android.app.ActivityManager.AppTask task : ((android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE)).getAppTasks()) {
                 if (taskIdOf(task) != getTaskId()) {
-                    task.moveToFront();
+                    // Already showing behind the slid-away page: closing this screen is enough. Bringing it forward
+                    // would add the system's sideways task animation on top of the slide down.
+                    if (!isTaskVisible(task)) {
+                        task.moveToFront();
+                    }
                     return;
                 }
             }
