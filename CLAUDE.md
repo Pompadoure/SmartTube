@@ -5,7 +5,10 @@ daily JoTube. Read `docs/media3/PLAN.md` and `docs/media3/PROGRESS.md` before wo
 
 - Push only to Pompadoure/SmartTube, never to the upstream project.
 - On `media3`: never push to `master`, never merge into `master`, never touch the `latest-j` release.
-- Nothing from `media3` is installed on any device (Streamer or Mi Box) until Johan says the rewrite is done.
+- JoTube M3 (`media3`, release `latest-media3`) and the mobile app (`media3-mobile`, release `latest-mobile`) update
+  through the in-app updater: Johan updates himself. Do not install builds via Home Assistant unless he asks.
+- Shared code (`common/`, `media3-sabr/`, `patches/`) changes on `media3` first and is merged into `media3-mobile` the
+  same day, so both apps stay buildable from the same code. Every change must keep both workflows green.
 - The signing key and keystore never go into the repo (CI uses GitHub secrets).
 - Never commit an app icon or logo with Johan's face (the current logo without a face is fine).
 - MediaServiceCore is a submodule at its upstream base; change it only with new files in
