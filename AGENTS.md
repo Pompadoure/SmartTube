@@ -34,7 +34,7 @@ The repo has ~60 branches; almost all of them are short-lived work branches. Onl
 - `media3-sabr/`: SABR streaming (YouTube's adaptive protocol) for AndroidX Media3, with unit tests.
 - `smarttubemobile/` (only on `media3-mobile`): the phone app.
 - `MediaServiceCore/`, `SharedModules/`: **git submodules at the upstream base**. See section 5.
-- `exoplayer-amzn-2.10.6/`: the old ExoPlayer fork, only used by `master`; out of the build on `media3`.
+- The old ExoPlayer fork (`exoplayer-amzn-2.10.6/`) is only on `master`; it was removed from `media3` (see git history).
 - `patches/MediaServiceCore/NNNN-*.patch`: our changes to MediaServiceCore (applied in order by CI; latest is 0016).
 - `docs/media3/`: plan, progress log, inventory, test list, design notes (`ROLE_SWAP.md` = Shorts player design).
 - `.github/workflows/`: `build-media3.yml` (TV media3), `build-mobile.yml`, `build-johan.yml` (master),
