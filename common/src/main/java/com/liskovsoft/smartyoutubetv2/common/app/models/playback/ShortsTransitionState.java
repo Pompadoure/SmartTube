@@ -19,6 +19,7 @@ public final class ShortsTransitionState {
     private static volatile int sDirection = DIRECTION_NONE;
     private static volatile boolean sIsShortsMode;
     private static volatile boolean sIsLive;
+    private static volatile boolean sIsShortsVideoCapped = true;
 
     private ShortsTransitionState() {
     }
@@ -32,6 +33,18 @@ public final class ShortsTransitionState {
 
     public static void setShortsMode(boolean isShortsMode) {
         sIsShortsMode = isShortsMode;
+    }
+
+    /**
+     * JoTube: Shorts at most at 720p (TrackSelectorManager). On for the TV app (two players decode at a switch and the
+     * Short sits in a small frame); the mobile app turns it off (one player, the Short fills the screen).
+     */
+    public static boolean isShortsVideoCapped() {
+        return sIsShortsVideoCapped;
+    }
+
+    public static void setShortsVideoCapped(boolean capped) {
+        sIsShortsVideoCapped = capped;
     }
 
     /**

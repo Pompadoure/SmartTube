@@ -118,7 +118,7 @@ compileSdk 34 / Kotlin 1.8.10 / JDK 17:
 6. **Old modules out of the build:** in stage 2 the `exoplayer-amzn-2.10.6` include in `settings.gradle` and the
    `:exoplayer-*` project dependencies in `common`, `smarttubetv` and `doubletapplayerview` are replaced by the Media3
    artifacts in one step (the app can't compile against both `Player` APIs at once without a long dual phase). The
-   directory itself stays in the repo until stage 6 (reference for porting), only unreferenced. Because that step
+   directory itself stayed in the repo as porting reference and was removed on 2026-11-12 (it lives on `master` and in git history). Because that step
    breaks compilation of every player file at once, stage 2 is done on a work branch `m3/stage2` (CI builds `m3/**`
    without publishing) and merged into `media3` when CI is green.
 7. **Non-Java references** to `com.google.android.exoplayer2` must move too (the compiler won't catch them):
