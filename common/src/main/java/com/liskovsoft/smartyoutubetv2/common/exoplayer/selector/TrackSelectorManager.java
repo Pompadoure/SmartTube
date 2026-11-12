@@ -863,7 +863,8 @@ public class TrackSelectorManager implements TrackSelectorCallback {
      * in 0.9-1.8 s and its sound ran dry ("hack in the beginning"). 720p60 is ~2.25x fewer pixels per player.
      */
     private MediaTrack capVideoForShorts(MediaTrack result, MediaTrack[][] tracks) {
-        if (!ShortsTransitionState.isShortsMode() || !(result instanceof VideoTrack) || result.format == null
+        if (!ShortsTransitionState.isShortsMode() || !ShortsTransitionState.isShortsVideoCapped()
+                || !(result instanceof VideoTrack) || result.format == null
                 || maxSide(result.format) <= SHORTS_MAX_SIDE || tracks == null) {
             return result;
         }
