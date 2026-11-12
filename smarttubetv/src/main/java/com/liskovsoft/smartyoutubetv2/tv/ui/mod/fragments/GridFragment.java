@@ -18,6 +18,7 @@ import androidx.leanback.widget.RowPresenter;
 import androidx.leanback.widget.VerticalGridPresenter;
 import androidx.leanback.widget.VerticalGridView;
 import com.liskovsoft.smartyoutubetv2.tv.R;
+import com.liskovsoft.smartyoutubetv2.tv.ui.browse.video.GridFragmentHelper;
 
 /**
  * NOTE: All code was new. It's copied from:<br/>
@@ -174,6 +175,8 @@ public class GridFragment extends Fragment implements BrowseSupportFragment.Main
         mGridViewHolder = mGridPresenter.onCreateViewHolder(gridDock);
         gridDock.addView(mGridViewHolder.view);
         mGridViewHolder.getGridView().setOnChildLaidOutListener(mChildLaidOutListener);
+        // JoTube: browse sections sit next to the sidebar rail (smaller paddings, same columns)
+        GridFragmentHelper.applySidebarRailPadding(this, mGridViewHolder.getGridView());
 
         mSceneAfterEntranceTransition = TransitionHelper.createScene(gridDock, new Runnable() {
             @Override

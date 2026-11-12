@@ -71,6 +71,8 @@ public class SettingsGridFragment extends GridFragment implements SettingsSectio
     private void setupAdapter() {
         VerticalGridPresenter presenter = new VerticalGridPresenter(ViewUtil.FOCUS_ZOOM_FACTOR, ViewUtil.FOCUS_DIMMER_ENABLED);
         presenter.enableChildRoundedCorners(getMainUIData().isUiTweakEnabled(MainUIData.UI_TWEAK_ROUNDED_CORNERS));
+        // JoTube: no leanback shadow box behind the focused card (shows on the grey page)
+        presenter.setShadowEnabled(false);
         presenter.setNumberOfColumns(GridFragmentHelper.getMaxColsNum(getContext(), R.dimen.settings_card_width));
         setGridPresenter(presenter);
 

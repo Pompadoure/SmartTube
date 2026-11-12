@@ -67,6 +67,11 @@ public class VideoStateController extends BasePlayerController {
 
         if (!item.equals(getVideo())) {
             mNewVideoTimeMs = System.currentTimeMillis();
+
+            // JoTube: no Live button from the previous (live) video until this one is loaded
+            if (getPlayer() != null && !item.isLive) {
+                getPlayer().setButtonState(R.id.action_live, PlayerUI.BUTTON_DISABLED);
+            }
         }
 
         setPlayEnabled(true); // video just added
@@ -231,6 +236,11 @@ public class VideoStateController extends BasePlayerController {
 
         // In this state video length is not undefined.
         restoreState();
+
+        // JoTube: the Live button is shown only while a live stream plays
+        if (getPlayer() != null) {
+            getPlayer().setButtonState(R.id.action_live, item != null && item.isLive ? PlayerUI.BUTTON_OFF : PlayerUI.BUTTON_DISABLED);
+        }
     }
 
     @Override
@@ -335,6 +345,9 @@ public class VideoStateController extends BasePlayerController {
     public void onButtonClicked(int buttonId, int buttonState) {
         if (buttonId == R.id.action_video_speed) {
             onSpeedClicked(buttonState == PlayerUI.BUTTON_ON);
+        } else if (buttonId == R.id.action_live) {
+            // JoTube: the Live button jumps to the live edge (nothing to do when already there)
+            seekToActualLivePosition();
         }
     }
 
@@ -474,11 +487,14 @@ public class VideoStateController extends BasePlayerController {
             return;
         }
 
-        if (getPlayerData().getTempVideoFormat() != null) {
-            getPlayer().setFormat(getPlayerData().getTempVideoFormat());
-        } else {
-            getPlayer().setFormat(getPlayerData().getFormat(FormatItem.TYPE_VIDEO));
-        }
+        FormatItem wanted = getPlayerData().getTempVideoFormat() != null ?
+                getPlayerData().getTempVideoFormat() : getPlayerData().getFormat(FormatItem.TYPE_VIDEO);
+
+        // JoTube: no forced start quality any more. The track selector already uses an adaptive ladder (the wanted
+        // quality plus the lower steps of the same codec, see TrackSelectorManager.createFastStartLadder): it starts
+        // low and moves up within the same stream, seamlessly. Swapping a single-track override mid-playback made
+        // Media3 throw away the buffer and restart the renderer (a visible hiccup a few seconds into every video).
+        getPlayer().setFormat(wanted);
     }
 
     private void restoreAudioFormat() {
@@ -593,6 +609,7 @@ public class VideoStateController extends BasePlayerController {
         if (item.isLive && (state == null || state.durationMs - state.positionMs < Math.max(RESTORE_LIVE_BUFFER_MS, getLiveThreshold()))) {
             // Add buffer. Should I take into account segment offset???
             state = new State(item, getPlayer().getDurationMs() - getLiveBuffer());
+            Log.d(TAG, "Live start: durationMs=%s position=%s buffer=%s", getPlayer().getDurationMs(), state.positionMs, getLiveBuffer());
         }
 
         // Do I need to check that item isn't live? (state != null && !item.isLive)

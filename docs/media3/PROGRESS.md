@@ -234,3 +234,8 @@ at ~10 s of playback. ExoPlayer 2.10.6 loaded the init chunk with a null track o
 wraps the extractor of the InitializationChunk (InitOnlyChunkExtractor, init(null,..)). First frame was +1824 ms in that log.
 CI green (run 38290753636). Waiting for Johan: install latest-media3, play a regular video >15 s; then the run reads logcat via HA (grep 'Audio sink|JoTubeSabr') and sets DONE if clean.
 Run: FINISHED 2026-10-12T18:30Z (BUG-1 root cause found and fixed, CI green)
+
+## 2026-10-28 Shorts switch tuning (TV, Streamer)
+See ROLE_SWAP.md "Tuning on the Streamer": silent spare, waiting switch, one download per Short, SABR manifest built off
+the main thread (single use), no mid-clip thumbnail, round coloured avatar placeholder, 1080p default for regular videos.
+Owner verdict 22:33: "Känns bättre" after "nästan perfekt". Test switches (Ablation, ablate.txt) and main-thread watch removed.

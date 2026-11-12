@@ -26,6 +26,9 @@ import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.ExoMediaSourceFactory;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ExoPlayerController;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ShortsQueue;
+import com.liskovsoft.smartyoutubetv2.common.exoplayer.other.VolumeBooster;
+import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerData;
+import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerTweaksData;
 
 /**
  * JoTube media3: the second player of the Shorts feed. While a Short plays, this player prepares the NEXT one (video
@@ -37,32 +40,61 @@ import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ShortsQueue;
  */
 public class ShortsPreview {
     private static final String TAG = "ShortsPreview";
-    private static final int START_DELAY_MS = 800; // after the playing Short's first frame
+    // after the playing Short's first frame (JoTube live switch: soon, so a swipe after ~1 s finds it ready)
+    private static final int START_DELAY_MS = 150; // silent spare (2026-10-28): cheap enough to start soon; 1200 ms left fast swipers without a ready Short (log 12:40: 9 of 14 swipes)
     private static final float PARKED_Y = 10_000f; // visible (the surface must exist) but far off screen
 
+    // after a take-over the main player's sound is young: no decoder start-up and network work on this weak box then
+    private static final int QUIET_AFTER_TAKEOVER_MS = 0;
+    private long mQuietUntilMs;
+
     private final Handler mHandler = new Handler(Looper.getMainLooper());
-    private final Runnable mRefresh = this::refresh;
+    private final Runnable mRefresh = () -> {
+        mRefreshPending = false;
+        refresh();
+    };
+    private boolean mRefreshPending;
+    private Runnable mFirstFrameListener; // JoTube: the live switch waits for this Short's first frame
     private Context mContext;
     private FrameLayout mHolder; // the frame: set by the overlay (same size as the incoming picture)
     private AspectRatioFrameLayout mAspect;
     private SurfaceView mSurface;
     private ExoPlayer mPlayer;
+    private com.liskovsoft.smartyoutubetv2.common.exoplayer.versions.selector.RestoreTrackSelector mSelector;
     private String mVideoId;
     private boolean mFrameRendered;
     private boolean mMainStarted; // the playing Short has shown its first frame
     private boolean mEnabled;
+    private boolean mLive; // JoTube: it plays the Short on screen (live switch) until the main player takes over
+    private float mAspectRatio; // the prepared Short's picture (width / height), 0 = not known yet
+    private Runnable mLiveProblem; // JoTube: the live Short failed or ended (the main player must take over)
 
     private final Player.Listener mListener = new Player.Listener() {
         @Override
         public void onRenderedFirstFrame() {
             mFrameRendered = true;
             Log.d(TAG, "First frame of the next Short %s is ready", mVideoId);
+            Runnable listener = mFirstFrameListener;
+            mFirstFrameListener = null;
+            if (listener != null) {
+                listener.run();
+            }
         }
 
         @Override
         public void onVideoSizeChanged(VideoSize size) {
-            if (size.height > 0 && mAspect != null) {
-                mAspect.setAspectRatio((float) size.width * size.pixelWidthHeightRatio / size.height);
+            if (size.height > 0) {
+                mAspectRatio = (float) size.width * size.pixelWidthHeightRatio / size.height;
+                if (mAspect != null) {
+                    mAspect.setAspectRatio(mAspectRatio);
+                }
+            }
+        }
+
+        @Override
+        public void onPlaybackStateChanged(int state) {
+            if (mLive && state == Player.STATE_ENDED && mLiveProblem != null) {
+                mLiveProblem.run();
             }
         }
 
@@ -70,6 +102,14 @@ public class ShortsPreview {
         public void onPlayerError(PlaybackException error) {
             Log.e(TAG, "Preview failed for %s: %s", mVideoId, error.getMessage());
             mFrameRendered = false;
+            Runnable listener = mFirstFrameListener;
+            mFirstFrameListener = null;
+            if (listener != null) {
+                listener.run(); // the waiting switch sees "not ready" and takes the usual way at once
+            }
+            if (mLive && mLiveProblem != null) {
+                mLiveProblem.run();
+            }
             // A failed one is not retried until the next Short comes
         }
     };
@@ -103,11 +143,15 @@ public class ShortsPreview {
         if (mEnabled) {
             ShortsQueue.setChangeListener(this::scheduleRefresh);
         }
+        com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ShortsPreloadControl.setSpareCoversNext(mEnabled);
     }
 
     public void detach() {
         mHandler.removeCallbacksAndMessages(null);
+        mRefreshPending = false;
+        mFirstFrameListener = null;
         ShortsQueue.setChangeListener(null);
+        com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ShortsPreloadControl.setSpareCoversNext(false);
         releasePlayer();
 
         if (mHolder != null && mHolder.getParent() instanceof ViewGroup) {
@@ -128,7 +172,15 @@ public class ShortsPreview {
      * Same size as the incoming picture (the Shorts frame): 0 = whole container.
      */
     public void setFrame(int width, int height, int offsetX) {
-        if (mHolder == null || !(mHolder.getLayoutParams() instanceof FrameLayout.LayoutParams)) {
+        setFrame(width, height, offsetX, false);
+    }
+
+    /**
+     * @param force also while live (the live switch sets the frame of the incoming Short itself; the frame updates of
+     *              the playing one must not change it meanwhile)
+     */
+    public void setFrame(int width, int height, int offsetX, boolean force) {
+        if (mHolder == null || !(mHolder.getLayoutParams() instanceof FrameLayout.LayoutParams) || (mLive && !force)) {
             return;
         }
 
@@ -161,20 +213,50 @@ public class ShortsPreview {
     public void onMainStarting() {
         mMainStarted = false;
         mHandler.removeCallbacks(mRefresh);
+        mRefreshPending = false;
     }
 
     private void scheduleRefresh() {
-        if (!mEnabled || !mMainStarted) {
+        if (!mEnabled) {
             return;
         }
 
-        mHandler.removeCallbacks(mRefresh);
-        mHandler.postDelayed(mRefresh, START_DELAY_MS);
+        prebuildNext(); // as soon as the next Short is known: its manifest is ready when the preparation starts
+
+        if (!mMainStarted) {
+            return;
+        }
+
+        if (mRefreshPending) {
+            return; // queue updates must not push the pending preparation back (they came every ~1 s: log 2026-10-28)
+        }
+
+        long quiet = mQuietUntilMs - android.os.SystemClock.uptimeMillis();
+        long delay = START_DELAY_MS;
+        mRefreshPending = true;
+        mHandler.postDelayed(mRefresh, Math.max(delay, quiet));
+    }
+
+    /**
+     * The spare player prepares the next Short without audio (the audio track is switched on when it goes live). Measured on
+     * the Streamer (2026-10-28, 12-16 swipes per run): with audio the playing Short dropped up to 41 frames per swap, without
+     * it at most 5 and the incoming one none.
+     */
+    private boolean silentSpare() {
+        return true;
+    }
+
+    private boolean isAblated() {
+        return false;
     }
 
     private void refresh() {
-        if (!mEnabled || !mMainStarted || mHolder == null) {
-            return;
+        if (!mEnabled || !mMainStarted || mHolder == null || mLive) {
+            return; // live: it is the Short on screen right now
+        }
+
+        if (isAblated()) {
+            return; // test switch: no preview work at all
         }
 
         MediaItemFormatInfo next = ShortsQueue.getNextFormatInfo();
@@ -187,60 +269,212 @@ public class ShortsPreview {
             return; // prepared or preparing
         }
 
+        prepare(next);
+    }
+
+    /**
+     * JoTube: the user swiped to {@code videoId} before it was prepared: prepare it now (not after the start delay).
+     *
+     * @return true if it is prepared or being prepared here (its first frame will come: {@link #setFirstFrameListener})
+     */
+    public boolean prepareNow(String videoId) {
+        if (!mEnabled || mHolder == null || mLive || videoId == null || mPlayer == null || isAblated()) {
+            return false;
+        }
+
+        if (videoId.equals(mVideoId)) {
+            return true;
+        }
+
+        MediaItemFormatInfo info = ShortsQueue.getQueuedFormatInfo(videoId);
+
+        if (info == null) {
+            MediaItemFormatInfo next = ShortsQueue.getNextFormatInfo();
+            info = next != null && videoId.equals(next.getVideoId()) ? next : null;
+        }
+
+        if (info == null) {
+            return false;
+        }
+
+        mHandler.removeCallbacks(mRefresh);
+        mRefreshPending = false;
+        return prepare(info) && videoId.equals(mVideoId);
+    }
+
+    /** This Short is being prepared here and has no first frame yet. */
+    public boolean isPreparing(String videoId) {
+        return mPlayer != null && !mLive && videoId != null && videoId.equals(mVideoId) && !mFrameRendered;
+    }
+
+    /** Called once on the next first frame (or failure) of the prepared Short; null removes it. */
+    public void setFirstFrameListener(@Nullable Runnable listener) {
+        mFirstFrameListener = listener;
+    }
+
+    // JoTube: the SABR manifest of the next Short is built here, not on the main thread (80-300 ms on the Streamer)
+    private static final java.util.concurrent.ExecutorService sBuilder = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(() -> {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+            r.run();
+        }, "JoTubeManifest");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private MediaItemFormatInfo mBuilding;
+
+    /** The next Short's SABR manifest in the background (150-480 ms on the Streamer, log 2026-10-28 19:25). */
+    private void prebuildNext() {
+        final MediaItemFormatInfo next = ShortsQueue.getNextFormatInfo();
+        if (next == null || !next.containsSabrFormats() || isAblated() ||
+                com.liskovsoft.smartyoutubetv2.common.exoplayer.ExoMediaSourceFactory.hasPrebuiltSabrManifest(next)) {
+            return;
+        }
+        sBuilder.execute(() -> {
+            try {
+                com.liskovsoft.smartyoutubetv2.common.exoplayer.ExoMediaSourceFactory.prebuildSabrManifest(next);
+            } catch (Throwable e) {
+                // built again when it is prepared
+            }
+        });
+    }
+
+    private boolean prepare(MediaItemFormatInfo next) {
+        if (next.containsSabrFormats() && !com.liskovsoft.smartyoutubetv2.common.exoplayer.ExoMediaSourceFactory.hasPrebuiltSabrManifest(next)) {
+            final String videoId = next.getVideoId();
+            mVideoId = videoId; // preparing (the waiting switch counts on it)
+            mFrameRendered = false;
+            mAspectRatio = 0;
+            mBuilding = next;
+            final long tb = android.os.SystemClock.uptimeMillis();
+            sBuilder.execute(() -> {
+                try {
+                    com.liskovsoft.smartyoutubetv2.common.exoplayer.ExoMediaSourceFactory.prebuildSabrManifest(next);
+                } catch (Throwable e) {
+                    Log.e(TAG, "Manifest build failed for %s: %s", videoId, e.getMessage());
+                }
+                mHandler.post(() -> {
+                    if (mBuilding != next) {
+                        return; // another Short or no player meanwhile
+                    }
+                    mBuilding = null;
+                    Log.d(TAG, "Manifest of %s built off the main thread in %s ms", videoId, android.os.SystemClock.uptimeMillis() - tb);
+                    if (!mLive && videoId != null && videoId.equals(mVideoId) && mPlayer != null) {
+                        mVideoId = null;
+                        if (!prepare(next) || !videoId.equals(mVideoId)) {
+                            Runnable listener = mFirstFrameListener; // a waiting switch takes the usual way
+                            mFirstFrameListener = null;
+                            if (listener != null) {
+                                listener.run();
+                            }
+                        }
+                    }
+                });
+            });
+            return true;
+        }
+
+        if (mSelector != null) {
+            if (silentSpare()) {
+                mSelector.setParameters(mSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true));
+            }
+        }
+
         MediaSource source = ExoPlayerController.createPreviewSource(next);
 
         if (source == null) {
-            return;
+            return false;
         }
 
         ExoPlayer player = ensurePlayer();
 
         if (player == null) {
-            return;
+            return false;
         }
 
         mVideoId = next.getVideoId();
         mFrameRendered = false;
+        mAspectRatio = 0;
+        mHolder.setTranslationY(PARKED_Y);
+        mHolder.setAlpha(1f);
         Log.d(TAG, "Preparing the preview of %s", mVideoId);
         player.setPlayWhenReady(false);
         player.setMediaSource(source);
         player.prepare();
+        return true;
     }
 
     @Nullable
     private ExoPlayer ensurePlayer() {
-        if (mPlayer != null) {
-            return mPlayer;
+        return mSurface != null ? mPlayer : null;
+    }
+
+    /**
+     * JoTube role swap: the spare player (built and released by the player screen like the main one). It prepares the
+     * next Short here; on a swipe it plays it live and is handed to the core ({@link #handOverLive}); the core's old
+     * player comes back here as the new spare.
+     */
+    public void setPlayer(@Nullable ExoPlayer player, @Nullable com.liskovsoft.smartyoutubetv2.common.exoplayer.versions.selector.RestoreTrackSelector selector) {
+        if (mPlayer == player) {
+            return;
         }
 
-        if (mContext == null || mSurface == null) {
+        if (mPlayer != null) {
+            try {
+                mPlayer.removeListener(mListener);
+                if (mSurface != null) {
+                    mPlayer.clearVideoSurfaceView(mSurface);
+                }
+            } catch (RuntimeException e) {
+                // released already
+            }
+        }
+
+        mPlayer = player;
+        mSelector = selector;
+        mLive = false;
+        mBuilding = null;
+        mVideoId = null;
+        mFrameRendered = false;
+        mAspectRatio = 0;
+
+        if (player != null) {
+            player.setVolume(0f);
+            player.setPlayWhenReady(false);
+            player.addListener(mListener);
+            if (mSurface != null) {
+                player.setVideoSurfaceView(mSurface);
+            }
+        }
+    }
+
+    /**
+     * JoTube role swap: the live Short's player goes to the core (it stays on screen here until the core's surface shows
+     * it; {@link #park} then). This preview has no player until {@link #setPlayer} gives it the old one.
+     */
+    @Nullable
+    public ExoPlayer handOverLive() {
+        ExoPlayer player = mPlayer;
+
+        if (player == null || !mLive) {
             return null;
         }
 
-        try {
-            DefaultTrackSelector trackSelector = new DefaultTrackSelector(mContext);
-            trackSelector.setParameters(trackSelector.buildUponParameters()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                    .setMaxVideoSize(1280, 1280)
-                    .setAllowVideoMixedMimeTypeAdaptiveness(false));
-            DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(1_000, 2_000, 250, 250)
-                    .build();
-            mPlayer = new ExoPlayer.Builder(mContext, new DefaultRenderersFactory(mContext).setEnableDecoderFallback(true))
-                    .setTrackSelector(trackSelector)
-                    .setLoadControl(loadControl)
-                    .setBandwidthMeter(ExoMediaSourceFactory.getBandwidthMeter(mContext))
-                    .build();
-            mPlayer.setVolume(0f);
-            mPlayer.setVideoSurfaceView(mSurface);
-            mPlayer.addListener(mListener);
-        } catch (RuntimeException e) {
-            Log.e(TAG, "Can't create the preview player: %s", e.getMessage());
-            mPlayer = null;
-        }
+        player.removeListener(mListener);
+        mPlayer = null;
+        mSelector = null;
+        mLive = false;
+        mVideoId = null;
+        mFrameRendered = false;
+        mAspectRatio = 0;
+        mHandler.removeCallbacks(mRefresh);
+        return player;
+    }
 
-        return mPlayer;
+    /** JoTube role swap: the live Short is on the core's surface now: the preview frame goes away. */
+    public void onHandedOver() {
+        park();
+        mQuietUntilMs = android.os.SystemClock.uptimeMillis() + QUIET_AFTER_TAKEOVER_MS;
     }
 
     /**
@@ -248,6 +482,46 @@ public class ShortsPreview {
      */
     public boolean isReadyFor(String videoId) {
         return mEnabled && mHolder != null && mPlayer != null && videoId != null && videoId.equals(mVideoId) && mFrameRendered;
+    }
+
+    /** JoTube: the prepared Short's picture shape (width / height), 0 if not known. */
+    public float getAspectRatio() {
+        return mAspectRatio;
+    }
+
+    @Nullable
+    public ExoPlayer getPlayer() {
+        return mPlayer;
+    }
+
+    /** The view that moves (the frame with the surface). */
+    @Nullable
+    public View getView() {
+        return mHolder;
+    }
+
+    /**
+     * JoTube live switch: the prepared Short starts playing on screen (silent: the switch fades the sound in).
+     */
+    public boolean startLive() {
+        if (mPlayer == null || !mFrameRendered) {
+            return false;
+        }
+        if (mSelector != null && silentSpare()) {
+            mSelector.setParameters(mSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false));
+        }
+        mLive = true;
+        mHandler.removeCallbacks(mRefresh);
+        mPlayer.setPlayWhenReady(true);
+        return true;
+    }
+
+    public boolean isLive() {
+        return mLive;
+    }
+
+    public void setLiveProblemListener(Runnable listener) {
+        mLiveProblem = listener;
     }
 
     /**
@@ -293,8 +567,12 @@ public class ShortsPreview {
      * The Short was taken by the main player: this one is free for the next.
      */
     public void consumed() {
+        boolean wasLive = mLive;
+        mLive = false;
+        mBuilding = null;
         mVideoId = null;
         mFrameRendered = false;
+        mAspectRatio = 0;
 
         if (mPlayer != null) {
             mPlayer.stop();
@@ -302,17 +580,18 @@ public class ShortsPreview {
         }
 
         park();
+
+        if (mPlayer != null) {
+            mPlayer.setVolume(0f);
+        }
+        if (wasLive) {
+            mQuietUntilMs = android.os.SystemClock.uptimeMillis() + QUIET_AFTER_TAKEOVER_MS;
+            scheduleRefresh(); // prepare the next one
+        }
     }
 
+    /** JoTube role swap: the player isn't this one's (the player screen releases it): only let it go. */
     private void releasePlayer() {
-        if (mPlayer != null) {
-            try {
-                mPlayer.removeListener(mListener);
-                mPlayer.release();
-            } catch (RuntimeException e) {
-                // ignore
-            }
-            mPlayer = null;
-        }
+        setPlayer(null, null);
     }
 }

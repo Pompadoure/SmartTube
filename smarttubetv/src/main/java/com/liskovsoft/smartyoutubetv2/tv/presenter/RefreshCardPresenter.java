@@ -1,5 +1,6 @@
 package com.liskovsoft.smartyoutubetv2.tv.presenter;
 
+import android.graphics.Color;
 import android.content.Context;
 import android.util.Pair;
 import android.view.Gravity;
@@ -36,7 +37,8 @@ public class RefreshCardPresenter extends Presenter {
         Pair<Integer, Integer> dimens = GridFragmentHelper.getCardDimensPx(
                 context, R.dimen.card_width, R.dimen.card_height, MainUIData.instance(context).getVideoGridScale());
 
-        int defaultColor = ContextCompat.getColor(context, Helpers.getThemeAttr(context, R.attr.cardDefaultBackground));
+        // JoTube: no card background (only the focused card is highlighted)
+        int defaultColor = Color.TRANSPARENT;
         int selectedColor = ContextCompat.getColor(context, Helpers.getThemeAttr(context, R.attr.cardSelectedBackground));
 
         FrameLayout card = new FrameLayout(context);

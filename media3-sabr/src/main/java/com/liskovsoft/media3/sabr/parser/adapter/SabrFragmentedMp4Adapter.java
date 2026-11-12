@@ -35,7 +35,6 @@ public class SabrFragmentedMp4Adapter extends SabrExtractorAdapter {
             result = readDelegate(input, seekPosition);
         } finally {
             if (result != RESULT_CONTINUE) {
-                Log.e(TAG, "Mp4Adapter: disposing, result=%s", result);
                 extractorInput.dispose();
             }
         }

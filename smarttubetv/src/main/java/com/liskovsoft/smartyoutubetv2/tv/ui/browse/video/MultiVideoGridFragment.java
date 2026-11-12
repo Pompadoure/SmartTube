@@ -7,7 +7,9 @@ import android.view.ViewTreeObserver;
 import android.widget.Toast;
 
 import androidx.annotation.Nullable;
+import androidx.leanback.widget.BaseGridView;
 import androidx.leanback.widget.ClassPresenterSelector;
+import androidx.leanback.widget.HorizontalGridView;
 import androidx.leanback.widget.OnItemViewClickedListener;
 import androidx.leanback.widget.OnItemViewSelectedListener;
 import androidx.leanback.widget.Presenter;
@@ -71,12 +73,13 @@ public class MultiVideoGridFragment extends MultiGridFragment implements VideoSe
 
         mMainPresenter = getMainPresenter();
         mCardPresenter1 = new ChannelCardPresenter();
+        final int railPx = GridFragmentHelper.getSidebarReservedPx(this); // JoTube: the sidebar rail, read once
         mCardPresenter2 = new VideoCardPresenter() {
             @Override
             protected android.util.Pair<Integer, Integer> getCardDimensPx(android.content.Context context) {
                 // Exactly three cards per row when the channel list is hidden
                 android.util.DisplayMetrics dm = context.getResources().getDisplayMetrics();
-                int screenW = Math.max(dm.widthPixels, dm.heightPixels);
+                int screenW = Math.max(dm.widthPixels, dm.heightPixels) - railPx; // JoTube: the sidebar rail
                 int spacing = context.getResources().getDimensionPixelSize(R.dimen.grid_item_horizontal_spacing);
                 int w = (int) ((screenW * 0.86f - spacing * 3) / 3f);
                 return new android.util.Pair<>(w, (int) (w * 9f / 16f));
@@ -99,6 +102,7 @@ public class MultiVideoGridFragment extends MultiGridFragment implements VideoSe
         super.onViewCreated(view, savedInstanceState);
 
         removePadding();
+        alignDockToStart(view);
 
         view.getViewTreeObserver().addOnGlobalFocusChangeListener(mFocusListener);
     }
@@ -117,6 +121,28 @@ public class MultiVideoGridFragment extends MultiGridFragment implements VideoSe
             getBrowseGrid1().setAlpha(1f);
         }
         super.onDestroyView();
+    }
+
+    /**
+     * JoTube: the focused grid of the dock (channels or videos) starts at the left edge of the content. Before, the dock
+     * centered the focused grid and, next to the sidebar rail, left the faded channel list as a big black area.
+     * Set once when the view is created: only the scroll position follows the focus, nothing is laid out again.
+     */
+    private static void alignDockToStart(View root) {
+        View dock = root != null ? root.findViewById(R.id.browse_grid_dock) : null;
+
+        if (!(dock instanceof HorizontalGridView)) {
+            return;
+        }
+
+        HorizontalGridView gridDock = (HorizontalGridView) dock;
+        gridDock.setWindowAlignment(BaseGridView.WINDOW_ALIGN_LOW_EDGE);
+        gridDock.setWindowAlignmentOffset(0);
+        gridDock.setWindowAlignmentOffsetPercent(0);
+        gridDock.setItemAlignmentOffset(0);
+        gridDock.setItemAlignmentOffsetPercent(0);
+        // Both grids stay attached while the videos fill the dock: left from the videos focuses the channels directly
+        gridDock.setPruneChild(false);
     }
 
     private static boolean isInside(View view, View container) {
@@ -545,7 +571,17 @@ public class MultiVideoGridFragment extends MultiGridFragment implements VideoSe
             int index = adapter.indexOf(item);
 
             if (index > (size - ViewUtil.GRID_SCROLL_CONTINUE_NUM)) {
-                mMainPresenter.onScrollEnd((Video) adapter.get(size - 1));
+                Video last = (Video) adapter.get(size - 1);
+                VideoGroup group = last.getGroup();
+
+                // JoTube: the player shares this group and sets its position to -1 (SuggestionsController
+                // "make the index consistent"). update() only routes position 1 to this grid, so after a video
+                // was played the continuation was loaded but dropped. This grid's group is always position 1.
+                if (group != null && group.getPosition() != 1) {
+                    group.setPosition(1);
+                }
+
+                mMainPresenter.onScrollEnd(last);
             }
         }
     }

@@ -24,7 +24,6 @@ import androidx.fragment.app.Fragment;
 import androidx.leanback.R;
 import androidx.leanback.app.BrowseSupportFragment;
 import androidx.leanback.app.RowsSupportFragment;
-import androidx.leanback.widget.HorizontalGridView;
 import androidx.leanback.widget.ItemBridgeAdapter;
 import androidx.leanback.widget.ListRowPresenter;
 import androidx.leanback.widget.ObjectAdapter;
@@ -479,8 +478,10 @@ public class SearchSupportFragment extends Fragment {
 
         VerticalGridView list = mRowsSupportFragment.getVerticalGridView();
         setupResultsLeftKey(list);
-        int mContainerListAlignTop =
-                getResources().getDimensionPixelSize(R.dimen.lb_search_browse_rows_align_top);
+        // JoTube: the results frame starts under the field (search_results_margin_top): the first row stays where it was
+        int mContainerListAlignTop = Math.max(0,
+                getResources().getDimensionPixelSize(R.dimen.lb_search_browse_rows_align_top)
+                - getResources().getDimensionPixelSize(com.liskovsoft.smartyoutubetv2.tv.R.dimen.search_results_margin_top));
         list.setItemAlignmentOffset(0);
         list.setItemAlignmentOffsetPercent(VerticalGridView.ITEM_ALIGN_OFFSET_PERCENT_DISABLED);
         list.setWindowAlignmentOffset(mContainerListAlignTop);
@@ -809,9 +810,18 @@ public class SearchSupportFragment extends Fragment {
 
     private SearchKeyboardView mKeyboard;
 
-    // JoTube: suggestions above the keyboard; keyboard and suggestions fade away while the results have the focus
-    private static final int COLUMN_FADE_MS = 180;
-    private HorizontalGridView mSuggestionGrid;
+    /**
+     * JoTube: a key of the built-in keyboard has the focus.
+     */
+    public boolean isKeyboardFocused() {
+        return mKeyboard != null && mKeyboard.hasFocus()
+                || mSuggestionGrid != null && mSuggestionGrid.hasFocus(); // JoTube: the suggestions are next to it
+    }
+
+    // JoTube: like the official app: suggestions left, keyboard right, results below them; keyboard and suggestions
+    // collapse (the results move up under the field) while the results have the focus
+    private static final int COLUMN_FADE_MS = 200;
+    private VerticalGridView mSuggestionGrid;
     private ObjectAdapter mSuggestionAdapter;
     private View mFragmentRoot;
     private boolean mLeftColumnHidden;
@@ -875,7 +885,7 @@ public class SearchSupportFragment extends Fragment {
     }
 
     /**
-     * The suggestions (tags) are shown in a strip above the keyboard.
+     * The suggestions (tags) are shown as a column of pills left of the keyboard.
      */
     protected void setSuggestions(ObjectAdapter adapter) {
         if (mSuggestionGrid == null || adapter == null) {
@@ -906,7 +916,17 @@ public class SearchSupportFragment extends Fragment {
 
         if (mSuggestionGrid != null) {
             mSuggestionGrid.setItemSpacing(Math.round(8 * getResources().getDisplayMetrics().density));
-            mSuggestionGrid.setWindowAlignment(HorizontalGridView.WINDOW_ALIGN_NO_EDGE);
+            // the first pill at the top, the list scrolls only when the focus goes past the end
+            mSuggestionGrid.setWindowAlignment(VerticalGridView.WINDOW_ALIGN_BOTH_EDGE);
+            // UP from the first pill = the field, DOWN from the last = the results: focusOutFront/End in the layout
+            // RIGHT from a pill goes to the keyboard (the pills have different widths)
+            mSuggestionGrid.setOnKeyInterceptListener(event -> {
+                if (event.getAction() == android.view.KeyEvent.ACTION_DOWN
+                        && event.getKeyCode() == android.view.KeyEvent.KEYCODE_DPAD_RIGHT && mKeyboard != null) {
+                    return mKeyboard.focusFirstKey();
+                }
+                return false;
+            });
         }
     }
 
@@ -930,7 +950,7 @@ public class SearchSupportFragment extends Fragment {
         }
 
         mLeftColumnHidden = hidden;
-        float shift = -24 * getResources().getDisplayMetrics().density;
+        float shift = -32 * getResources().getDisplayMetrics().density; // they move up while fading out
 
         fadeColumnView(mKeyboard, hidden, shift, true);
         fadeColumnView(mSuggestionGrid, hidden, shift, mSuggestionAdapter != null && mSuggestionAdapter.size() > 0);
@@ -938,33 +958,46 @@ public class SearchSupportFragment extends Fragment {
     }
 
     /**
-     * The results take the whole screen while the keyboard is away: the frame slides over the keyboard's width, then
-     * its left margin is changed in one step (no per-frame relayout of the grid).
+     * The results move up under the field while the keyboard is away, and back down (peeking under the keyboard)
+     * when it comes back. Only a translation: no relayout of the grid.
      */
     private void slideResultsFrame(boolean hidden) {
         View frame = mFragmentRoot != null ? mFragmentRoot.findViewById(R.id.lb_results_frame) : null;
 
-        if (frame == null || !(frame.getLayoutParams() instanceof android.view.ViewGroup.MarginLayoutParams)) {
+        if (frame == null) {
             return;
         }
 
-        android.view.ViewGroup.MarginLayoutParams params = (android.view.ViewGroup.MarginLayoutParams) frame.getLayoutParams();
-        int width = getResources().getDimensionPixelSize(com.liskovsoft.smartyoutubetv2.tv.R.dimen.search_keyboard_area_width);
-
+        int peek = getResources().getDimensionPixelSize(com.liskovsoft.smartyoutubetv2.tv.R.dimen.search_results_peek_offset);
         frame.animate().cancel();
+        frame.animate().translationY(hidden ? 0f : peek).setDuration(COLUMN_FADE_MS)
+                .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+    }
 
-        if (hidden) {
-            frame.animate().translationX(-width).setDuration(COLUMN_FADE_MS).withEndAction(() -> {
-                params.setMarginStart(0);
-                frame.setLayoutParams(params);
-                frame.setTranslationX(0f);
-            }).start();
-        } else {
-            params.setMarginStart(width);
-            frame.setLayoutParams(params);
-            frame.setTranslationX(-width);
-            frame.animate().translationX(0f).setDuration(COLUMN_FADE_MS).start();
+    /**
+     * JoTube: BACK on the keyboard or the suggestions while there are results: the keyboard collapses and the
+     * results get the focus (like the official app). False: nothing to do (BACK leaves the search as before).
+     */
+    public boolean collapseKeyboardToResults() {
+        if (mLeftColumnHidden || mResultAdapter == null || mResultAdapter.size() == 0 || mRowsSupportFragment == null
+                || mRowsSupportFragment.getVerticalGridView() == null || !hasResultCards()) {
+            return false;
         }
+
+        return mRowsSupportFragment.getVerticalGridView().requestFocus();
+    }
+
+    /** At least one row with cards (not only an empty or loading row). */
+    private boolean hasResultCards() {
+        for (int i = 0; i < mResultAdapter.size(); i++) {
+            Object row = mResultAdapter.get(i);
+            if (row instanceof androidx.leanback.widget.ListRow
+                    && ((androidx.leanback.widget.ListRow) row).getAdapter() != null
+                    && ((androidx.leanback.widget.ListRow) row).getAdapter().size() > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void fadeColumnView(View view, boolean hide, float shift, boolean visibleWhenShown) {
@@ -975,7 +1008,7 @@ public class SearchSupportFragment extends Fragment {
         view.animate().cancel();
 
         if (hide) {
-            view.animate().alpha(0f).translationX(shift).setDuration(COLUMN_FADE_MS)
+            view.animate().alpha(0f).translationY(shift).setDuration(COLUMN_FADE_MS)
                     .withEndAction(() -> {
                         if (mLeftColumnHidden) {
                             view.setVisibility(View.INVISIBLE);
@@ -983,12 +1016,12 @@ public class SearchSupportFragment extends Fragment {
                     }).start();
         } else if (visibleWhenShown) {
             view.setVisibility(View.VISIBLE);
-            view.animate().alpha(1f).translationX(0f).setDuration(COLUMN_FADE_MS).start();
+            view.animate().alpha(1f).translationY(0f).setDuration(COLUMN_FADE_MS).start();
         }
     }
 
     /**
-     * LEFT on the first card of a row brings the keyboard back (like the Subscriptions menu).
+     * JoTube: UP on the first row of the results brings the keyboard back (like the official app).
      */
     private void setupResultsLeftKey(VerticalGridView list) {
         if (list == null) {
@@ -997,14 +1030,11 @@ public class SearchSupportFragment extends Fragment {
 
         list.setOnKeyInterceptListener(event -> {
             if (!mLeftColumnHidden || event.getAction() != android.view.KeyEvent.ACTION_DOWN
-                    || event.getKeyCode() != android.view.KeyEvent.KEYCODE_DPAD_LEFT || mRowsSupportFragment == null) {
+                    || event.getKeyCode() != android.view.KeyEvent.KEYCODE_DPAD_UP || mRowsSupportFragment == null) {
                 return false;
             }
 
-            RowPresenter.ViewHolder rowViewHolder = mRowsSupportFragment.getRowViewHolder(mRowsSupportFragment.getSelectedPosition());
-
-            if (rowViewHolder instanceof ListRowPresenter.ViewHolder
-                    && ((ListRowPresenter.ViewHolder) rowViewHolder).getGridView().getSelectedPosition() == 0) {
+            if (mRowsSupportFragment.getSelectedPosition() <= 0) {
                 setLeftColumnHidden(false);
 
                 if (mKeyboard != null) {
@@ -1070,12 +1100,19 @@ public class SearchSupportFragment extends Fragment {
 
             @Override
             public boolean onLeaveRight() {
-                // Seamless jump to the suggestions (the first row) or the results
-                if (mRowsSupportFragment != null && mResultAdapter != null && mResultAdapter.size() > 0
-                        && mRowsSupportFragment.getVerticalGridView() != null) {
-                    return mRowsSupportFragment.getVerticalGridView().requestFocus();
-                }
-                return true; // nothing to jump to: stay
+                return true; // nothing to the right of the keyboard: stay
+            }
+
+            @Override
+            public boolean onLeaveLeft() {
+                // The suggestions are on the left
+                return mSuggestionGrid != null && mSuggestionGrid.getVisibility() == View.VISIBLE && mSuggestionGrid.requestFocus();
+            }
+
+            @Override
+            public boolean onLeaveDown() {
+                // The results are below (they move up when they get the focus)
+                return collapseKeyboardToResults();
             }
         });
     }

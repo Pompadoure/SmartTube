@@ -22,6 +22,7 @@ import android.graphics.Rect;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
+import android.view.FocusFinder;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewGroup.MarginLayoutParams;
@@ -724,6 +725,9 @@ public class BrowseSupportFragment extends BaseSupportFragment {
     boolean mShowingHeaders = true;
     boolean mCanShowHeaders = true;
     private int mContainerListMarginStart;
+    // JoTube MOD: a narrow rail of the headers stays on screen while the content has the focus (YouTube-style).
+    // 0 = stock leanback behavior. The headers never change their layout for it: the subclass clips them.
+    private int mHeadersRailWidth;
     private int mContainerListAlignTop;
     private boolean mMainFragmentScaleEnabled = true;
     OnItemViewSelectedListener mExternalOnItemViewSelectedListener;
@@ -1115,11 +1119,31 @@ public class BrowseSupportFragment extends BaseSupportFragment {
             } else if (direction == View.FOCUS_DOWN && mShowingHeaders) {
                 // disable focus_down moving into PageFragment.
                 return focused;
+            } else if (isHeadersRailActive() && !mShowingHeaders && mBrowseFrame != null
+                    && (direction == View.FOCUS_UP || direction == View.FOCUS_DOWN)) {
+                // JoTube MOD: the collapsed rail is only a picture. Up/down never moves into it (only start does).
+                View next = FocusFinder.getInstance().findNextFocus(mBrowseFrame, focused, direction);
+                View headersView = mHeadersSupportFragment.getView();
+                if (next != null && headersView != null && isDescendant(headersView, next)) {
+                    return focused;
+                }
+                return null;
             } else {
                 return null;
             }
         }
     };
+
+    private static boolean isDescendant(View parent, View view) {
+        View current = view;
+        while (current != null) {
+            if (current == parent) {
+                return true;
+            }
+            current = current.getParent() instanceof View ? (View) current.getParent() : null;
+        }
+        return false;
+    }
 
     final boolean isHeadersDataReady() {
         return mAdapter != null && mAdapter.size() != 0;
@@ -1353,6 +1377,7 @@ public class BrowseSupportFragment extends BaseSupportFragment {
                 }
                 if (mHeadersSupportFragment != null) {
                     mHeadersSupportFragment.onTransitionEnd();
+                    updateRailFocusability(mShowingHeaders); // JoTube MOD: after onTransitionEnd reset it
                     if (mShowingHeaders) {
                         VerticalGridView headerGridView = mHeadersSupportFragment.getVerticalGridView();
                         if (headerGridView != null && !headerGridView.hasFocus()) {
@@ -1372,6 +1397,15 @@ public class BrowseSupportFragment extends BaseSupportFragment {
     }
 
     void updateTitleViewVisibility() {
+        if (isHeadersRailActive()) {
+            // JoTube MOD: the title holds the account and search buttons of the sidebar rail: always visible.
+            // The branding (clock) still hides while scrolling, like before.
+            boolean branding = (mIsPageRow && mMainFragmentAdapter != null)
+                    ? mMainFragmentAdapter.mFragmentHost.mShowTitleView
+                    : isFirstRowWithContent(mSelectedPosition);
+            showTitle(TitleViewAdapter.SEARCH_VIEW_VISIBLE | (branding ? TitleViewAdapter.BRANDING_VIEW_VISIBLE : 0));
+            return;
+        }
         if (!mShowingHeaders) {
             boolean showTitleView;
             if (mIsPageRow && mMainFragmentAdapter != null) {
@@ -1451,20 +1485,72 @@ public class BrowseSupportFragment extends BaseSupportFragment {
         View containerList;
         containerList = mHeadersSupportFragment.getView();
         lp = (MarginLayoutParams) containerList.getLayoutParams();
-        lp.setMarginStart(onScreen ? 0 : -mContainerListMarginStart);
+        lp.setMarginStart(onScreen || isHeadersRailActive() ? 0 : -mContainerListMarginStart);
         containerList.setLayoutParams(lp);
+    }
+
+    /**
+     * JoTube MOD: width of the headers rail that stays visible while the content has the focus (0 = off).
+     * Call before the view is created.
+     */
+    public void setHeadersRailWidth(int railWidthPx) {
+        mHeadersRailWidth = Math.max(0, railWidthPx);
+    }
+
+    public int getHeadersRailWidth() {
+        return mHeadersRailWidth;
+    }
+
+    public final boolean isHeadersRailActive() {
+        return mHeadersRailWidth > 0 && mCanShowHeaders;
+    }
+
+    /**
+     * JoTube MOD: the headers were shown or collapsed to the rail. Only draw-only changes (clip, alpha) belong here.
+     * @param animate true while the headers transition runs
+     */
+    protected void onHeadersRailStateChanged(boolean expanded, boolean animate) {
     }
 
     void showHeaders(boolean show) {
         if (DEBUG) Log.v(TAG, "showHeaders " + show);
-        mHeadersSupportFragment.setHeadersEnabled(show);
+        // JoTube MOD: the rail keeps its items visible (no INVISIBLE/VISIBLE switch of the children)
+        mHeadersSupportFragment.setHeadersEnabled(show || isHeadersRailActive());
         setHeadersOnScreen(show);
         expandMainFragment(!show);
+        if (isHeadersRailActive()) {
+            updateRailFocusability(show);
+            onHeadersRailStateChanged(show, mHeadersTransition != null);
+        }
+    }
+
+    /**
+     * JoTube MOD: the items of the collapsed rail can't take the focus (no focus recovery or up/down into them).
+     * Moving start still focuses the list itself, which expands the headers like stock leanback.
+     */
+    private void updateRailFocusability(boolean expanded) {
+        if (!isHeadersRailActive() || mHeadersSupportFragment == null) {
+            return;
+        }
+
+        VerticalGridView grid = mHeadersSupportFragment.getVerticalGridView();
+
+        if (grid == null) {
+            return;
+        }
+
+        if (!expanded) {
+            grid.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+        } else if (mHeadersTransition == null
+                && grid.getDescendantFocusability() == ViewGroup.FOCUS_BLOCK_DESCENDANTS) {
+            // While expanding, the items stay blocked until the transition end (like stock leanback)
+            grid.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
+        }
     }
 
     private void expandMainFragment(boolean expand) {
         MarginLayoutParams params = (MarginLayoutParams) mScaleFrameLayout.getLayoutParams();
-        params.setMarginStart(!expand ? mContainerListMarginStart : 0);
+        params.setMarginStart(!expand ? mContainerListMarginStart : (isHeadersRailActive() ? mHeadersRailWidth : 0));
         mScaleFrameLayout.setLayoutParams(params);
         mMainFragmentAdapter.setExpand(expand);
 
@@ -1824,6 +1910,7 @@ public class BrowseSupportFragment extends BaseSupportFragment {
 
         if (mHeadersSupportFragment != null) {
             mHeadersSupportFragment.onTransitionEnd();
+            updateRailFocusability(mShowingHeaders); // JoTube MOD: after onTransitionEnd reset it
         }
     }
 

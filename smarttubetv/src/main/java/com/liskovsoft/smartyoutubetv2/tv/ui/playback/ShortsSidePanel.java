@@ -21,6 +21,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.bumptech.glide.Glide;
+import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
 import com.liskovsoft.smartyoutubetv2.tv.R;
@@ -60,10 +61,12 @@ public class ShortsSidePanel {
     private static final int RIGHT_MARGIN_DP = 20;
     // The frame around the video: white when the video gets the focus, then it fades to grey (like the official app)
     private static final int FRAME_MARGIN_DP = 16; // above and below the 9:16 frame (room for the border)
-    private static final int FRAME_VERTICAL_MARGIN_DP = 6; // JoTube: the border (5 dp outside the frame) stays on the screen, the video nearly fills it
+    private static final int FRAME_VERTICAL_MARGIN_DP = 6; // JoTube: the border (outside the frame) stays on the screen, the video nearly fills it
     private static final int BORDER_DP = 3;
-    private static final int BORDER_OUTSET_DP = 5;
-    private static final int BORDER_RADIUS_DP = 14;
+    // The border sits right on the edge of the picture (no gap). The radius is small enough for the stroke to cover
+    // the square corners of the video (a surface can't be clipped round).
+    private static final int BORDER_OUTSET_DP = BORDER_DP;
+    private static final int BORDER_RADIUS_DP = 8;
     private static final int BORDER_HOLD_MS = 1500;
     private static final int BORDER_FADE_MS = 700;
     private static final int BORDER_WHITE = Color.WHITE;
@@ -74,6 +77,9 @@ public class ShortsSidePanel {
     private final Runnable mFocusTimeout = () -> setFocus(ITEM_NONE);
     private final Runnable mUpdatePosition = this::updatePosition;
     private final Runnable mFadeBorder = this::fadeBorder;
+    private boolean mBorderReturning;
+    private int mBorderReturnMs;
+    private final Runnable mBorderReturn = this::returnBorder;
     private View mBorder;
     private View mCard; // black, behind the video: the frame keeps its size whatever the video's shape
     private GradientDrawable mBorderDrawable;
@@ -266,13 +272,36 @@ public class ShortsSidePanel {
             return;
         }
 
-        // JoTube: everything on the panel stays where it is and the content is swapped in place (no fade, no motion):
-        // the avatar comes from the memory cache (preloaded), the texts are set at once
+        // JoTube: the title and the channel fade over to the new Short (owner: avatars and texts popped in): a short
+        // fade out, the swap while they are invisible, a soft fade in. The buttons stay as they are.
+        if (direction == 0) {
+            mTitle.animate().cancel();
+            mChannelRow.animate().cancel();
+            mPendingBind = null;
+            resetTextMotion();
+            bind(video);
+            return;
+        }
+
+        boolean fadingOut = mPendingBind != null;
+        mPendingBind = video;
+        if (fadingOut) {
+            return; // the running fade out binds the newest one
+        }
+
         mTitle.animate().cancel();
         mChannelRow.animate().cancel();
-        mPendingBind = null;
-        resetTextMotion();
-        bind(video);
+        mChannelRow.animate().alpha(0f).setDuration(90).start();
+        mTitle.animate().alpha(0f).setDuration(90).withEndAction(() -> {
+            Video target = mPendingBind;
+            mPendingBind = null;
+            if (target == null || mPanel == null) {
+                return;
+            }
+            bind(target);
+            mTitle.animate().alpha(1f).setDuration(200).start();
+            mChannelRow.animate().alpha(1f).setDuration(200).start();
+        }).start();
     }
 
     private void resetTextMotion() {
@@ -287,6 +316,14 @@ public class ShortsSidePanel {
     public void bind(Video video) {
         if (mPanel == null || video == null) {
             return;
+        }
+
+        if (mPendingBind != null && mPendingBind != video) {
+            // a direct bind during the fade of bindAnimated: this one wins, the fade stops
+            mPendingBind = null;
+            mTitle.animate().cancel();
+            mChannelRow.animate().cancel();
+            resetTextMotion();
         }
 
         String title = video.getTitleFull() != null ? video.getTitleFull() : video.getTitle();
@@ -543,6 +580,14 @@ public class ShortsSidePanel {
         mBorderAnimator.start();
     }
 
+    private void returnBorder() {
+        if (mBorder != null) {
+            mBorderReturning = true;
+            mBorder.animate().cancel();
+            mBorder.animate().alpha(1f).setDuration(mBorderReturnMs).start();
+        }
+    }
+
     private void dimBorder() {
         if (mBorderDrawable == null) {
             return;
@@ -636,6 +681,37 @@ public class ShortsSidePanel {
         }
     }
 
+    /**
+     * JoTube: during the Shorts slide the frame (border and black card) steps aside, the pictures move without a
+     * window standing still around them; it comes back with the new video (the border fades in).
+     */
+    public void setSlideAside(boolean aside) {
+        setSlideAside(aside, 0);
+    }
+
+    /**
+     * @param slideMs the length of a slide whose incoming picture is already playing (live switch): the border comes
+     *                back while that picture settles, so it is there when the video is, not after it. 0: comes back at the end.
+     */
+    public void setSlideAside(boolean aside, int slideMs) {
+        mHandler.removeCallbacks(mBorderReturn);
+        if (mBorder != null) {
+            if (aside || mBorder.getAlpha() == 0f || !mBorderReturning) {
+                mBorder.animate().cancel();
+                // soft both ways (no pop)
+                mBorder.animate().alpha(aside ? 0f : 1f).setDuration(aside ? 120 : 220).start();
+            }
+            mBorderReturning = false;
+            if (aside && slideMs > 0) {
+                mHandler.postDelayed(mBorderReturn, slideMs * 55 / 100);
+                mBorderReturnMs = slideMs * 45 / 100;
+            }
+        }
+        if (mCard != null) {
+            mCard.setAlpha(aside ? 0f : 1f);
+        }
+    }
+
     private void restartTimeout() {
         if (mFocus != ITEM_NONE) {
             mHandler.removeCallbacks(mFocusTimeout);
@@ -719,6 +795,26 @@ public class ShortsSidePanel {
         }
     }
 
+    public float getVideoAspect() {
+        return mVideoAspect;
+    }
+
+    /**
+     * JoTube: the frame a Short of this shape would get (width, height, x shift of its center), without applying it.
+     * Null if there is no frame (not laid out, frame off).
+     */
+    public int[] frameFor(float aspect) {
+        if (mRoot == null || mRoot.getHeight() <= 0 || !mFrameEnabled) {
+            return null;
+        }
+        float saved = mVideoAspect;
+        mVideoAspect = aspect > 0 ? aspect : DEFAULT_ASPECT;
+        int rootHeight = mRoot.getHeight();
+        int[] frame = {getFrameWidth(rootHeight), getFrameHeight(rootHeight), getFrameOffsetX(rootHeight)};
+        mVideoAspect = saved;
+        return frame;
+    }
+
     private int getFrameWidth(int rootHeight) {
         int frameHeight = getFrameHeight(rootHeight);
         int defaultWidth = Math.round(frameHeight * DEFAULT_ASPECT);
@@ -796,7 +892,7 @@ public class ShortsSidePanel {
                 } catch (IllegalArgumentException e) {
                     // Activity destroyed
                 }
-                mAvatar.setImageResource(R.drawable.action_channel);
+                mAvatar.setImageResource(R.drawable.avatar_placeholder_round);
             }
             return;
         }
@@ -811,7 +907,7 @@ public class ShortsSidePanel {
             Glide.with(mAvatar)
                     .load(url)
                     .circleCrop()
-                    .placeholder(R.drawable.action_channel)
+                    .placeholder(R.drawable.avatar_placeholder_round)
                     .transition(com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions.withCrossFade(120)) // late ones only: a cache hit has no transition
                     .into(mAvatar);
         } catch (IllegalArgumentException e) {
@@ -823,9 +919,10 @@ public class ShortsSidePanel {
         ImageView button = new ImageView(context);
         button.setImageResource(iconResId);
         button.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        int padding = dp(11);
+        int padding = dp(12);
         button.setPadding(padding, padding, padding, padding);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(46), dp(46));
+        // JoTube: the size of the player's secondary buttons (lb_control_button_secondary_diameter)
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(48), dp(48));
         params.rightMargin = dp(8);
 
         if (row.getChildCount() > 0 && !(row.getChildAt(row.getChildCount() - 1) instanceof ImageView)) {
@@ -848,15 +945,19 @@ public class ShortsSidePanel {
             boolean focused = mFocus == item;
             boolean on = isOn(item);
 
-            GradientDrawable background = new GradientDrawable();
-            background.setShape(GradientDrawable.OVAL);
-            background.setColor(focused ? Color.WHITE : Color.argb(70, 255, 255, 255));
-            button.setBackground(background);
+            // JoTube: no background (owner: ugly). The icon alone: a bit dimmed, white and bigger when focused (the
+            // highlight color when on)
+            button.setBackground(null);
+            button.setAlpha(focused || on ? 1f : 0.75f);
 
-            int iconColor = focused ? (on ? highlight : Color.BLACK) : (on ? highlight : Color.WHITE);
-            button.setColorFilter(iconColor, PorterDuff.Mode.SRC_IN);
-            button.setScaleX(focused ? 1.1f : 1f);
-            button.setScaleY(focused ? 1.1f : 1f);
+            button.setColorFilter(on ? highlight : Color.WHITE, PorterDuff.Mode.SRC_IN);
+            float scale = focused ? 1.25f : 1f;
+            Object target = button.getTag(R.id.action_thumbs_up); // the scale it animates to (not the value right now)
+            if (!(target instanceof Float) || (Float) target != scale) {
+                button.setTag(R.id.action_thumbs_up, scale);
+                button.animate().cancel();
+                button.animate().scaleX(scale).scaleY(scale).setDuration(120).start();
+            }
         }
 
         boolean channelFocused = mFocus == ITEM_CHANNEL;

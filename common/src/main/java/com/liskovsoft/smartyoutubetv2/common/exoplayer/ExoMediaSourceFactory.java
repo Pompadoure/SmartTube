@@ -93,7 +93,13 @@ public class ExoMediaSourceFactory {
     }
 
     public MediaSource fromSabrFormatInfo(MediaItemFormatInfo formatInfo) {
-        return buildSabrMediaSource(formatInfo);
+        return buildSabrMediaSource(formatInfo, false);
+    }
+
+    /** JoTube: the spare player's source, from the manifest built in the background (used once: a manifest holds the
+     * SABR session state, two sources on one manifest got 403s, device log 2026-10-28 22:08). */
+    public MediaSource fromSabrFormatInfoPrebuilt(MediaItemFormatInfo formatInfo) {
+        return buildSabrMediaSource(formatInfo, true);
     }
 
     public MediaSource fromDashFormatInfo(MediaItemFormatInfo formatInfo) {
@@ -192,14 +198,14 @@ public class ExoMediaSourceFactory {
         return source;
     }
 
-    private MediaSource buildSabrMediaSource(MediaItemFormatInfo formatInfo) {
+    private MediaSource buildSabrMediaSource(MediaItemFormatInfo formatInfo, boolean usePrebuilt) {
         // Are you using FrameworkSampleSource or ExtractorSampleSource when you build your player?
         SabrMediaSource sabrSource = new SabrMediaSource.Factory(
                 getSabrChunkSourceFactory(),
                 null
         )
                 .setLoadErrorHandlingPolicy(new SabrDefaultLoadErrorHandlingPolicy())
-                .createMediaSource(getSabrManifest(formatInfo));
+                .createMediaSource(getSabrManifest(formatInfo, usePrebuilt));
         if (mTrackErrorFixer != null) {
             sabrSource.addEventListener(Utils.sHandler, mTrackErrorFixer.forVideo(formatInfo.getVideoId()));
         }
@@ -297,7 +303,28 @@ public class ExoMediaSourceFactory {
         return path != null && path.contains("timedtext");
     }
 
-    private SabrManifest getSabrManifest(MediaItemFormatInfo formatInfo) {
+    // JoTube: the SABR manifest of a Short is built from its format info (80-300 ms on the Streamer, device log
+    // 2026-10-28 18:17); the spare player's preparation builds it on a background thread first (prebuildSabrManifest)
+    private static final java.util.Map<MediaItemFormatInfo, SabrManifest> sSabrManifests =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
+    /** Any thread: builds and keeps the SABR manifest, so creating the source later on the main thread is quick. */
+    public static void prebuildSabrManifest(MediaItemFormatInfo formatInfo) {
+        if (formatInfo == null || !formatInfo.containsSabrFormats() || sSabrManifests.containsKey(formatInfo)) {
+            return;
+        }
+        sSabrManifests.put(formatInfo, new SabrManifestParser().parse(formatInfo));
+    }
+
+    public static boolean hasPrebuiltSabrManifest(MediaItemFormatInfo formatInfo) {
+        return formatInfo != null && sSabrManifests.containsKey(formatInfo);
+    }
+
+    private SabrManifest getSabrManifest(MediaItemFormatInfo formatInfo, boolean usePrebuilt) {
+        SabrManifest prebuilt = usePrebuilt ? sSabrManifests.remove(formatInfo) : null;
+        if (prebuilt != null) {
+            return prebuilt;
+        }
         SabrManifestParser parser = new SabrManifestParser();
         return parser.parse(formatInfo);
     }

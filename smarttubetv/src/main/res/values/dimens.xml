@@ -14,7 +14,7 @@
     <dimen name="tiny_card_width">150dp</dimen>
     <dimen name="tiny_card_height">25dp</dimen>
 
-    <dimen name="channel_card_width">200dp</dimen>
+    <dimen name="channel_card_width">150dp</dimen>
     <dimen name="channel_card_height">30dp</dimen>
     <dimen name="channel_card_text_width">140dp</dimen>
 
@@ -58,10 +58,16 @@
     <dimen name="lb_search_bar_items_width">600dp</dimen>
 
     <!-- JoTube: built-in search keyboard -->
-    <dimen name="search_keyboard_area_width">480dp</dimen>
-    <dimen name="search_suggestions_margin_top">92dp</dimen>
-    <dimen name="search_keyboard_margin_top">148dp</dimen>
-    <dimen name="search_keyboard_margin_start">56dp</dimen>
+    <!-- JoTube: search like the official app: suggestions left, keyboard right, results below (peeking) -->
+    <dimen name="search_suggestions_margin_top">100dp</dimen>
+    <dimen name="search_suggestions_margin_start">56dp</dimen>
+    <dimen name="search_suggestions_width">420dp</dimen>
+    <dimen name="search_suggestions_height">250dp</dimen>
+    <dimen name="search_keyboard_margin_top">100dp</dimen>
+    <dimen name="search_keyboard_margin_start">520dp</dimen>
+    <!-- the results frame starts under the field; it is moved down by the peek offset while the keyboard is shown -->
+    <dimen name="search_results_margin_top">96dp</dimen>
+    <dimen name="search_results_peek_offset">264dp</dimen>
 
     <!-- Increase player time text size -->
     <dimen name="lb_playback_controls_time_text_size">18sp</dimen>
@@ -97,6 +103,8 @@
 
     <!-- MOD: Zoom factor of focused sidebar header (default: 1.2) -->
     <!--<item format="float" name="lb_browse_header_select_scale" type="dimen">1.2</item>-->
+    <!-- JoTube: no zoom, the focused item gets a pill like YouTube -->
+    <item format="float" name="lb_browse_header_select_scale" type="dimen">1.0</item>
 
     <!--
     Space between cards. Origin: 8dp More info:
@@ -110,7 +118,7 @@
 
     <!-- Browse headers spacing. Origin: 21dp -->
     <!--<dimen name="lb_browse_headers_vertical_spacing">10dp</dimen>-->
-    <dimen name="browse_headers_vertical_spacing">10dp</dimen>
+    <dimen name="browse_headers_vertical_spacing">4dp</dimen>
 
     <!-- Vine card widget values -->
     <dimen name="lb_basic_card_main_width">140dp</dimen>
@@ -143,4 +151,28 @@
     <dimen name="tooltip_vertical_padding_mod">6.5dp</dimen>
     <dimen name="tooltip_y_offset_non_touch_mod">0dp</dimen>
     <dimen name="tooltip_y_offset_touch_mod">16dp</dimen>
+
+    <!-- JoTube: YouTube-style sidebar -->
+    <dimen name="sidebar_item_height">44dp</dimen>
+    <!-- headers grid width 270dp - its padding start 11dp and end 22dp -->
+    <dimen name="sidebar_item_width">237dp</dimen>
+    <dimen name="sidebar_item_padding">14dp</dimen>
+    <dimen name="sidebar_icon_size">22dp</dimen>
+    <dimen name="sidebar_icon_gap">18dp</dimen>
+    <dimen name="sidebar_text_size">16sp</dimen>
+    <!-- icons centered in the collapsed rail: 11 + 14 + 22/2 = 36 = rail/2 -->
+    <dimen name="sidebar_padding_start">11dp</dimen>
+    <dimen name="sidebar_padding_end">22dp</dimen>
+    <!-- collapsed sidebar: only the icons stay visible while the content has the focus -->
+    <dimen name="sidebar_rail_width">72dp</dimen>
+    <!-- grids next to the rail: rail 72 + 16 + 24 = the stock paddings 56 + 56 (same columns, same cards) -->
+    <dimen name="sidebar_content_padding_start">16dp</dimen>
+    <dimen name="sidebar_content_padding_end">24dp</dimen>
+    <!-- account and search buttons at the top of the rail -->
+    <dimen name="sidebar_orb_size">36dp</dimen>
+    <dimen name="sidebar_orb_gap">8dp</dimen>
+    <dimen name="sidebar_orb_icon_size">20dp</dimen>
+    <dimen name="sidebar_orb_avatar_size">32dp</dimen>
+    <!-- the sections start below them: title padding 27 + 36 + 8 + 36 + 29 -->
+    <dimen name="sidebar_list_padding_top">136dp</dimen>
 </resources>

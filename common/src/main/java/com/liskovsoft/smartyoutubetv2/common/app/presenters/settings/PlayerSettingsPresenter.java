@@ -391,6 +391,10 @@ public class PlayerSettingsPresenter extends BasePresenter<Void> {
                 option -> mPlayerTweaksData.setLoopShortsEnabled(option.isSelected()),
                 mPlayerTweaksData.isLoopShortsEnabled()));
 
+        options.add(UiOptionItem.from(getContext().getString(R.string.player_shorts_slide),
+                option -> mPlayerTweaksData.setShortsSlideEnabled(option.isSelected()),
+                mPlayerTweaksData.isShortsSlideEnabled()));
+
         options.add(UiOptionItem.from(getContext().getString(R.string.player_shorts_preview),
                 option -> mPlayerTweaksData.setShortsPreviewPlayerEnabled(option.isSelected()),
                 mPlayerTweaksData.isShortsPreviewPlayerEnabled()));

@@ -67,8 +67,8 @@ public class HQDialogController extends BasePlayerController {
 
         mCategoriesInt.clear();
         mCategories.clear();
-        mAppDialogPresenter.enableTransparent(true);
-        mAppDialogPresenter.enableOverlay(true);
+        // JoTube: a normal (solid, navigable) dialog. Overlay mode closed the dialog on every navigation key and handed
+        // the key to the player (notification style), so the list couldn't be navigated; transparent was too see-through.
         mAppDialogPresenter.appendCategory(OptionCategory.from(
                 VIDEO_FORMATS_ID,
                 OptionCategory.TYPE_RADIO_LIST,

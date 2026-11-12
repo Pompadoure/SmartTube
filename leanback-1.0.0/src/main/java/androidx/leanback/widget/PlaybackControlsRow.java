@@ -45,6 +45,24 @@ import androidx.leanback.util.MathUtil;
  */
 public class PlaybackControlsRow extends Row {
 
+    /** Icons may be vectors now: draw them into a bitmap drawable for the code that tints the bitmap. */
+    public static BitmapDrawable toBitmapDrawable(Context context, Drawable drawable) {
+        if (drawable == null) {
+            return null;
+        }
+        if (drawable instanceof BitmapDrawable) {
+            return (BitmapDrawable) drawable;
+        }
+        int w = Math.max(1, drawable.getIntrinsicWidth());
+        int h = Math.max(1, drawable.getIntrinsicHeight());
+        android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
+        drawable.setBounds(0, 0, w, h);
+        drawable.draw(canvas);
+        return new BitmapDrawable(context.getResources(), bitmap);
+    }
+
+
     /**
      * Listener for progress or duration change.
      */
@@ -534,10 +552,10 @@ public class PlaybackControlsRow extends Row {
         public RepeatAction(Context context, int repeatAllColor, int repeatOneColor) {
             super(R.id.lb_control_repeat);
             Drawable[] drawables = new Drawable[3];
-            BitmapDrawable repeatDrawable = (BitmapDrawable) getStyledDrawable(context,
-                    R.styleable.lbPlaybackControlsActionIcons_repeat);
-            BitmapDrawable repeatOneDrawable = (BitmapDrawable) getStyledDrawable(context,
-                    R.styleable.lbPlaybackControlsActionIcons_repeat_one);
+            BitmapDrawable repeatDrawable = toBitmapDrawable(context, getStyledDrawable(context,
+                    R.styleable.lbPlaybackControlsActionIcons_repeat));
+            BitmapDrawable repeatOneDrawable = toBitmapDrawable(context, getStyledDrawable(context,
+                    R.styleable.lbPlaybackControlsActionIcons_repeat_one));
             drawables[INDEX_NONE] = repeatDrawable;
             drawables[INDEX_ALL] = repeatDrawable == null ? null
                     : new BitmapDrawable(context.getResources(),
@@ -599,8 +617,8 @@ public class PlaybackControlsRow extends Row {
          */
         public ShuffleAction(Context context, int highlightColor) {
             super(R.id.lb_control_shuffle);
-            BitmapDrawable uncoloredDrawable = (BitmapDrawable) getStyledDrawable(context,
-                    R.styleable.lbPlaybackControlsActionIcons_shuffle);
+            BitmapDrawable uncoloredDrawable = toBitmapDrawable(context, getStyledDrawable(context,
+                    R.styleable.lbPlaybackControlsActionIcons_shuffle));
             Drawable[] drawables = new Drawable[2];
             drawables[INDEX_OFF] = uncoloredDrawable;
             drawables[INDEX_ON] = new BitmapDrawable(context.getResources(),
@@ -657,8 +675,8 @@ public class PlaybackControlsRow extends Row {
          */
         public HighQualityAction(Context context, int highlightColor) {
             super(R.id.lb_control_high_quality);
-            BitmapDrawable uncoloredDrawable = (BitmapDrawable) getStyledDrawable(context,
-                    R.styleable.lbPlaybackControlsActionIcons_high_quality);
+            BitmapDrawable uncoloredDrawable = toBitmapDrawable(context, getStyledDrawable(context,
+                    R.styleable.lbPlaybackControlsActionIcons_high_quality));
             Drawable[] drawables = new Drawable[2];
             drawables[INDEX_OFF] = uncoloredDrawable;
             drawables[INDEX_ON] = new BitmapDrawable(context.getResources(),
@@ -718,8 +736,8 @@ public class PlaybackControlsRow extends Row {
          */
         public ClosedCaptioningAction(Context context, int highlightColor) {
             super(R.id.lb_control_closed_captioning);
-            BitmapDrawable uncoloredDrawable = (BitmapDrawable) getStyledDrawable(context,
-                    R.styleable.lbPlaybackControlsActionIcons_closed_captioning);
+            BitmapDrawable uncoloredDrawable = toBitmapDrawable(context, getStyledDrawable(context,
+                    R.styleable.lbPlaybackControlsActionIcons_closed_captioning));
             Drawable[] drawables = new Drawable[2];
             drawables[INDEX_OFF] = uncoloredDrawable;
             drawables[INDEX_ON] = new BitmapDrawable(context.getResources(),

@@ -467,7 +467,8 @@ public abstract class BaseMenuPresenter extends BasePresenter<Void> {
             return;
         }
 
-        if (getSection() != null && getSection().getId() != MediaGroup.TYPE_HISTORY) {
+        if (getSection() != null && getSection().getId() != MediaGroup.TYPE_HISTORY
+                && getSection().getId() != com.liskovsoft.smartyoutubetv2.common.app.presenters.service.SidebarService.TYPE_SHORTS_HISTORY) {
             return;
         }
 

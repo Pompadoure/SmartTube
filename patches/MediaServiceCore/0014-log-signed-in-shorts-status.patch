@@ -1,0 +1,39 @@
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
+index 62e9290..a634eb3 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/browse/v2/BrowseService2.kt
+@@ -234,8 +234,9 @@ internal open class BrowseService2 {
+                 BrowseApiHelper.getReelDetailsQuery(AppClient.WEB, seedVideoId, seedParams)
+             else BrowseApiHelper.getReelQuery()
+             val firstResult = mBrowseApi.getReelResult(query)
++            val firstItemOrNull = if (auth) getShortsSignedInLogged(firstResult) else RetrofitHelper.get(firstResult, false)
+ 
+-            RetrofitHelper.get(firstResult, auth)?.let { firstItem ->
++            firstItemOrNull?.let { firstItem ->
+                 val result = continueShortsWeb(firstItem.getContinuationToken(), auth)
+ 
+                 if (seedVideoId == null) {
+@@ -265,6 +266,23 @@ internal open class BrowseService2 {
+         return withShortsAuth<MediaGroup>(what, { isEmptyShorts(it) }) { auth -> continueShortsWeb(continuationKey, auth) }
+     }
+ 
++    /** JoTube: the signed-in reel request with its HTTP status in the log (why does YouTube give nothing?). */
++    private fun getShortsSignedInLogged(call: retrofit2.Call<ReelResult?>): ReelResult? {
++        val response = RetrofitHelper.getResponse(call)
++        if (response == null) {
++            Log.d(SHORTS_TAG, "Shorts feed: signed-in reel request: no response")
++            return null
++        }
++        val body = response.body()
++        if (body == null) {
++            val err = try { response.errorBody()?.string()?.take(300) } catch (e: Exception) { null }
++            Log.w(SHORTS_TAG, "Shorts feed: signed-in reel request: HTTP %s, no body: %s", response.code(), err)
++        } else if (body.getVideoId() == null) {
++            Log.w(SHORTS_TAG, "Shorts feed: signed-in reel request: HTTP %s, a body without a Short", response.code())
++        }
++        return body
++    }
++
+     private fun isEmptyShorts(group: MediaGroup?): Boolean {
+         return group == null || group.mediaItems.isNullOrEmpty()
+     }

@@ -29,11 +29,12 @@ public class SabrMatroskaAdapter extends SabrExtractorAdapter {
             Log.e(TAG, "Propagating SABR control signal: %s", e.getMessage());
             throw e;
         } catch (Exception e) {
-            Log.e(TAG, "User doing seek? %s: %s", e.getClass().getSimpleName(), e.getMessage());
-            e.printStackTrace();
+            if (!(e instanceof java.io.InterruptedIOException)) { // a cancelled load (seek, next Short) is normal: no noise
+                Log.e(TAG, "Read failed: %s: %s", e.getClass().getSimpleName(), e.getMessage());
+                e.printStackTrace();
+            }
         } finally {
             if (result != RESULT_CONTINUE) {
-                Log.e(TAG, "MatroskaAdapter: disposing, result=%s", result);
                 extractorInput.dispose();
             }
         }

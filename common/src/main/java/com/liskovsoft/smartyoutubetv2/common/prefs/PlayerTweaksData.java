@@ -101,6 +101,7 @@ public class PlayerTweaksData implements ProfileChangeListener {
     private boolean mIsUnsafeAudioFormatsEnabled;
     private boolean mIsLoopShortsEnabled;
     private boolean mIsShortsPreviewPlayerEnabled; // JoTube media3: second player shows the next Short's first frame
+    private boolean mIsShortsSlideEnabled; // JoTube media3: slide between Shorts (off: the new one simply appears)
     private boolean mIsQuickSkipShortsEnabled;
     private boolean mIsQuickSkipShortsAltEnabled;
     private boolean mIsQuickSkipVideosEnabled;
@@ -579,6 +580,15 @@ public class PlayerTweaksData implements ProfileChangeListener {
         persistData();
     }
 
+    public boolean isShortsSlideEnabled() {
+        return mIsShortsSlideEnabled;
+    }
+
+    public void setShortsSlideEnabled(boolean enable) {
+        mIsShortsSlideEnabled = enable;
+        persistData();
+    }
+
     public boolean isLoopShortsEnabled() {
         return mIsLoopShortsEnabled;
     }
@@ -775,6 +785,8 @@ public class PlayerTweaksData implements ProfileChangeListener {
         mIsAudioTimeStretchingEnabled = Helpers.parseBoolean(split, 59, true);
         mIsQueueRespectsPlaybackMode = Helpers.parseBoolean(split, 60, false);
         mIsShortsPreviewPlayerEnabled = Helpers.parseBoolean(split, 61, false);
+        // JoTube 2026-10-24: the new slide is on by default (index 62 was the old opt-in slide)
+        mIsShortsSlideEnabled = Helpers.parseBoolean(split, 63, true);
 
         updateDefaultValues();
     }
@@ -803,7 +815,7 @@ public class PlayerTweaksData implements ProfileChangeListener {
                 mIsOculusQuestFixEnabled, null, mIsExtraLongSpeedListEnabled, mIsQuickSkipVideosEnabled, mIsNetworkErrorFixingDisabled, mIsCommentsPlacedLeft,
                 null, mIsAudioFocusEnabled, mIsDontResizeVideoToFitDialogEnabled, mIsSuggestionsHorizontallyScrolled,
                 mIsQuickSkipShortsAltEnabled, mIsQuickSkipVideosAltEnabled, mIsAudioTimeStretchingEnabled, mIsQueueRespectsPlaybackMode,
-                mIsShortsPreviewPlayerEnabled
+                mIsShortsPreviewPlayerEnabled, null, mIsShortsSlideEnabled
                 ));
     }
 

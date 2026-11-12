@@ -195,7 +195,7 @@ public class VideoLoaderController extends BasePlayerController {
     }
 
     public void loadPrevious() {
-        if (getPlayer() == null) {
+        if (getPlayer() == null || getPlayer().isShortsLiveSwitchSliding()) {
             return;
         }
 
@@ -211,7 +211,7 @@ public class VideoLoaderController extends BasePlayerController {
     }
 
     public void loadNext() {
-        if (getPlayer() == null || getVideo() == null) {
+        if (getPlayer() == null || getVideo() == null || getPlayer().isShortsLiveSwitchSliding()) {
             return;
         }
 
@@ -238,7 +238,11 @@ public class VideoLoaderController extends BasePlayerController {
                 ShortsTransitionState.DIRECTION_NEXT : ShortsTransitionState.DIRECTION_NONE);
 
         if (next != null) {
-            openVideoInt(next);
+            // JoTube: a prepared Short plays live at once (second player); the core opens it after the slide
+            final Video target = next;
+            if (!getVideo().isShorts || !next.isShorts || !getPlayer().startShortsLiveSwitch(target, () -> openVideoInt(target))) {
+                openVideoInt(next);
+            }
         } else if (getVideo().isShorts) {
             // End of the loaded part of the feed: the continuation is being loaded
             MessageHelpers.showMessage(getContext(), R.string.wait_data_loading);

@@ -3,6 +3,8 @@ package com.liskovsoft.smartyoutubetv2.common.exoplayer.controller;
 import androidx.media3.exoplayer.source.preload.DefaultPreloadManager.PreloadStatus;
 import androidx.media3.exoplayer.source.preload.TargetPreloadStatusControl;
 
+import android.content.Context;
+
 /**
  * JoTube M3: how much of each queued Short {@link androidx.media3.exoplayer.source.preload.DefaultPreloadManager}
  * loads in advance. The ranking data of a Short is a stable key (order-preserving, with gaps so a Short can be inserted
@@ -13,6 +15,28 @@ public final class ShortsPreloadControl implements TargetPreloadStatusControl<In
     public static final long NEXT_PRELOAD_MS = 6_000;
     public static final long NEXT_2_PRELOAD_MS = 3_000;
     public static final long PREVIOUS_PRELOAD_MS = 3_000; // the swipe back
+
+    private final Context mContext;
+    // JoTube: the spare player prepares the next Short itself (its own source: the preloaded ones play only on the
+    // preload player's thread). Preloading the Shorts ahead too downloaded every start chunk twice (device log
+    // 2026-10-28 16:26: 3-5 start chunks of 1-2 MB per swipe; the spare's took up to 2.3 s).
+    private static volatile boolean sSpareCoversNext;
+
+    public static void setSpareCoversNext(boolean covers) {
+        sSpareCoversNext = covers;
+    }
+
+    // JoTube: the main player plays the preload manager's source of the current Short (else its own source: then the
+    // manager's copy of the current Short was a second download of it, device log 2026-10-28 18:17)
+    private static volatile boolean sPlayingFromPreload = true;
+
+    public static void setPlayingFromPreload(boolean fromPreload) {
+        sPlayingFromPreload = fromPreload;
+    }
+
+    public ShortsPreloadControl(Context context) {
+        mContext = context;
+    }
 
     private static final class State {
         final int[] keys;
@@ -60,6 +84,12 @@ public final class ShortsPreloadControl implements TargetPreloadStatusControl<In
         }
 
         if (index == -1 || state.current == -1) {
+            return PreloadStatus.PRELOAD_STATUS_NOT_PRELOADED;
+        }
+
+        // With the spare player nothing is preloaded: the playing Short and the previous one were downloaded again by the
+        // preload manager too (its sources play only on one of the two players): log 2026-10-28 16:48, 3 start chunks per swipe
+        if (sSpareCoversNext && (index != state.current || !sPlayingFromPreload)) {
             return PreloadStatus.PRELOAD_STATUS_NOT_PRELOADED;
         }
 

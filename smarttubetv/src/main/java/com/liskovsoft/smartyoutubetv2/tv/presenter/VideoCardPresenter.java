@@ -6,10 +6,12 @@ import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.InsetDrawable;
 import android.graphics.Typeface;
 import androidx.core.content.res.ResourcesCompat;
 import android.os.Build.VERSION;
 import android.util.Pair;
+import android.view.Gravity;
 import android.view.View;
 import android.graphics.Outline;
 import android.view.ViewOutlineProvider;
@@ -52,6 +54,7 @@ public class VideoCardPresenter extends LongClickPresenter {
     private int mThumbQuality;
     private int mWidth;
     private int mHeight;
+    private int mDefaultTitleGravity = Integer.MIN_VALUE;
 
     @Override
     public ViewHolder onCreateViewHolder(ViewGroup parent) {
@@ -161,10 +164,15 @@ public class VideoCardPresenter extends LongClickPresenter {
                 boolean round = view.getMainImageView().getClipToOutline();
                 if (round) {
                     outline.setShape(GradientDrawable.OVAL);
+                    // Avatar: the ring goes around the circle, not around the (padded) square card
+                    ImageView avatar = view.getMainImageView();
+                    wrapper.setForeground(avatar.getPaddingLeft() > 0 || avatar.getPaddingTop() > 0 ?
+                            new InsetDrawable(outline, avatar.getPaddingLeft(), avatar.getPaddingTop(),
+                                    avatar.getPaddingRight(), avatar.getPaddingBottom()) : outline);
                 } else {
                     outline.setCornerRadius(12 * d);
+                    wrapper.setForeground(outline);
                 }
-                wrapper.setForeground(outline);
             } else {
                 wrapper.setForeground(null);
             }
@@ -199,6 +207,7 @@ public class VideoCardPresenter extends LongClickPresenter {
         }
 
         cardView.setMainImageDimensions(mWidth, mHeight);
+        updateAvatarCardText(cardView, isAvatarCard(video));
 
         if (context instanceof Activity && ((Activity) context).isDestroyed()) {
             // Glide.with(context): IllegalArgumentException: You cannot start a load for a destroyed activity
@@ -212,6 +221,7 @@ public class VideoCardPresenter extends LongClickPresenter {
         }
 
         // Cards are recycled: undo the round avatar look
+        cardView.getMainImageView().setPadding(0, 0, 0, 0);
         cardView.getMainImageView().setClipToOutline(false);
         cardView.getMainImageView().setOutlineProvider(ViewOutlineProvider.BACKGROUND);
         cardView.getMainImageView().setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -254,19 +264,44 @@ public class VideoCardPresenter extends LongClickPresenter {
     }
 
     /**
-     * JoTube: avatar is drawn as a circle (~60% of the card height) in the middle of the card.
+     * JoTube: channel avatar cards show only the channel name, centered under the circle (no @handle/subscribers).
+     * Cards are recycled, so the normal look is restored for the other cards.
+     */
+    private void updateAvatarCardText(ComplexImageCardView cardView, boolean avatar) {
+        cardView.enableContent(isContentEnabled() && !avatar);
+
+        TextView titleText = cardView.findViewById(R.id.title_text);
+        if (titleText != null) {
+            if (mDefaultTitleGravity == Integer.MIN_VALUE) {
+                mDefaultTitleGravity = titleText.getGravity();
+            }
+            titleText.setGravity(avatar ? Gravity.CENTER_HORIZONTAL | Gravity.TOP : mDefaultTitleGravity);
+        }
+    }
+
+    /**
+     * JoTube: avatar is drawn as a circle (~45% of the card height) in the middle of a square card as high as the
+     * thumbnails (the card keeps its width for the channel name, the titles line up with the video cards).
      * The source is requested in a bigger size (the default one is tiny) and scaled down: sharp result.
      */
     private void bindChannelAvatar(ComplexImageCardView cardView, Context context, Video video) {
-        // A round button: the whole picture is a circle (the card is as wide as it is high)
-        int size = Math.max(mHeight, 1);
-        cardView.setMainImageDimensions(size, size);
+        // A small round button (~35% of the thumbnail height; 45% and more were too big). The card is only a bit wider
+        // than the circle and as high as the circle plus a margin: the name sits close under it and is centered on it.
+        float density = context.getResources().getDisplayMetrics().density;
+        int size = Math.max(Math.round(mHeight * 0.35f), 1);
+        int cardWidth = Math.min(Math.round(size * 1.9f), mWidth);
+        int margin = Math.round(6 * density);
+        int cardHeight = size + 2 * margin;
+        int paddingX = (cardWidth - size) / 2;
+        cardView.setMainImageDimensions(cardWidth, cardHeight);
         ImageView imageView = cardView.getMainImageView();
+        imageView.setPadding(paddingX, margin, paddingX, margin);
         imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
         imageView.setOutlineProvider(new ViewOutlineProvider() {
             @Override
             public void getOutline(View view, Outline outline) {
-                outline.setOval(0, 0, view.getWidth(), view.getHeight());
+                outline.setOval(view.getPaddingLeft(), view.getPaddingTop(),
+                        view.getWidth() - view.getPaddingRight(), view.getHeight() - view.getPaddingBottom());
             }
         });
         imageView.setClipToOutline(true);

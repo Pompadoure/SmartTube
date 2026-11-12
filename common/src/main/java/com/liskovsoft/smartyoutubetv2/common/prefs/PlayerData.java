@@ -777,6 +777,7 @@ public class PlayerData extends DataChangeBase implements PlayerConstants, Profi
         mDefaultVideoFormats.put("AFTMM", FormatItem.VIDEO_4K_VP9_60); // Stick 4K 2018
         mDefaultVideoFormats.put("AFTKA", FormatItem.VIDEO_4K_VP9_60); // Stick 4K Max 2021
         mDefaultVideoFormats.put("P1", FormatItem.VIDEO_FHD_AVC_60); // Chinese projector (see annoying emails)
+        mDefaultVideoFormats.put("Google TV Streamer", FormatItem.VIDEO_FHD_VP9_60); // 32-bit MTK, 4K VP9 stutters
     }
 
     private void restoreState() {

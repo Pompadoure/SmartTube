@@ -1,6 +1,11 @@
 package com.liskovsoft.smartyoutubetv2.tv.ui.browse;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.content.Context;
+import android.graphics.Color;
+import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Handler;
@@ -21,7 +26,10 @@ import androidx.leanback.widget.ListRowPresenter;
 import androidx.leanback.widget.PageRow;
 import androidx.leanback.widget.Presenter;
 import androidx.leanback.widget.PresenterSelector;
+import androidx.leanback.widget.SearchOrbView;
 import androidx.leanback.widget.TitleHelper;
+import androidx.leanback.widget.VerticalGridView;
+import androidx.recyclerview.widget.RecyclerView;
 import com.bumptech.glide.Glide;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.BrowseSection;
@@ -44,6 +52,7 @@ import com.liskovsoft.smartyoutubetv2.tv.ui.browse.dialog.ErrorDialogFragment;
 import com.liskovsoft.smartyoutubetv2.tv.ui.mod.leanback.headers.ExtendedHeadersSupportFragment;
 import com.liskovsoft.smartyoutubetv2.tv.ui.mod.leanback.misc.ProgressBarManager;
 import com.liskovsoft.smartyoutubetv2.tv.ui.playback.ShortsBackground;
+import com.liskovsoft.smartyoutubetv2.tv.ui.widgets.browse.NavigateTitleView;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -67,9 +76,16 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
     private CrashRestorer mCrashRestorer;
     private VideoCardPresenter mPreloadCardPresenter; // JoTube: sidebar warm-up, the same presenter classes as the section fragments
     private ShortsCardPresenter mPreloadShortsPresenter;
+    private ValueAnimator mRailAnimator; // JoTube: clip of the sidebar between the icon rail and the full menu
+    private VerticalGridView mRailLabelsGrid; // JoTube: the headers list whose attached items get the label alpha
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        if (getContext() != null) {
+            // JoTube: YouTube-style sidebar, only the icons stay while the content has the focus (before the views exist)
+            setHeadersRailWidth(getContext().getResources().getDimensionPixelSize(R.dimen.sidebar_rail_width));
+        }
+
         super.onCreate(null);
 
         if (getContext() == null) {
@@ -106,6 +122,11 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
         View root = super.onCreateView(inflater, container, savedInstanceState);
 
         mProgressBarManager.setRootView((ViewGroup) root);
+
+        // JoTube: account and search sit at the top of the sidebar rail
+        if (getTitleView() instanceof NavigateTitleView && isHeadersRailActive()) {
+            ((NavigateTitleView) getTitleView()).setSidebarRailMode(getHeadersRailWidth());
+        }
 
         return root;
     }
@@ -217,8 +238,6 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
         setHeadersState(HEADERS_ENABLED);
         setHeadersTransitionOnBackEnabled(true);
 
-        int brandColorRes = Helpers.getThemeAttr(getContext(), R.attr.brandColor);
-        int brandAccentColorRes = Helpers.getThemeAttr(getContext(), R.attr.brandAccentColor);
 
         updateBadge();
 
@@ -226,10 +245,13 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
         //setTitle(getString(R.string.browse_title));
 
         // Set fastLane (or headers) background color
-        setBrandColor(ContextCompat.getColor(getContext(), brandColorRes));
+        // JoTube: YouTube-style dark sidebar, whatever color scheme is chosen
+        setBrandColor(ContextCompat.getColor(getContext(), R.color.sidebar_background));
 
-        // Set search icon color.
-        setSearchAffordanceColor(ContextCompat.getColor(getContext(), brandAccentColorRes));
+        // JoTube: the search button looks like the sidebar icons (no red circle, a light one on focus)
+        setSearchAffordanceColors(new SearchOrbView.Colors(Color.TRANSPARENT,
+                ContextCompat.getColor(getContext(), R.color.sidebar_orb_focused),
+                ContextCompat.getColor(getContext(), R.color.sidebar_orb_icon)));
 
         setHeaderPresenterSelector(new PresenterSelector() {
             private final Map<Integer, Presenter> mPresenterMap = new HashMap<>();
@@ -542,8 +564,117 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
         mSectionFragmentFactory.clearCurrentFragment();
     }
 
+    /**
+     * JoTube: the sidebar collapses to its icon rail or expands to the full menu. Draw-only on purpose: the headers
+     * list never changes its layout (no width, visibility or column changes at runtime, those crashed leanback grids).
+     * The labels fade and the panel is clipped; leanback moves the content with its own transition.
+     */
+    @Override
+    protected void onHeadersRailStateChanged(boolean expanded, boolean animate) {
+        IconHeaderItemPresenter.setLabelsShown(expanded);
+
+        View headers = getHeadersSupportFragment() != null ? getHeadersSupportFragment().getView() : null;
+
+        if (headers == null) {
+            return;
+        }
+
+        if (mRailAnimator != null) {
+            mRailAnimator.cancel();
+            mRailAnimator = null;
+        }
+
+        int duration = animate ? headers.getResources().getInteger(R.integer.lb_browse_headers_transition_duration) : 0;
+
+        // Labels
+        VerticalGridView grid = getHeadersSupportFragment().getVerticalGridView();
+        if (grid != null && grid != mRailLabelsGrid) {
+            // Items from the RecyclerView cache come back without a new bind: give them the current label alpha
+            mRailLabelsGrid = grid;
+            grid.addOnChildAttachStateChangeListener(new RecyclerView.OnChildAttachStateChangeListener() {
+                @Override
+                public void onChildViewAttachedToWindow(@NonNull View view) {
+                    View label = view.findViewById(R.id.header_label);
+                    if (label != null) {
+                        label.animate().cancel();
+                        label.setAlpha(IconHeaderItemPresenter.isLabelsShown() ? 1f : 0f);
+                    }
+                }
+
+                @Override
+                public void onChildViewDetachedFromWindow(@NonNull View view) {
+                    // NOP
+                }
+            });
+        }
+        if (grid != null) {
+            for (int i = 0; i < grid.getChildCount(); i++) {
+                View label = grid.getChildAt(i).findViewById(R.id.header_label);
+                if (label != null) {
+                    label.animate().cancel();
+                    if (duration > 0) {
+                        label.animate().alpha(expanded ? 1f : 0f).setDuration(expanded ? duration : duration / 2).start();
+                    } else {
+                        label.setAlpha(expanded ? 1f : 0f);
+                    }
+                }
+            }
+        }
+
+        // Clip
+        int rail = getHeadersRailWidth();
+        int full = headers.getWidth() > 0 ? headers.getWidth() :
+                headers.getResources().getDimensionPixelSize(R.dimen.lb_browse_headers_width);
+        Rect current = headers.getClipBounds();
+        int from = current != null ? current.right : full;
+        int to = expanded ? full : rail;
+
+        if (duration <= 0 || from == to) {
+            setRailClip(headers, expanded ? -1 : rail);
+            return;
+        }
+
+        ValueAnimator animator = ValueAnimator.ofInt(from, to);
+        animator.setDuration(duration);
+        animator.addUpdateListener(a -> setRailClip(headers, (int) a.getAnimatedValue()));
+        animator.addListener(new AnimatorListenerAdapter() {
+            private boolean mCanceled;
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+                mCanceled = true;
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (!mCanceled) {
+                    setRailClip(headers, expanded ? -1 : rail);
+                }
+            }
+        });
+        mRailAnimator = animator;
+        animator.start();
+    }
+
+    /**
+     * @param right the visible width, -1 = no clip
+     */
+    private static void setRailClip(View headers, int right) {
+        if (right < 0) {
+            headers.setClipBounds(null);
+        } else {
+            headers.setClipBounds(new Rect(0, 0, right, Math.max(headers.getHeight(), 100_000)));
+        }
+    }
+
     @Override
     public void onDestroyView() {
+        if (mRailAnimator != null) {
+            mRailAnimator.cancel();
+            mRailAnimator = null;
+        }
+        mRailLabelsGrid = null;
+
         mSectionFragmentFactory.cleanup();
 
         super.onDestroyView();

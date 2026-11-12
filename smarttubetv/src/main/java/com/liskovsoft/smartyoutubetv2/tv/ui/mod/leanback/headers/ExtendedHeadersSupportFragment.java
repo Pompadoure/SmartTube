@@ -7,6 +7,7 @@ import androidx.leanback.app.HeadersSupportFragment;
 import androidx.leanback.widget.ItemBridgeAdapter;
 import androidx.leanback.widget.Row;
 import androidx.leanback.widget.RowHeaderPresenter;
+import androidx.leanback.widget.VerticalGridView;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.sharedutils.helpers.KeyHelpers;
 
@@ -29,6 +30,19 @@ public class ExtendedHeadersSupportFragment extends HeadersSupportFragment {
 
     public void setOnHeaderLongPressedListener(OnHeaderLongPressedListener listener) {
         mOnHeaderLongPressedListener = listener;
+    }
+
+    /**
+     * JoTube: the sections start below the account and search buttons of the sidebar (list padding top) and only
+     * scroll when they don't fit, instead of keeping the selected section on a fixed line. Static grid settings.
+     */
+    @Override
+    public void setAlignment(int windowAlignOffsetTop) {
+        super.setAlignment(windowAlignOffsetTop);
+
+        if (getVerticalGridView() != null) {
+            getVerticalGridView().setWindowAlignment(VerticalGridView.WINDOW_ALIGN_BOTH_EDGE);
+        }
     }
 
     private final ItemBridgeAdapter.AdapterListener mCustomAdapterListener =

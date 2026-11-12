@@ -34,7 +34,8 @@ import com.liskovsoft.smartyoutubetv2.tv.ui.mod.leanback.playerglue.tooltips.Con
 class ControlBarPresenter extends Presenter {
 
     // MOD: increase player's controls number. Origin: 7. Leanback version 1.0.0
-    static final int MAX_CONTROLS = 12;
+    // JoTube: 16 (all secondary buttons + the Live button fit; views are only created for the bound actions)
+    static final int MAX_CONTROLS = 16;
 
     /**
      * The data type expected by this presenter.

@@ -6,7 +6,11 @@ import android.graphics.Rect;
 import android.os.Build.VERSION;
 import android.util.DisplayMetrics;
 import android.util.Pair;
+import android.view.View;
 import android.view.WindowManager;
+
+import androidx.fragment.app.Fragment;
+import androidx.leanback.app.BrowseSupportFragment;
 
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.VideoGroup;
@@ -41,6 +45,37 @@ public class GridFragmentHelper {
      */
     public static int getMaxColsNum(Context context, int cardWidthResId, float cardScale) {
         return (int) getMaxColsNumFloat(context, cardWidthResId, cardScale);
+    }
+
+    /**
+     * JoTube: width taken by the collapsed sidebar rail when the fragment is a section of the browse screen, else 0.
+     */
+    public static int getSidebarReservedPx(Fragment fragment) {
+        Fragment parent = fragment != null ? fragment.getParentFragment() : null;
+
+        if (parent instanceof BrowseSupportFragment && ((BrowseSupportFragment) parent).isHeadersRailActive()) {
+            return ((BrowseSupportFragment) parent).getHeadersRailWidth();
+        }
+
+        return 0;
+    }
+
+    /**
+     * JoTube: a browse grid next to the collapsed sidebar rail gets smaller side paddings, so that the rail plus the
+     * paddings take the same width as the stock paddings did. The column count and the card size stay exactly as
+     * before. Call once when the grid view is created (before it has items): nothing changes at runtime.
+     */
+    public static void applySidebarRailPadding(Fragment fragment, View gridView) {
+        if (gridView == null || getSidebarReservedPx(fragment) <= 0) {
+            return;
+        }
+
+        Resources res = gridView.getResources();
+        gridView.setPaddingRelative(
+                res.getDimensionPixelSize(R.dimen.sidebar_content_padding_start),
+                gridView.getPaddingTop(),
+                res.getDimensionPixelSize(R.dimen.sidebar_content_padding_end),
+                gridView.getPaddingBottom());
     }
 
     private static float getMaxColsNumFloat(Context context, int cardWidthResId, float cardScale) {

@@ -30,27 +30,48 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitio
  * direction of navigation. No placeholder thumbnail (a black cover only if the new video is late).
  */
 public class ShortsTransitionOverlay {
-    // The slide starts when the new video is already playing (its first frame came during the hold)
-    static final int SWIPE_DURATION_MS = 200;
-    private static final int REVEAL_DURATION_MS = 120; // the black cover over the moving video fades out
+    // JoTube: the slide (owner 2026-10-24: "smoother, a really nice animation, no cheap tricks, it must not slow the switch
+    // down, only mask it"). Device log: the next Short's first frame comes 230-600 ms after the key (mostly 300-400).
+    // 380 ms: Material's full-screen transitions are 300-375 ms on a phone and ~30% longer on bigger screens (the
+    // pictures travel further); it ends about when the new video is there. It starts at the key press.
+    static final int SWIPE_DURATION_MS = 380;
+    // the next Short's picture fades into its playing video once both are in place
+    private static final int REVEAL_DURATION_MS = 160;
+    // the outgoing Short recedes a little while it leaves (depth, not a gimmick)
+    private static final float OUT_ALPHA = 0.7f;
+    // the snapshot of the outgoing picture is taken at the key press; the main thread waits at most this long for it
+    private static final int SNAPSHOT_SYNC_MS = 50;
     private static final int FADE_OUT_DURATION_MS = 120;
     private static final int FAILSAFE_HIDE_MS = 10_000;
     private static final int AT_SLIDE_START_TIMEOUT_MS = 400;
     private static final int SNAPSHOT_TIMEOUT_MS = 150; // the main thread can be busy ~70 ms at the switch
-    // JoTube: no hold: the slide starts at the key press (holding the old picture looked like a freeze). The new
-    // Short (preloaded: first frame in 150-300 ms) moves in under a black cover that fades out when its frame comes,
-    // mostly while it is still moving.
-    private static final int HOLD_TIMEOUT_MS = 0;
     private static final String TAG = "ShortsTransition";
-    private static final int GAP_DP = 16; // space between the outgoing and the incoming Short
-    private static final Interpolator SWIPE_INTERPOLATOR = new FastOutSlowIn();
+    // JoTube: without the slide the old picture stays until the new Short's first frame; if that takes longer,
+    // the new Short's blurred cover is shown after this time (a frozen old picture would look like a hang)
+    private static final int CUT_COVER_AFTER_MS = 500;
+    // a very short fade instead of a hard step: hides a frame of SurfaceView composition lag after the first frame
+    private static final int CUT_FADE_MS = 60;
+    private boolean mSlideEnabled = true;
+    private boolean mCutPending; // no slide: waiting for the new first frame to switch at once
+    private static final int GAP_DP = 24; // space between the outgoing and the incoming Short
+    private static final int CORNER_DP = 9; // the frame's inner corners (ShortsSidePanel: 14 - 5)
+    // Starts at once and settles softly (Material's standard curve: an on-screen element moving to a new place).
+    // The strong deceleration puts the last ~100 ms of the slide into small, calm motion: the video arrives there.
+    private static final android.animation.TimeInterpolator SWIPE_INTERPOLATOR = new android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f);
+    private static android.os.HandlerThread sCopyThread; // PixelCopy answers here (the main thread waits for it)
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private final Runnable mFailsafeHide = () -> hide(false);
     private Video mPendingVideo;
     private Video mTargetVideo; // JoTube: the Short sliding in (its blurred background covers it until its frame)
+    private boolean mPendingAsCover; // JoTube: the late cover is the Short's blurred cover, not black
     private final Runnable mPendingShow = () -> {
         if (mPendingVideo != null) {
-            show(mPendingVideo, ShortsTransitionState.DIRECTION_NONE);
+            Video video = mPendingVideo;
+            boolean asCover = mPendingAsCover;
+            show(video, ShortsTransitionState.DIRECTION_NONE);
+            if (asCover && this.mIn != null && video.isShorts) { // this.: the field is declared below
+                ShortsBackground.loadCover(this.mIn, video);
+            }
         }
     };
     private FrameLayout mContainer; // the whole screen, holds the two images
@@ -64,6 +85,25 @@ public class ShortsTransitionOverlay {
     private Runnable mAfterSnapshot; // e.g. the player reset: only once the old picture is copied
     private Runnable mHoldStart; // the old picture is held until the new video's first frame
     private float mOutStart; // where the outgoing picture is (not 0 if pressed again during a slide)
+    private boolean mSlideActive; // the pictures are moving
+    private long mSlideStartMs;
+    private float mSlideInStart;
+    private Runnable mSlideEnd;
+    private Runnable mRevealEnd;
+    private SlideListener mSlideListener;
+    private boolean mPageAside; // the frame stepped aside for the slide (onSlideStart without onSlideEnd yet)
+    private boolean mInIsTarget; // mIn shows mTargetVideo's picture (not the black cover of show())
+
+    /** JoTube: the frame and its border stand still while the pictures move: they step aside for the slide. */
+    public interface SlideListener {
+        void onSlideStart();
+
+        void onSlideEnd();
+    }
+
+    public void setSlideListener(SlideListener listener) {
+        mSlideListener = listener;
+    }
     private int mSwipeId; // a newer swipe makes the callbacks of an older one void
     private boolean mIsShown;
     private boolean mFirstFrameRendered;
@@ -75,6 +115,7 @@ public class ShortsTransitionOverlay {
     private boolean mPreviewEnabled;
     private boolean mPreviewActive; // the preview slides in with this swipe
     private Runnable mAtSlideStart; // the page (background, frame shape, panel) changes together with the slide
+    private Runnable mHeldReshape; // a frame reshape from the format info that came before the old picture was covered
     private final Runnable mAtSlideStartTimeout = this::flushAtSlideStart;
     private boolean mOutFrozen; // a swipe is on: the outgoing picture keeps its shape
     private boolean mOutFramePending; // the new frame shape waits until the outgoing picture is gone
@@ -83,6 +124,18 @@ public class ShortsTransitionOverlay {
     private long mDiagLastFrameMs;
     private long mDiagMaxGapMs;
     private int mDiagFrames;
+
+    /**
+     * JoTube: off = no slide between Shorts: the old picture stays until the new Short's first frame, then the new
+     * one is simply there (a cut, like a channel change).
+     */
+    public void setSlideEnabled(boolean enabled) {
+        mSlideEnabled = enabled;
+    }
+
+    public boolean isSlideEnabled() {
+        return mSlideEnabled;
+    }
 
     public void setPreview(ShortsPreview preview, boolean enabled) {
         mPreview = preview;
@@ -119,6 +172,15 @@ public class ShortsTransitionOverlay {
         ImageView image = new ImageView(container.getContext());
         image.setScaleType(ImageView.ScaleType.FIT_CENTER);
         image.setBackgroundColor(Color.BLACK);
+        // the same rounded corners as the frame
+        final float radius = CORNER_DP * container.getResources().getDisplayMetrics().density;
+        image.setOutlineProvider(new android.view.ViewOutlineProvider() {
+            @Override
+            public void getOutline(View view, android.graphics.Outline outline) {
+                outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), radius);
+            }
+        });
+        image.setClipToOutline(true);
         image.setVisibility(View.GONE);
         container.addView(image, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
@@ -185,10 +247,27 @@ public class ShortsTransitionOverlay {
 
     public void detach() {
         mHandler.removeCallbacksAndMessages(null);
+        if (mDrawListener != null && mContainer != null) {
+            android.view.ViewTreeObserver observer = mContainer.getViewTreeObserver();
+            if (observer.isAlive()) {
+                observer.removeOnDrawListener(mDrawListener); // now: the posted removal is gone with the callbacks
+            }
+            mDrawListener = null;
+        }
+        mSlideActive = false;
+        mSlideEnd = null;
+        mRevealEnd = null;
+        pageBack();
         mPendingVideo = null;
         mHoldStart = null;
+        mCutPending = false;
         mSnapshotTimeout = null;
         mAtSlideStart = null;
+        Runnable heldReshape = mHeldReshape;
+        mHeldReshape = null;
+        if (heldReshape != null) {
+            heldReshape.run();
+        }
         mPreviewActive = false;
         if (mPreview != null) {
             mPreview.detach();
@@ -231,6 +310,14 @@ public class ShortsTransitionOverlay {
     }
 
     /**
+     * JoTube: like {@link #showIfSlow} but a late Short gets its blurred cover (not black).
+     */
+    public void showCoverIfSlow(Video video, long delayMs) {
+        showIfSlow(video, delayMs);
+        mPendingAsCover = mPendingVideo != null;
+    }
+
+    /**
      * Runs when the slide starts (or at once if there is no slide: hide, a newer swipe, a timeout), so the background,
      * the frame and the panel change at the same moment as the picture moves instead of at the key press.
      */
@@ -243,9 +330,15 @@ public class ShortsTransitionOverlay {
             action.run();
             return;
         }
+        if (!mSlideEnabled && mCutPending) {
+            // The old picture already covers the video (the hold ran before this was registered): change at once
+            action.run();
+            return;
+        }
         mAtSlideStart = action;
         mHandler.removeCallbacks(mAtSlideStartTimeout);
-        mHandler.postDelayed(mAtSlideStartTimeout, AT_SLIDE_START_TIMEOUT_MS);
+        // without the slide the page changes with the picture: not before the late cover (CUT_COVER_AFTER_MS)
+        mHandler.postDelayed(mAtSlideStartTimeout, mSlideEnabled ? AT_SLIDE_START_TIMEOUT_MS : CUT_COVER_AFTER_MS + 50);
     }
 
     private void flushAtSlideStart() {
@@ -256,11 +349,37 @@ public class ShortsTransitionOverlay {
         if (action != null) {
             action.run();
         }
+
+        if (mSlideActive) {
+            return; // a frame shape waits for the end of the slide (onSwipeEnd)
+        }
+        Runnable reshape = mHeldReshape;
+        mHeldReshape = null;
+        if (reshape != null) {
+            reshape.run();
+        }
+    }
+
+    /**
+     * JoTube: a frame reshape (new aspect from the format info). While the old picture is still being copied, or the
+     * page change waits for the slide start / the cut, it waits too: otherwise the old video is shown stretched in the
+     * new frame shape before the snapshot covers it.
+     */
+    public void runReshape(Runnable reshape) {
+        if (reshape == null) {
+            return;
+        }
+        if (mContainer != null && (mSnapshotTimeout != null || mAtSlideStart != null || mSlideActive)) {
+            mHeldReshape = reshape; // only the newest shape counts
+            return;
+        }
+        reshape.run();
     }
 
     private void cancelPendingShow() {
         mHandler.removeCallbacks(mPendingShow);
         mPendingVideo = null;
+        mPendingAsCover = false;
     }
 
     /**
@@ -275,6 +394,8 @@ public class ShortsTransitionOverlay {
 
         prepare();
         setSurfaceOffset(0);
+        pageBack();
+        mInIsTarget = false;
         mFirstFrameRendered = false;
         // JoTube: black, never the thumbnail (a still image that pops away when the video starts)
         clearImage(mIn);
@@ -291,39 +412,6 @@ public class ShortsTransitionOverlay {
      *                  Null if it's not on the surface anymore (the player was reset): the thumbnail is used.
      */
     // Diagnostics: main thread messages that take long while a swipe runs (what makes the slide stutter)
-    private static final int WATCH_MS = 900;
-    private static final int WATCH_MIN_MS = 10;
-    private final android.os.Handler mWatchHandler = new android.os.Handler(android.os.Looper.getMainLooper());
-    private final android.util.Printer mWatchPrinter = new android.util.Printer() {
-        private long mStartMs;
-        private String mWhat;
-
-        @Override
-        public void println(String x) {
-            if (x == null) {
-                return;
-            }
-            if (x.startsWith(">>>>> Dispatching")) {
-                mStartMs = android.os.SystemClock.uptimeMillis();
-                mWhat = x;
-            } else if (x.startsWith("<<<<< Finished") && mWhat != null) {
-                long duration = android.os.SystemClock.uptimeMillis() - mStartMs;
-                if (duration >= WATCH_MIN_MS) {
-                    Log.d(TAG, "Slow main thread message %s ms (+%s ms after swipe): %s", duration,
-                            mStartMs - mDiagCallMs, mWhat.length() > 150 ? mWhat.substring(0, 150) : mWhat);
-                }
-                mWhat = null;
-            }
-        }
-    };
-    private final Runnable mStopWatch = () -> android.os.Looper.getMainLooper().setMessageLogging(null);
-
-    private void watchMainThread() {
-        mWatchHandler.removeCallbacks(mStopWatch);
-        android.os.Looper.getMainLooper().setMessageLogging(mWatchPrinter);
-        mWatchHandler.postDelayed(mStopWatch, WATCH_MS);
-    }
-
     public void swipe(Video from, Video to, int direction, View videoView) {
         if (mContainer == null || to == null) {
             return;
@@ -332,7 +420,6 @@ public class ShortsTransitionOverlay {
         Video previousTarget = mTargetVideo;
         mTargetVideo = to.isShorts ? to : null;
         mDiagCallMs = android.os.SystemClock.uptimeMillis();
-        watchMainThread();
 
         int frameHeight = mIn.getLayoutParams() != null ? mIn.getLayoutParams().height : 0;
         int height = frameHeight > 0 ? frameHeight : mContainer.getHeight() > 0 ? mContainer.getHeight() :
@@ -357,12 +444,33 @@ public class ShortsTransitionOverlay {
             return;
         }
 
+        // JoTube: pressed again while the pictures move or the next Short's picture waits for its video: that picture
+        // leaves from where it is now (the video is still out of sight)
+        if (mSlideEnabled && mIsShown && mInIsTarget && (mSlideActive || (mIn.getVisibility() == View.VISIBLE && mRevealEnd == null))) {
+            float outStart = currentInOffset();
+            prepare();
+            mOutStart = outStart;
+            mFirstFrameRendered = false;
+            final int swipeId = ++mSwipeId;
+            applyOutFrame(); // the shape of the picture that is leaving (mIn's)
+            mOutFrozen = true;
+            clearImage(mOut);
+            if (previousTarget != null) {
+                loadThumbnail(mOut, previousTarget);
+            }
+            clearImage(mIn);
+            mIn.setVisibility(View.GONE);
+            mHandler.postDelayed(mFailsafeHide, FAILSAFE_HIDE_MS);
+            hold(swipeId, direction, distance);
+            return;
+        }
+
         // The black cover is on screen (the previous video hasn't shown a frame yet): that's the outgoing picture
         boolean coverOnScreen = mIsShown && !mFirstFrameRendered && mSnapshotTimeout == null &&
                 mIn.getVisibility() == View.VISIBLE && mIn.getAlpha() > 0.5f;
 
         // Pressed again during the slide: the new outgoing picture starts where the video is now
-        float outStart = mSwipe != null && mSurfaceRoot != null ? mSurfaceRoot.getTranslationY() : 0;
+        float outStart = 0;
 
         prepare();
         mOutStart = outStart;
@@ -392,9 +500,21 @@ public class ShortsTransitionOverlay {
                 videoView.getHeight() > 0 && ((SurfaceView) videoView).getHolder().getSurface().isValid()) {
             final Bitmap bitmap;
             try {
-                bitmap = obtainSnapshotBitmap(Math.max(1, videoView.getWidth() / 2), Math.max(1, videoView.getHeight() / 2));
+                // full size for the slide (the picture is seen moving for 380 ms), half for the cut
+                int scale = mSlideEnabled ? 1 : 2;
+                bitmap = obtainSnapshotBitmap(Math.max(1, videoView.getWidth() / scale), Math.max(1, videoView.getHeight() / scale));
             } catch (OutOfMemoryError e) {
                 setOutImage(null, from);
+                hold(swipeId, direction, distance);
+                return;
+            }
+
+            if (mSlideEnabled) {
+                // JoTube: copied now (the main thread is busy for 200+ ms right after this: an asynchronous answer
+                // came that late and the slide with it)
+                Bitmap frame = copySync((SurfaceView) videoView, bitmap);
+                setOutImage(frame, from);
+                Log.d(TAG, "Snapshot %s: +%s ms", frame != null ? "done" : "failed", android.os.SystemClock.uptimeMillis() - mDiagCallMs);
                 hold(swipeId, direction, distance);
                 return;
             }
@@ -446,16 +566,128 @@ public class ShortsTransitionOverlay {
         mOut.setTranslationY(mOutStart);
         mOut.setVisibility(View.VISIBLE);
 
-        if (mFirstFrameRendered) {
-            startSwipe(swipeId, direction, distance);
+        if (!mSlideEnabled) {
+            holdForCut(swipeId);
             return;
         }
 
+        // JoTube: right after the key handling (which registers the page change for the slide start), ahead of the
+        // heavy messages queued behind it
+        mHandler.postAtFrontOfQueue(() -> startSwipe(swipeId, direction, distance));
+    }
+
+    /**
+     * Copies the surface's picture on a helper thread and waits for it (at most {@link #SNAPSHOT_SYNC_MS}).
+     */
+    private Bitmap copySync(SurfaceView view, Bitmap bitmap) {
+        if (sCopyThread == null) {
+            sCopyThread = new android.os.HandlerThread("ShortsSnapshot");
+            sCopyThread.start();
+        }
+        final java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+        final int[] result = {-1};
+        try {
+            PixelCopy.request(view, bitmap, copyResult -> {
+                result[0] = copyResult;
+                done.countDown();
+            }, new Handler(sCopyThread.getLooper()));
+            if (done.await(SNAPSHOT_SYNC_MS, java.util.concurrent.TimeUnit.MILLISECONDS) && result[0] == PixelCopy.SUCCESS) {
+                return bitmap;
+            }
+        } catch (IllegalArgumentException e) {
+            // the surface is gone: the thumbnail
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        // Late or failed: the copy may still write into this bitmap later, never use it again
+        for (int i = 0; i < mSnapshotBitmaps.length; i++) {
+            if (mSnapshotBitmaps[i] == bitmap) {
+                mSnapshotBitmaps[i] = null;
+            }
+        }
+        return null;
+    }
+
+    /** Where the incoming picture is now (the slide runs on the RenderThread: computed from the time). */
+    private float currentInOffset() {
+        if (!mSlideActive) {
+            return 0;
+        }
+        float t = Math.min(1f, (android.os.SystemClock.uptimeMillis() - mSlideStartMs) / (float) SWIPE_DURATION_MS);
+        return mSlideInStart * (1f - SWIPE_INTERPOLATOR.getInterpolation(t));
+    }
+
+    private void holdForCut(int swipeId) {
+        // JoTube: the old picture (snapshot) is on screen now: the page takes the new Short's shape behind it at once
+        // (frame, background, panel), the snapshot is fitted into the new frame. When the first frame comes the video
+        // is already in its shape: before, the reshape ran at the cut (a layout on the busy main thread), so the new
+        // video showed stretched in the old frame and the frame jumped late (owner: stretched, jerky, slow).
+        mOutFrozen = false;
+        if (mOutFramePending) {
+            applyOutFrame();
+        }
+        flushAtSlideStart();
+
+        if (mFirstFrameRendered) {
+            cut(swipeId);
+            return;
+        }
+
+        mCutPending = true;
         mHoldStart = () -> {
             mHoldStart = null;
-            startSwipe(swipeId, direction, distance);
+            showTargetCover(swipeId);
         };
-        mHandler.postDelayed(mHoldStart, HOLD_TIMEOUT_MS);
+        mHandler.postDelayed(mHoldStart, CUT_COVER_AFTER_MS);
+    }
+
+    /**
+     * No slide: the new Short's first frame is on screen, the old picture goes at once.
+     */
+    private void cut(int swipeId) {
+        if (mContainer == null || swipeId != mSwipeId) {
+            return;
+        }
+
+        Log.d(TAG, "Cut: +%s ms after swipe()", android.os.SystemClock.uptimeMillis() - mDiagCallMs);
+        mCutPending = false;
+        if (mHoldStart != null) {
+            mHandler.removeCallbacks(mHoldStart);
+            mHoldStart = null;
+        }
+        flushAtSlideStart(); // background, frame shape and panel change together with the picture
+        mHandler.removeCallbacks(mFailsafeHide);
+        mIsShown = false;
+        mSwipeId++;
+        cancelAnimations();
+        setSurfaceOffset(0);
+        mContainer.animate()
+                .alpha(0f)
+                .setDuration(CUT_FADE_MS)
+                .withEndAction(this::reset)
+                .start();
+    }
+
+    /**
+     * No slide, and the new first frame is late: the new Short's blurred cover instead of the frozen old picture.
+     * The cover fades out when the frame comes (hide).
+     */
+    private void showTargetCover(int swipeId) {
+        if (mContainer == null || swipeId != mSwipeId) {
+            return;
+        }
+
+        Log.d(TAG, "Cut: first frame late, cover at +%s ms", android.os.SystemClock.uptimeMillis() - mDiagCallMs);
+        mCutPending = false;
+        flushAtSlideStart();
+        mOut.setVisibility(View.GONE);
+        clearImage(mIn);
+        if (mTargetVideo != null) {
+            ShortsBackground.loadCover(mIn, mTargetVideo);
+        }
+        mIn.setAlpha(1f);
+        mIn.setTranslationY(0);
+        mIn.setVisibility(View.VISIBLE);
     }
 
     /**
@@ -521,84 +753,119 @@ public class ShortsTransitionOverlay {
         }
     }
 
+    /**
+     * JoTube: the slide. The outgoing picture (a copy of the last frame) and the next Short's own picture (sharp, in
+     * its frame shape) move together as one strip, on the RenderThread so the main thread's work at the switch can't
+     * stop them. The video waits out of sight meanwhile; when both the slide and the first frame are done, it takes
+     * the picture's place and the picture fades into it.
+     */
     private void startSwipe(int swipeId, int direction, float distance) {
         if (mContainer == null || swipeId != mSwipeId) {
             return;
         }
 
         final float outStart = mOutStart;
-        final float outEnd = -direction * distance;
+        final float outEnd = outStart - direction * distance;
         final float inStart = direction * distance;
 
         mOut.setVisibility(View.VISIBLE);
         mOut.setTranslationY(outStart);
-        // The new video: covered by its blurred background (the same as behind the frame) until its first frame
+        mOut.setAlpha(1f);
         clearImage(mIn);
-        if (!mFirstFrameRendered && mTargetVideo != null) {
-            ShortsBackground.loadCover(mIn, mTargetVideo);
-        }
+        // No still here: YouTube's thumbnail is a frame from the middle of the Short, and the video then cuts to its
+        // start (a visible pop-in). The incoming picture stays plain black until the real first frame fades in.
         mIn.setVisibility(View.VISIBLE);
-        mIn.setAlpha(mFirstFrameRendered ? 0f : 1f);
+        mIn.setAlpha(1f);
         mIn.setTranslationY(inStart);
-        setSurfaceOffset(inStart);
+        mInIsTarget = mTargetVideo != null;
+        mPreviewActive = false;
 
-        // The real first frame of the new Short (second player) slides in instead of the blurred cover
-        mPreviewActive = mPreview != null && !mFirstFrameRendered && mTargetVideo != null &&
-                mPreview.isReadyFor(mTargetVideo.videoId);
-        if (mPreviewActive) {
-            mPreview.setAlpha(1f);
-            mPreview.setOffsetY(inStart);
-        }
-        Log.d(TAG, "Preview frame used for this slide: %s", mPreviewActive);
-
+        // The page (background, frame shape, panel) changes now, with the first moving frame
         flushAtSlideStart();
-        mDiagLastFrameMs = 0;
-        mDiagMaxGapMs = 0;
-        mDiagFrames = 0;
-        Log.d(TAG, "Slide starts: +%s ms after swipe(), first frame already rendered: %s",
-                android.os.SystemClock.uptimeMillis() - mDiagCallMs, mFirstFrameRendered);
-        mSwipe = ValueAnimator.ofFloat(0f, 1f);
-        mSwipe.setDuration(SWIPE_DURATION_MS);
-        mSwipe.setInterpolator(SWIPE_INTERPOLATOR);
-        mSwipe.addUpdateListener(animation -> {
-            if (mContainer == null) {
-                return;
-            }
-            long now = android.os.SystemClock.uptimeMillis();
-            if (mDiagLastFrameMs != 0) {
-                mDiagMaxGapMs = Math.max(mDiagMaxGapMs, now - mDiagLastFrameMs);
-            }
-            mDiagLastFrameMs = now;
-            mDiagFrames++;
-            float fraction = (float) animation.getAnimatedValue();
-            float inOffset = inStart * (1f - fraction);
-            mOut.setTranslationY(outStart + (outEnd - outStart) * fraction);
-            mIn.setTranslationY(inOffset);
-            setSurfaceOffset(inOffset);
-            if (mPreviewActive) {
-                mPreview.setOffsetY(inOffset);
-            }
-        });
-        mSwipe.addListener(new AnimatorListenerAdapter() {
-            private boolean mCancelled;
+        // The outgoing picture covers the video's place: the video goes out of sight until it is revealed
+        setSurfaceOffset(offscreenOffset());
+        if (mSlideListener != null && !mPageAside) {
+            mPageAside = true;
+            mSlideListener.onSlideStart();
+        }
 
-            @Override
-            public void onAnimationCancel(Animator animation) {
-                mCancelled = true;
-            }
+        mSlideActive = true;
+        mSlideStartMs = android.os.SystemClock.uptimeMillis();
+        mSlideInStart = inStart;
+        RenderThreadAnimation.animate(mOut).translationY(outEnd).alpha(OUT_ALPHA)
+                .setDuration(SWIPE_DURATION_MS).setInterpolator(SWIPE_INTERPOLATOR).start();
+        RenderThreadAnimation.animate(mIn).translationY(0)
+                .setDuration(SWIPE_DURATION_MS).setInterpolator(SWIPE_INTERPOLATOR).start();
+        Log.d(TAG, "Slide starts: +%s ms after swipe(), RenderThread: %s, first frame already rendered: %s",
+                mSlideStartMs - mDiagCallMs, RenderThreadAnimation.isAvailable(), mFirstFrameRendered);
 
-            @Override
-            public void onAnimationEnd(Animator animation) {
-                if (mCancelled || swipeId != mSwipeId) {
-                    return;
-                }
-                mSwipe = null;
-                Log.d(TAG, "Slide ends: %s frames in %s ms, longest gap between frames %s ms, first frame rendered: %s",
-                        mDiagFrames, SWIPE_DURATION_MS, mDiagMaxGapMs, mFirstFrameRendered);
+        // No end listener (it would take the animation off the RenderThread): the clean-up comes by time, counted
+        // from the frame that hands the animation to the RenderThread (it may be drawn a little after this)
+        mSlideEnd = () -> {
+            mSlideEnd = null;
+            if (swipeId == mSwipeId) {
                 onSwipeEnd();
             }
-        });
-        mSwipe.start();
+        };
+        mHandler.postDelayed(mSlideEnd, SWIPE_DURATION_MS + 500); // only if no frame is drawn at all
+        final android.view.ViewTreeObserver observer = mContainer.getViewTreeObserver();
+        final android.view.ViewTreeObserver.OnDrawListener[] self = new android.view.ViewTreeObserver.OnDrawListener[1];
+        final boolean[] fired = {false};
+        self[0] = () -> {
+            if (fired[0]) {
+                return;
+            }
+            fired[0] = true;
+            final android.view.ViewTreeObserver.OnDrawListener listener = self[0];
+            if (mDrawListener == listener) {
+                mDrawListener = null;
+            }
+            mHandler.post(() -> { // not removable while the draw dispatches
+                if (observer.isAlive()) {
+                    observer.removeOnDrawListener(listener);
+                }
+            });
+            if (swipeId != mSwipeId || mSlideEnd == null) {
+                return;
+            }
+            mSlideStartMs = android.os.SystemClock.uptimeMillis();
+            Log.d(TAG, "Slide drawn: +%s ms after swipe()", mSlideStartMs - mDiagCallMs);
+            mHandler.removeCallbacks(mSlideEnd);
+            mHandler.postDelayed(mSlideEnd, SWIPE_DURATION_MS + 16);
+        };
+        removeDrawListener();
+        mDrawListener = self[0];
+        observer.addOnDrawListener(mDrawListener);
+    }
+
+    private android.view.ViewTreeObserver.OnDrawListener mDrawListener;
+
+    private void removeDrawListener() {
+        if (mDrawListener != null && mContainer != null && mContainer.getViewTreeObserver().isAlive()) {
+            final android.view.ViewTreeObserver.OnDrawListener listener = mDrawListener;
+            final android.view.ViewTreeObserver observer = mContainer.getViewTreeObserver();
+            mHandler.post(() -> {
+                if (observer.isAlive()) {
+                    observer.removeOnDrawListener(listener);
+                }
+            });
+        }
+        mDrawListener = null;
+    }
+
+    private void pageBack() {
+        if (mPageAside) {
+            mPageAside = false;
+            if (mSlideListener != null) {
+                mSlideListener.onSlideEnd();
+            }
+        }
+    }
+
+    private float offscreenOffset() {
+        View parent = mContainer != null && mContainer.getParent() instanceof View ? (View) mContainer.getParent() : null;
+        int height = parent != null && parent.getHeight() > 0 ? parent.getHeight() : 2160;
+        return height * 2f;
     }
 
     private void onSwipeEnd() {
@@ -606,35 +873,50 @@ public class ShortsTransitionOverlay {
             return;
         }
 
-        setSurfaceOffset(0);
+        mSlideActive = false;
+        flushAtSlideStart(); // a frame shape that came during the slide (not preloaded): now, before the reveal
+        Log.d(TAG, "Slide ends: +%s ms after swipe(), first frame rendered: %s",
+                android.os.SystemClock.uptimeMillis() - mDiagCallMs, mFirstFrameRendered);
+        mOut.animate().cancel();
+        mIn.animate().cancel();
         mOut.setVisibility(View.GONE);
         clearImage(mOut);
         mOut.setTranslationY(0);
+        mOut.setAlpha(1f);
         mIn.setTranslationY(0);
         if (mOutFramePending || mOutFrozen) {
             applyOutFrame();
         }
 
         if (mFirstFrameRendered) {
-            // The new video is in place and playing
-            mIsShown = false;
-            mHandler.removeCallbacks(mFailsafeHide);
+            reveal();
+        }
+        // else: the next Short's picture stays in place until its first frame (hide)
+    }
 
-            if (mPreviewActive) {
-                mPreviewActive = false;
-                mPreview.fadeOutAndConsume(REVEAL_DURATION_MS);
-            }
+    /**
+     * The new video takes its place under its picture, the picture fades into it.
+     */
+    private void reveal() {
+        if (mContainer == null || mRevealEnd != null) {
+            return;
+        }
 
-            if (mIn.getVisibility() == View.VISIBLE && mIn.getAlpha() > 0.01f) {
-                // The black cover is still fading out: let it finish (no black step)
-                mIn.animate().cancel();
-                mIn.animate().alpha(0f).setDuration((long) (REVEAL_DURATION_MS * mIn.getAlpha()))
-                        .withEndAction(this::reset).start();
-            } else {
+        final int swipeId = mSwipeId;
+        setSurfaceOffset(0);
+        pageBack();
+        Log.d(TAG, "Reveal: +%s ms after swipe()", android.os.SystemClock.uptimeMillis() - mDiagCallMs);
+        mHandler.removeCallbacks(mFailsafeHide);
+        RenderThreadAnimation.animate(mIn).alpha(0f).setDuration(REVEAL_DURATION_MS)
+                .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+        mRevealEnd = () -> {
+            mRevealEnd = null;
+            if (swipeId == mSwipeId) {
+                mIsShown = false;
                 reset();
             }
-        }
-        // else: the thumbnail stays until the first frame
+        };
+        mHandler.postDelayed(mRevealEnd, REVEAL_DURATION_MS + 16);
     }
 
     private void prepare() {
@@ -651,6 +933,7 @@ public class ShortsTransitionOverlay {
             mHandler.removeCallbacks(mHoldStart);
             mHoldStart = null;
         }
+        mCutPending = false;
 
         mContainer.setVisibility(View.VISIBLE);
         mContainer.setAlpha(1f);
@@ -708,6 +991,12 @@ public class ShortsTransitionOverlay {
             return;
         }
 
+        if (animate && mCutPending) {
+            // No slide: the new frame is there, switch now
+            cut(mSwipeId);
+            return;
+        }
+
         if (animate && mHoldStart != null) {
             // The new video is ready: slide now
             Runnable start = mHoldStart;
@@ -716,14 +1005,14 @@ public class ShortsTransitionOverlay {
             return;
         }
 
-        if (animate && mSwipe != null) {
-            // In the middle of the swipe: uncover the new video, it keeps moving into place
-            mIn.animate().cancel();
-            mIn.animate().alpha(0f).setDuration(REVEAL_DURATION_MS).start();
-            if (mPreviewActive) {
-                mPreviewActive = false;
-                mPreview.fadeOutAndConsume(REVEAL_DURATION_MS);
-            }
+        if (animate && mSlideEnabled && (mSlideActive || mRevealEnd != null)) {
+            // JoTube: in the middle of the slide (the video is revealed when it ends), or already being revealed
+            return;
+        }
+
+        if (animate && mSlideEnabled && mIn.getVisibility() == View.VISIBLE && mOut.getVisibility() != View.VISIBLE) {
+            // The slide is over and the next Short's picture waited for its video: now
+            reveal();
             return;
         }
 
@@ -741,6 +1030,7 @@ public class ShortsTransitionOverlay {
             mHandler.removeCallbacks(mHoldStart);
             mHoldStart = null;
         }
+        mCutPending = false;
 
         if (!animate) {
             reset();
@@ -755,6 +1045,11 @@ public class ShortsTransitionOverlay {
                 .start();
     }
 
+    /** JoTube: the pictures are moving (the video is out of sight). */
+    public boolean isSliding() {
+        return mSlideActive;
+    }
+
     public boolean isShown() {
         return mIsShown;
     }
@@ -764,6 +1059,23 @@ public class ShortsTransitionOverlay {
             ValueAnimator swipe = mSwipe;
             mSwipe = null;
             swipe.cancel();
+        }
+        if (mSlideActive) {
+            mSlideActive = false;
+            // a frame shape held for the slide's end (the slide is cut short here)
+            Runnable reshape = mHeldReshape;
+            mHeldReshape = null;
+            if (reshape != null) {
+                reshape.run();
+            }
+        }
+        if (mSlideEnd != null) {
+            mHandler.removeCallbacks(mSlideEnd);
+            mSlideEnd = null;
+        }
+        if (mRevealEnd != null) {
+            mHandler.removeCallbacks(mRevealEnd);
+            mRevealEnd = null;
         }
         if (mContainer != null) {
             mContainer.animate().cancel();
@@ -776,48 +1088,14 @@ public class ShortsTransitionOverlay {
         }
     }
 
-    /**
-     * Material "fast out, slow in": cubic bezier (0.4, 0, 0.2, 1), the curve of the official app's swipe.
-     */
-    private static final class FastOutSlowIn implements Interpolator {
-        @Override
-        public float getInterpolation(float t) {
-            if (t <= 0f) {
-                return 0f;
-            }
-            if (t >= 1f) {
-                return 1f;
-            }
-
-            // Find the curve parameter u for x(u) = t (Newton), then return y(u)
-            float u = t;
-            for (int i = 0; i < 8; i++) {
-                float x = bezier(u, 0.4f, 0.2f) - t;
-                float dx = bezierDerivative(u, 0.4f, 0.2f);
-                if (Math.abs(x) < 1e-4f || dx == 0f) {
-                    break;
-                }
-                u = Math.max(0f, Math.min(1f, u - x / dx));
-            }
-
-            return bezier(u, 0f, 1f);
-        }
-
-        private static float bezier(float u, float p1, float p2) {
-            float v = 1f - u;
-            return 3f * v * v * u * p1 + 3f * v * u * u * p2 + u * u * u;
-        }
-
-        private static float bezierDerivative(float u, float p1, float p2) {
-            float v = 1f - u;
-            return 3f * v * v * p1 + 6f * v * u * (p2 - p1) + 3f * u * u * (1f - p2);
-        }
-    }
-
     private void reset() {
         if (mContainer == null || mIsShown) {
             return;
         }
+
+        pageBack(); // e.g. hidden without a reveal (error, another video)
+        mInIsTarget = false;
+        removeDrawListener();
 
         if (mPreviewActive && mPreview != null) {
             mPreview.consumed();
