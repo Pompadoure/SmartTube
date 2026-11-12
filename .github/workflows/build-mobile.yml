@@ -6,7 +6,7 @@ name: Build JoTube Mobile (media3-mobile branch)
 
 on:
   push:
-    branches: [ "media3-mobile" ]
+    branches: [ "media3-mobile", "m3m/**" ]  # m3m/* = work branches: build only, never published
   workflow_dispatch:
 
 permissions:
@@ -127,7 +127,8 @@ jobs:
           name = "${{ steps.version.outputs.name }}"
           code = ${{ github.run_number }}
           msg = (os.environ.get("COMMIT_MSG") or "").strip().splitlines()
-          log = [l.strip() for l in msg if l.strip()][:8] or [name]
+          skip = ("Co-Authored-By:", "Claude-Session:", "Merge remote-tracking", "Merge branch", "Merge pull request")
+          log = [l.strip() for l in msg if l.strip() and not l.strip().startswith(skip)][:8] or [name]
           arm64 = base + "/JoTubeMobile_arm64-v8a.apk"
           v7a = base + "/JoTubeMobile_armeabi-v7a.apk"
           doc = {

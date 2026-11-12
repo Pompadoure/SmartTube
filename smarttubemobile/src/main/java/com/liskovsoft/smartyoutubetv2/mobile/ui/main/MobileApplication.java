@@ -37,6 +37,8 @@ public class MobileApplication extends MultiDexApplication {
     public void onCreate() {
         super.onCreate();
         com.liskovsoft.smartyoutubetv2.common.misc.CastAudioTap.enable(); // before any player is built
+        // One player and the Short fills the screen: no 720p cap (that one is for the TV's two players)
+        com.liskovsoft.smartyoutubetv2.common.app.models.playback.ShortsTransitionState.setShortsVideoCapped(false);
 
         Provider conscryptProvider = null;
         try {
