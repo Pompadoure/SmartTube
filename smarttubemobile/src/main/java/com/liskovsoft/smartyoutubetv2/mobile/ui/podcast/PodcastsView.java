@@ -34,7 +34,7 @@ import java.util.concurrent.Executors;
 /**
  * Podcasts: the subscribed shows (RSS feeds you add yourself, or import as OPML) and their latest episodes.<br/>
  * JoTube: a view (not an activity), so the music part's bottom bar and mini player stay in place when switching
- * between Musik and Poddar (BrowseActivity shows it over the music feed). PodcastsActivity hosts it too.
+ * between Musik and Poddar (BrowseActivity shows it over the music feed).
  */
 public final class PodcastsView extends LinearLayout {
     public static final int REQUEST_OPML = 41;

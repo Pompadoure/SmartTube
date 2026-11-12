@@ -71,7 +71,7 @@ jobs:
         run: |
           chmod +x gradlew
           set -o pipefail
-          if ! ./gradlew :smarttubemobile:assembleStjohanRelease 2>&1 | tee build.log; then
+          if ! ./gradlew :smarttubemobile:assembleStjohanRelease :media3-sabr:testReleaseUnitTest 2>&1 | tee build.log; then
             # One compact line per error: short path, message and javac's "symbol:" detail. Split over up to
             # 7 annotations of ~3.5k chars (GitHub truncates long annotation messages, keeps 10 per step).
             awk '

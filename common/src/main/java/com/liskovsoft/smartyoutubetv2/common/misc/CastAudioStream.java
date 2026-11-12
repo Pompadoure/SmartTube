@@ -44,6 +44,7 @@ public final class CastAudioStream implements CastAudioTap.Sink {
     private final AtomicInteger mActiveRequest = new AtomicInteger();
     private volatile int mGeneration;
     private volatile long mDurationMs;
+    private final String mToken = Long.toHexString(new java.security.SecureRandom().nextLong()) + Long.toHexString(new java.security.SecureRandom().nextLong()); // only the receiver we gave the URL to can listen
 
     /**
      * Starts (or re-aims) the server for a track and returns the URL for the receiver (or null). Call again for a new
@@ -71,7 +72,7 @@ public final class CastAudioStream implements CastAudioTap.Sink {
             }
             stream.mTap.setSink(stream, true); // the phone itself is silent from now on
             int generation = ++stream.mGeneration;
-            return "http://" + stream.mHost + ":" + stream.mServer.getLocalPort() + "/audio.wav?n=" + generation;
+            return "http://" + stream.mHost + ":" + stream.mServer.getLocalPort() + "/audio.wav?n=" + generation + "&t=" + stream.mToken;
         } catch (Throwable e) {
             Log.e(TAG, "Could not start the audio stream: " + e, e);
             stop();
@@ -152,8 +153,14 @@ public final class CastAudioStream implements CastAudioTap.Sink {
                     rangeStart = parseRangeStart(line.substring(6).trim());
                 }
             }
-            String method = requestLine.split(" ")[0];
+            String[] requestParts = requestLine.split(" ");
+            String method = requestParts[0];
             OutputStream out = s.getOutputStream();
+
+            if (requestParts.length < 2 || !requestParts[1].contains("t=" + mToken)) {
+                writeHead(out, "404 Not Found", null, 0); // a request without the secret from the URL is not the receiver
+                return;
+            }
 
             if ("OPTIONS".equals(method)) {
                 writeHead(out, "204 No Content", null, -1);
