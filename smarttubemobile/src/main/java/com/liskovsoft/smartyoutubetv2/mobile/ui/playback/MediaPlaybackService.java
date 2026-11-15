@@ -220,7 +220,14 @@ public class MediaPlaybackService extends MediaSessionService {
     @Override
     public void onTaskRemoved(@Nullable Intent rootIntent) {
         // Swiped away from the recents list: that means stop, also for the sound without a screen
-        Log.d(TAG, "JoTubeLife onTaskRemoved");
+        android.content.ComponentName root = rootIntent != null ? rootIntent.getComponent() : null;
+        Log.d(TAG, "JoTubeLife onTaskRemoved root=" + root);
+        if (root != null && PlaybackActivity.class.getName().equals(root.getClassName()) && PlaybackActivity.isPlayerTaskHidden()) {
+            // Device log 2026-11-15: the system removes the player's task by itself a few seconds after another app was
+            // opened (it is kept out of the recents list while music plays). That is not a swipe: the sound goes on.
+            super.onTaskRemoved(rootIntent);
+            return;
+        }
         if (sPodcastPlayer != null) {
             sPodcastPlayer.pause();
         }

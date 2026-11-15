@@ -952,7 +952,15 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         }
     }
 
+    /** True while the player's own task is kept out of the recents list (music): the app shows there as one card. */
+    private static volatile boolean sPlayerTaskHidden;
+
+    public static boolean isPlayerTaskHidden() {
+        return sPlayerTaskHidden;
+    }
+
     private void setInRecents(boolean show) {
+        sPlayerTaskHidden = !show;
         try {
             for (android.app.ActivityManager.AppTask task : ((android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE)).getAppTasks()) {
                 if (taskIdOf(task) == getTaskId()) {
