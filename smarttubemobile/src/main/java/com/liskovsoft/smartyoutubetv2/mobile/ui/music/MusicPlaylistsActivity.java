@@ -100,6 +100,7 @@ public class MusicPlaylistsActivity extends MobileActivity {
         mList.setAdapter(mAdapter);
         mList.setItemAnimator(null);
         root.addView(mList, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        root.addView(new com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MiniPlayerBar(this, () -> true)); // the player stays reachable while browsing
         return root;
     }
 

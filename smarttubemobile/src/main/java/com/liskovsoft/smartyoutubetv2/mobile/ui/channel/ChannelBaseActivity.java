@@ -126,6 +126,7 @@ abstract class ChannelBaseActivity extends MobileActivity {
         content.addView(mProgress, new FrameLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40), Gravity.CENTER));
 
         root.addView(content, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        root.addView(new com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MiniPlayerBar(this, () -> true)); // the player stays reachable while browsing
         return root;
     }
 

@@ -272,6 +272,7 @@ public class MusicSearchActivity extends MobileActivity {
         content.addView(mMessage, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
 
         root.addView(content, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        root.addView(new com.liskovsoft.smartyoutubetv2.mobile.ui.widgets.MiniPlayerBar(this, () -> true)); // the player stays reachable while browsing
         return root;
     }
 
