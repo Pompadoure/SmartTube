@@ -220,6 +220,7 @@ public class MediaPlaybackService extends MediaSessionService {
     @Override
     public void onTaskRemoved(@Nullable Intent rootIntent) {
         // Swiped away from the recents list: that means stop, also for the sound without a screen
+        Log.d(TAG, "JoTubeLife onTaskRemoved");
         if (sPodcastPlayer != null) {
             sPodcastPlayer.pause();
         }

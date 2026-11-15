@@ -988,6 +988,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
 
     /** The app was swiped away from the recents list: the sound stops and the player goes away. */
     public static void stopEverything() {
+        Log.d(TAG, "JoTubeLife stopEverything (the app was swiped away)");
         closeOrphan();
         PlaybackActivity active = sActive != null ? sActive.get() : null;
         if (active != null && !active.isFinishing() && !active.isDestroyed()) {
@@ -1055,6 +1056,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     @Override
     protected void onUserLeaveHint() {
         super.onUserLeaveHint();
+        Log.d(TAG, "JoTubeLife onUserLeaveHint " + lifeState());
 
         // Comments, menus and settings open as a dialog over the player: that is not the user leaving the app
         if (com.liskovsoft.smartyoutubetv2.common.app.presenters.AppDialogPresenter.isLaunchingDialog()
@@ -1502,6 +1504,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     @Override
     protected void onStop() {
         super.onStop();
+        Log.d(TAG, "JoTubeLife onStop " + lifeState());
 
         if (mPipSession && !mAudioMode && !mShortsMode && !isChangingConfigurations()) {
             // The floating window was closed (X): the video ends, no sound is left behind
@@ -1527,6 +1530,13 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     }
 
     /** Minimized (also when paused): the engine lives on for the mini player. */
+    /** One line per lifecycle step, so a log shows why the screen or the sound went away. */
+    private String lifeState() {
+        return "audio=" + mAudioMode + " shorts=" + mShortsMode + " pip=" + mInPip + " minimized=" + mMinimized
+                + " finishRequested=" + mFinishRequested + " playWhenReady=" + (mPlayer != null && mPlayer.getPlayWhenReady())
+                + " session=" + MediaPlaybackService.isActive() + " config=" + isChangingConfigurations();
+    }
+
     private boolean keepForMini() {
         return mPlayer != null && mPlayer.getPlaybackState() != Player.STATE_ENDED && !mShortsMode && !isChangingConfigurations() && MediaPlaybackService.isActive();
     }
@@ -1539,6 +1549,7 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        Log.d(TAG, "JoTubeLife onDestroy " + lifeState() + " finishing=" + isFinishing());
 
         mHandler.removeCallbacks(mShortsTick);
         mHandler.removeCallbacks(mHideControls);
@@ -1734,6 +1745,8 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
     @Override
     public void finish() {
         mFinishRequested = true;
+        StackTraceElement[] st = new Throwable().getStackTrace();
+        Log.d(TAG, "JoTubeLife finish() from " + (st.length > 1 ? st[1] : "?") + " <- " + (st.length > 2 ? st[2] : "?") + " " + lifeState());
         super.finish();
     }
 
