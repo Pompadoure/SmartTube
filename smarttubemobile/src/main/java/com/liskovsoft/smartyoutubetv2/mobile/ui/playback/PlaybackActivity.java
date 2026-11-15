@@ -170,6 +170,16 @@ public class PlaybackActivity extends MobileActivity implements PlaybackView {
         return sOrphan != null;
     }
 
+    /**
+     * The player screen is still alive in its own task, only out of sight (another app was opened or the screen is
+     * off), and the sound plays on: the app's mini player shows it, a tap brings the screen back.
+     */
+    public static boolean hasBackgroundSound() {
+        PlaybackActivity active = sActive != null ? sActive.get() : null;
+        return active != null && !active.isDestroyed() && !active.isFinishing() && active.mPlayer != null
+                && active.mBackgrounded && active.mPlayer.getPlayWhenReady();
+    }
+
     /** Stops the sound that plays without a screen. */
     public static void closeOrphan() {
         com.liskovsoft.smartyoutubetv2.common.app.models.playback.controllers.SuggestionsController.sMusicOnly = false;

@@ -105,7 +105,7 @@ public class MiniPlayerBar extends LinearLayout {
             if (mPodcast) {
                 PodcastPlayer.stop();
             } else {
-                PlaybackActivity.closeOrphan();
+                PlaybackActivity.stopEverything(); // the sound without a screen, or the screen that is out of sight
             }
             update();
         });
@@ -123,7 +123,7 @@ public class MiniPlayerBar extends LinearLayout {
     private void update() {
         Player player = MediaPlaybackService.getPlayer();
         Video video = MediaPlaybackService.getVideo();
-        boolean showVideo = player != null && video != null && PlaybackActivity.hasOrphan();
+        boolean showVideo = player != null && video != null && (PlaybackActivity.hasOrphan() || PlaybackActivity.hasBackgroundSound());
 
         Player podcastPlayer = MediaPlaybackService.getPodcastPlayer();
         PodcastRepository.Episode episode = PodcastPlayer.current();
