@@ -1,0 +1,16 @@
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/googlecommon/common/helpers/RetrofitHelper.java b/youtubeapi/src/main/java/com/liskovsoft/googlecommon/common/helpers/RetrofitHelper.java
+index 0ff3d5fd..25cd4114 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/googlecommon/common/helpers/RetrofitHelper.java
++++ b/youtubeapi/src/main/java/com/liskovsoft/googlecommon/common/helpers/RetrofitHelper.java
+@@ -104,6 +104,11 @@ public class RetrofitHelper {
+             handleResponseErrors(response);
+         }
+ 
++        // JoTube: a non-2xx answer used to give null without a trace (Home empty, no reason in the log)
++        if (response != null && !response.isSuccessful()) {
++            com.liskovsoft.sharedutils.mylogger.Log.w("RetrofitHelper", "HTTP %s from %s", response.code(), wrapper.request().url().encodedPath());
++        }
++
+         return response != null ? response.body() : null;
+     }
+ 
