@@ -1,0 +1,92 @@
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/lounge/BindManager.java b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/lounge/BindManager.java
+index 151010e0..3899c5eb 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/lounge/BindManager.java
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/lounge/BindManager.java
+@@ -3,6 +3,7 @@ package com.liskovsoft.youtubeapi.lounge;
+ import com.liskovsoft.googlecommon.common.converters.regexp.WithRegExp;
+ import com.liskovsoft.youtubeapi.lounge.models.bind.PairingCode;
+ import com.liskovsoft.youtubeapi.lounge.models.bind.ScreenId;
++import com.liskovsoft.youtubeapi.lounge.models.info.PairingCodeV2;
+ import retrofit2.Call;
+ import retrofit2.http.Field;
+ import retrofit2.http.FormUrlEncoded;
+@@ -21,4 +22,18 @@ public interface BindManager {
+                                      @Field("screen_name") String screenName,
+                                      @Field("access_type") String accessType,
+                                      @Field("app") String app);
++
++    /**
++     * JoTube (upstream a0a4b87e): the response is text/plain (just the code digits), so it is parsed with the RegExp
++     * converter. In InfoManager (JsonPath converter) it gave null for a plain text body.
++     */
++    @FormUrlEncoded
++    @POST("https://www.youtube.com/api/lounge/pairing/get_pairing_code?ctx=pair")
++    Call<PairingCodeV2> getPairingCodeV2(@Field("lounge_token") String loungeToken,
++                                         @Field("screen_id") String screenId,
++                                         @Field("screen_name") String screenName,
++                                         @Field("access_type") String accessType,
++                                         @Field("app") String app,
++                                         @Field("device_id") String deviceId,
++                                         @Field("qr") String qr);
+ }
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/lounge/InfoManager.java b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/lounge/InfoManager.java
+index 916986cf..83ba3ecb 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/lounge/InfoManager.java
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/lounge/InfoManager.java
+@@ -1,7 +1,6 @@
+ package com.liskovsoft.youtubeapi.lounge;
+ 
+ import com.liskovsoft.googlecommon.common.converters.jsonpath.WithJsonPath;
+-import com.liskovsoft.youtubeapi.lounge.models.info.PairingCodeV2;
+ import com.liskovsoft.youtubeapi.lounge.models.info.PlaylistInfo;
+ import com.liskovsoft.youtubeapi.lounge.models.info.TokenInfoList;
+ import retrofit2.Call;
+@@ -23,14 +22,4 @@ public interface InfoManager {
+ 
+     @GET("https://www.youtube.com/list_ajax?style=json&action_get_list=1")
+     Call<PlaylistInfo> getPlaylistInfo(@Query("list") String playlistId);
+-
+-    @FormUrlEncoded
+-    @POST("https://www.youtube.com/api/lounge/pairing/get_pairing_code?ctx=pair")
+-    Call<PairingCodeV2> getPairingCodeV2(@Field("lounge_token") String loungeToken,
+-                                         @Field("screen_id") String screenId,
+-                                         @Field("screen_name") String screenName,
+-                                         @Field("access_type") String accessType,
+-                                         @Field("app") String app,
+-                                         @Field("device_id") String deviceId,
+-                                         @Field("qr") String qr);
+ }
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/lounge/LoungeService.java b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/lounge/LoungeService.java
+index 6385a350..40caadff 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/lounge/LoungeService.java
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/lounge/LoungeService.java
+@@ -78,7 +78,7 @@ public class LoungeService {
+             return null;
+         }
+ 
+-        Call<PairingCodeV2> pairingCodeWrapper = mInfoManager.getPairingCodeV2(
++        Call<PairingCodeV2> pairingCodeWrapper = mBindManager.getPairingCodeV2(
+                 mLoungeToken,
+                 mScreenId,
+                 mScreenName,
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/lounge/models/info/PairingCodeV2.java b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/lounge/models/info/PairingCodeV2.java
+index 6744407e..ae0c7770 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/lounge/models/info/PairingCodeV2.java
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/lounge/models/info/PairingCodeV2.java
+@@ -1,10 +1,14 @@
+ package com.liskovsoft.youtubeapi.lounge.models.info;
+ 
+-import com.liskovsoft.googlecommon.common.converters.jsonpath.JsonPath;
++import com.liskovsoft.googlecommon.common.converters.regexp.RegExp;
+ import com.liskovsoft.googlecommon.common.helpers.ServiceHelper;
+ 
+ public class PairingCodeV2 {
+-    @JsonPath("$.code")
++    /**
++     * get_pairing_code answers with text/plain containing only the digits. The JSON form ({"code":"..."}) is still
++     * accepted in case the server answers with it.
++     */
++    @RegExp({"\"code\"\\s*:\\s*\"?(\\d+)", "^\\s*(\\d+)\\s*$"})
+     private String mPairingCode;
+     private String mPairingCodeAlt;
+ 
