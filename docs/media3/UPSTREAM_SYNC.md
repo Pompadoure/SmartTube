@@ -99,3 +99,28 @@ REJECTED
   moved): live was rejected earlier; db543d4d (hide mixes option) needs a new setting; 4be5193d (Shorts detection from reel style)
   changes which items count as Shorts in lists.
 - Translations, README/docs, version bumps 32.71-32.74, dialog checkbox margins (f8ac53cb, 71c41c5c): skipped.
+
+## 2026-11-20
+Checked: SmartTube up to 41fbc7c6 (2026-11-19, bump 32.80), MSC up to c1d202fc (upstream pin; our pin is 1b43ec7).
+
+TAKEN
+- MSC a0a4b87e -> patch 0017: the "Add device" pairing code. get_pairing_code answers with text/plain (only digits), but
+  PairingCodeV2 was parsed with JsonPath ($.code) and gave null ("fromNullable result is null"). Now parsed with the RegExp
+  converter, which also still accepts the JSON form, so a server answering either way works. Only this one call moved
+  (InfoManager -> BindManager, like the older PairingCode); nothing else changes. Upstream test not ported (needs network).
+
+REJECTED
+- db76a0c9 + MSC e6ae6615 (invalidate the format cache before reloads): upstream reloads at the two sites changed here
+  (fallback branch of the buffering fixer, SABR backoff action). Ours restarts the engine in that fallback (615ddecb was
+  rejected for that reason) and has no SABR backoff action; the other reloads either already invalidate (switchNextClient*,
+  reloadPlayerResponse) or intentionally reuse the cached info (subtitle/renderer errors).
+- 41fbc7c6 (null check in VideoStateController.onNewVideo): only partial, the other controllers dereference the item too;
+  no NPE seen here.
+- 654f30dc (swallow NPE in UriBackgroundManager): "likely" OOM, no failure seen; hides errors.
+- 72dd0ef4 (backup workers cancel at freqDays <= 0): the settings screen already cancels the worker; no failure seen.
+  Its isStale() on SabrStreamError makes getFatalError() return nothing for 1 s after an error: changes SABR error timing.
+- 29a8771d, e0fe1ac3 (skip chapters with UP button): new option/feature. 72e137b2, da643a87 (PoToken error propagation):
+  conflicts with patches 0001/0005/0006 (rejected earlier). 4e4ef9c6 (proxy test on main thread): proxy dialog, no failure seen.
+- MSC 63a7d61c, 1087a014 (TV client default again, TV_SAMSUNG client): changes the client order, conflicts with our patches.
+  MSC 30389a8d (getMyVideos checkSigned): our pin has no checkSigned in that path, so nothing to fix.
+- Translations (a6750dde Swedish, zh-rTW), README, version bumps 32.75-32.80, proguard/SharedModules/MSC pin bumps, typos: skipped.
