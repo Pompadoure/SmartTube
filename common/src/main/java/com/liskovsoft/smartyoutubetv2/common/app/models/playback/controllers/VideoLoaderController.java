@@ -1276,7 +1276,7 @@ public class VideoLoaderController extends BasePlayerController {
         //}
     }
 
-    private int getPlaybackMode() {
+    int getPlaybackMode() {
         int playbackMode = getPlayerData().getPlaybackMode();
 
         Video video = getVideo();
