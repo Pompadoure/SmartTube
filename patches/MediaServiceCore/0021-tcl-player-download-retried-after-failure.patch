@@ -1,0 +1,18 @@
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/app/playerdata/TclPlayerDataExtractor.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/app/playerdata/TclPlayerDataExtractor.kt
+index 9779e6ae..0eda36d9 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/app/playerdata/TclPlayerDataExtractor.kt
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/app/playerdata/TclPlayerDataExtractor.kt
+@@ -40,7 +40,12 @@ internal class TclPlayerDataExtractor(override val playerUrl: String): PlayerDat
+     }
+     // Fetched lazily, once, and shared between validation (checkSigData) and real extraction —
+     // TclChallengeProvider needs the raw player source.
+-    private val playerCode: String? by lazy { loadPlayer() }
++    // JoTube (idea from upstream 1814c5ad): only a successful download is kept. 'by lazy' cached a null forever, so one
++    // failed download left n-param extraction off for as long as this extractor was reused.
++    @Volatile
++    private var cachedPlayerCode: String? = null
++    private val playerCode: String?
++        get() = cachedPlayerCode ?: loadPlayer().also { cachedPlayerCode = it }
+ 
+     init {
+         Log.d(tag, "Using player url: $fixedPlayerUrl")

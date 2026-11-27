@@ -10,6 +10,7 @@ import com.liskovsoft.smartyoutubetv2.common.R;
 import com.liskovsoft.smartyoutubetv2.common.app.models.data.Video;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.BasePlayerController;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.listener.PlayerEventListener;
+import com.liskovsoft.smartyoutubetv2.common.app.models.playback.manager.PlayerConstants;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.controller.ShortsQueue;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.FormatItem;
 import com.liskovsoft.smartyoutubetv2.common.misc.BufferingDetector;
@@ -24,12 +25,14 @@ import java.util.List;
 public class ErrorFixerController extends BasePlayerController implements OnLongBuffering {
     private static final String TAG = ErrorFixerController.class.getSimpleName();
     private static final long STREAM_END_THRESHOLD_MS = 180_000;
+    private static final long VIDEO_END_THRESHOLD_MS = 3_000; // same limit as VideoStateController's "video ended" check
     // Upstream (yuliskov 17b09643): how many times a SABR "reload the player response" request is honored per video
     private static final int MAX_SABR_RELOAD_ATTEMPTS = 3;
     private final BufferingDetector mBufferingDetector = new BufferingDetector(this);
     private VideoLoaderController mVideoLoaderController;
     private String mSabrReloadVideoId;
     private int mSabrReloadAttempts;
+    private boolean mIsPlayEnded;
 
     // JoTube: a media download can hang without an error (device log 2026-10-29 16:50: one SABR chunk request stalled
     // for 55 s, the 30 s buffer ran dry and the video froze until the long buffering fix restarted it 24 s later).
@@ -65,6 +68,9 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
 
         if (isStreamEnded()) {
             getMainController().onPlayEnd();
+        } else if (isVideoNearEnd() && isSubtitlesEnabled() && getVideo().isSynced) {
+            // Only where the subtitle fix below would replay the video. Not synced: the next video may be unknown yet
+            onLongBufferingNearEnd();
         } else if (isOfflineVideo() && isSubtitlesEnabled()) {
             // Long loading subtitles cause hangs
             disableSubtitles();
@@ -95,13 +101,48 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
         }
     }
 
+    /**
+     * Upstream (yuliskov f4b90fce): SABR may never deliver the tail of the last segment, so the engine never reaches
+     * STATE_ENDED. The subtitle fix would then restart the video from 0 (a reload this close to the end counts as
+     * 'watched', see VideoStateController.resetPositionIfNeeded). Finish the video instead.
+     */
+    private void onLongBufferingNearEnd() {
+        if (mIsPlayEnded) {
+            return; // the end has been handled already (no play or seek since then)
+        }
+
+        if (!getPlayer().getPlayWhenReady()) {
+            // Paused at the end (e.g. 'pause after each video' parks the player there): nothing to fix,
+            // pressing play starts the detector again
+            return;
+        }
+
+        if (getAppDialogPresenter().isDialogShown() && !getAppDialogPresenter().isOverlay()
+                && mVideoLoaderController.getPlaybackMode() != PlayerConstants.PLAYBACK_MODE_ONE) {
+            // The playback mode wouldn't be applied now (see VideoLoaderController.onPlayEnd): check again later
+            mBufferingDetector.onStartBuffering();
+            return;
+        }
+
+        Log.w(TAG, "Long buffering at the end of the video (%s of %s ms): finishing it", getPlayer().getPositionMs(),
+                getPlayer().getDurationMs());
+        getMainController().onPlayEnd();
+    }
+
+    @Override
+    public void onPlayEnd() {
+        mIsPlayEnded = true;
+    }
+
     @Override
     public void onBuffering() {
+        mIsPlayEnded = false; // e.g. play pressed after a forced end while still buffering
         mBufferingDetector.onStartBuffering();
     }
 
     @Override
     public void onSeekEnd() {
+        mIsPlayEnded = false;
         mBufferingDetector.reset();
         // Needed to detect additional buffering (e.g. hanged clients).
         // Don't worry this event will be canceled by subsequent onPlay() or onPause() if everything is ok.
@@ -110,6 +151,7 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
 
     @Override
     public void onPlay() {
+        mIsPlayEnded = false;
         mBufferingDetector.onStopBuffering();
         mSabrReloadAttempts = 0;
         startStallWatch();
@@ -160,6 +202,7 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
 
     @Override
     public void onNewVideo(Video item) {
+        mIsPlayEnded = false;
         mBufferingDetector.start();
     }
 
@@ -475,6 +518,18 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
 
         return getVideo().isLiveEnd && getPlayer().getDurationMs() > 0
                 && getPlayer().getDurationMs() - getPlayer().getPositionMs() < STREAM_END_THRESHOLD_MS;
+    }
+
+    /**
+     * A regular video that has been playing and has (almost) nothing left
+     */
+    private boolean isVideoNearEnd() {
+        if (!isOfflineVideo() || !mBufferingDetector.isPlayable()) {
+            return false;
+        }
+
+        long durationMs = getPlayer().getDurationMs();
+        return durationMs > 0 && durationMs - getPlayer().getPositionMs() < VIDEO_END_THRESHOLD_MS;
     }
 
     private boolean isOfflineVideo() {

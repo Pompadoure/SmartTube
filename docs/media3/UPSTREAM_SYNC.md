@@ -104,7 +104,7 @@ REJECTED
 Checked: SmartTube up to 41fbc7c6 (2026-11-19, bump 32.80), MSC up to c1d202fc (upstream pin; our pin is 1b43ec7).
 
 TAKEN
-- MSC a0a4b87e -> patch 0017: the "Add device" pairing code. get_pairing_code answers with text/plain (only digits), but
+- MSC a0a4b87e -> patch 0017 (renumbered to 0020 on 2026-11-27: media3 had got its own 0017-0019): the "Add device" pairing code. get_pairing_code answers with text/plain (only digits), but
   PairingCodeV2 was parsed with JsonPath ($.code) and gave null ("fromNullable result is null"). Now parsed with the RegExp
   converter, which also still accepts the JSON form, so a server answering either way works. Only this one call moved
   (InfoManager -> BindManager, like the older PairingCode); nothing else changes. Upstream test not ported (needs network).
@@ -124,3 +124,38 @@ REJECTED
 - MSC 63a7d61c, 1087a014 (TV client default again, TV_SAMSUNG client): changes the client order, conflicts with our patches.
   MSC 30389a8d (getMyVideos checkSigned): our pin has no checkSigned in that path, so nothing to fix.
 - Translations (a6750dde Swedish, zh-rTW), README, version bumps 32.75-32.80, proguard/SharedModules/MSC pin bumps, typos: skipped.
+
+## 2026-11-27
+Checked: SmartTube up to ccc6800f (2026-11-27, bump 32.85), MSC up to 3e82ef20 (upstream pin; our pin is 1b43ec7).
+The unmerged findings of 2026-11-13 and 2026-11-20 are carried on this branch.
+
+TAKEN
+- f4b90fce (part): when the long-buffering subtitle fix would fire within the last 3 s of a regular video, the video is
+  now finished (normal playback mode) instead. In our code that fix's reload restarts the video from 0, because
+  `resetPositionIfNeeded` treats < 3 s left as watched. Stricter than upstream: only with subtitles on, only if the
+  video has been playing and its suggestions are synced (next video known); nothing is done while paused (e.g. after
+  `stopPlayback()` seeks to the end, where the pending detector would otherwise disable subtitles and replay) or if
+  the end was already handled; waits while a non-overlay dialog is open (not for repeat-one). With subtitles off the
+  old `restartEngine` stays (it keeps the position). Found by code reading, not seen in a device log.
+- b1d44d9d: `Locale.ROOT` for the SABR client name and the proxy type (crash with a Turkish system language).
+  Same result on every other language.
+- MSC 1814c5ad (TCL part, own implementation) -> patch 0021: `by lazy` cached a failed player download as null, so
+  n-param solving stayed off while that extractor was reused. A failure still returns null, the next call retries.
+
+REJECTED
+- f4b90fce, error path (`runEngineErrorAction` near the end -> onPlayEnd): the player is idle after an error; with
+  repeat-one / pause-after-video `onPlayEnd` only seeks it and nothing prepares it again. Today's reload recovers.
+- f4b90fce for the engine restart without subtitles: it keeps the position and may still play the tail (e.g. after a
+  short network drop); finishing would skip it.
+- MSC 1814c5ad (web part: throw on download failure): in our pin's `firstValidExtractor` the exception would end the
+  loop before the fallback player URLs are tried. MSC bad6cb57 (3 download attempts): adds waiting inside the
+  serialized format fetch; with 0021 the next request retries anyway.
+- 077009ca, 711ce2f9, 2983117a (SABR PoToken status as "unthrown error", checked on long buffering and every tickle):
+  any status other than OK, including "pending", would run the engine error action, also while playback works.
+  Follow-up of 72e137b2 (rejected 2026-11-20).
+- 708096dc + MSC 3e82ef20 and the live part of c5a6944b: live without a start time becomes "unplayable" when SABR live
+  is off. Changes how live streams are handled (live was rejected earlier).
+- MSC c5a6944b (one solver script for TCL and web, new fallback player URLs), 09a1e13d: large solver rewrite, no
+  failure seen here.
+- MSC 3c733fef (PoToken cache reset back to 60 s): our pin already uses 60 s.
+- MSC pin / SharedModules bumps, version bumps 32.81-32.85, README: skipped.
